@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Ambiente local
+settings.ini
+
+# Downloads de teste / temporários
+test_out/
+.thumbs/
+*.log
+
+# IDEs
+.vscode/
+.idea/
