@@ -30,6 +30,7 @@ jobs:
           pyinstaller --noconfirm --clean --onefile --windowed \
             --name "HLS-Downloader-Pro" \
             --add-data "ui.qml:." \
+            --add-data "i18n.js:." \
             --collect-data PyQt6 \
             main.py
 
@@ -37,6 +38,14 @@ jobs:
         run: |
           ls -lh dist/
           test -x dist/HLS-Downloader-Pro
+          QT_QPA_PLATFORM=offscreen timeout 25 ./dist/HLS-Downloader-Pro \
+            > /tmp/app.log 2>&1 || true
+          if grep -qi "failed to load component\|No such file" /tmp/app.log; then
+            echo "=== QML falhou ao carregar ==="
+            cat /tmp/app.log
+            exit 1
+          fi
+          echo "=== QML carregou sem erros (app rodou 25s offscreen) ==="
 
       - name: Package release archive
         run: |
