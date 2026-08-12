@@ -36,6 +36,8 @@ jobs:
 
       - name: Verify binary
         run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q libegl1 libgl1 libxkbcommon0 libxcb-cursor0
           ls -lh dist/
           test -x dist/HLS-Downloader-Pro
           QT_QPA_PLATFORM=offscreen timeout 25 ./dist/HLS-Downloader-Pro \
