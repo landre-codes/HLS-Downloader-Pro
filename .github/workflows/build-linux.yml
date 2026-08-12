@@ -1,0 +1,65 @@
+name: Build Linux
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt pyinstaller
+
+      - name: Build binary with PyInstaller
+        run: |
+          pyinstaller --noconfirm --clean --onefile --windowed \
+            --name "HLS-Downloader-Pro" \
+            --add-data "ui.qml:." \
+            --collect-data PyQt6 \
+            main.py
+
+      - name: Verify binary
+        run: |
+          ls -lh dist/
+          test -x dist/HLS-Downloader-Pro
+
+      - name: Package release archive
+        run: |
+          tar -czf HLS-Downloader-Pro-linux-x86_64.tar.gz \
+            dist/HLS-Downloader-Pro README.md requirements.txt
+
+      - name: Attach to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: HLS-Downloader-Pro-linux-x86_64.tar.gz
+          body: |
+            ## HLS Downloader Pro
+
+            Binário Linux (x86_64) — Qt 6 embutido, não precisa de Python instalado.
+
+            Requer apenas **ffmpeg** e **yt-dlp** no sistema:
+            - Debian/Ubuntu: `sudo apt install ffmpeg yt-dlp`
+            - Fedora: `sudo dnf install ffmpeg yt-dlp`
+            - Arch: `sudo pacman -S ffmpeg yt-dlp`
+
+            Para rodar o binário puro:
+            ```
+            tar -xzf HLS-Downloader-Pro-linux-x86_64.tar.gz
+            ./HLS-Downloader-Pro
+            ```

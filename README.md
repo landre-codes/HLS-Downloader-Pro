@@ -25,6 +25,25 @@ Downloader de vídeos (HLS / m3u8) com interface **Qt Quick (QML) + Material Des
 
 ## Instalação
 
+### Linux — binário pronto (Releases)
+
+Baixe **HLS-Downloader-Pro-linux-x86_64.tar.gz** na seção [Releases](https://github.com/landre-codes/HLS-Downloader-Pro/releases) (Qt 6 embutido, não precisa de Python):
+
+```bash
+tar -xzf HLS-Downloader-Pro-linux-x86_64.tar.gz
+sudo apt install ffmpeg yt-dlp   # requisitos do download
+./HLS-Downloader-Pro
+```
+
+### Linux — via script (código-fonte)
+
+```bash
+git clone https://github.com/landre-codes/HLS-Downloader-Pro.git
+cd HLS-Downloader-Pro
+./install.sh        # instala ffmpeg/python, cria .venv e o atalho
+hls-downloader-pro  # (ou .venv/bin/python main.py)
+```
+
 ### Windows
 
 ```powershell

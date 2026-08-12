@@ -26,8 +26,31 @@ from PyQt6.QtWidgets import QApplication, QFileDialog
 
 from worker import DownloadModel, QueueManager, extract_urls
 
-PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
-SETTINGS_PATH = os.path.join(PROJECT_DIR, "settings.ini")
+# Pasta do código. Em builds empacotados (PyInstaller --onefile) os arquivos
+# ficam extraídos em sys._MEIPASS; no desenvolvimento, ao lado do main.py.
+PROJECT_DIR = getattr(sys, "_MEIPASS", None) or os.path.dirname(os.path.abspath(__file__))
+
+
+def _settings_path() -> str:
+    """settings.ini ao lado do app; se a pasta não for gravável (ex.: binário
+    instalado em /usr/local), usa ~/.config/HLSDownloaderPro (Linux) ou
+    %APPDATA%/HLSDownloaderPro (Windows)."""
+    local = os.path.join(PROJECT_DIR, "settings.ini")
+    try:
+        if os.access(PROJECT_DIR, os.W_OK):
+            return local
+    except OSError:
+        pass
+    if os.name == "nt":
+        base = os.environ.get("APPDATA") or os.path.expanduser("~")
+    else:
+        base = os.path.join(os.path.expanduser("~"), ".config")
+    base = os.path.join(base, "HLSDownloaderPro")
+    os.makedirs(base, exist_ok=True)
+    return os.path.join(base, "settings.ini")
+
+
+SETTINGS_PATH = _settings_path()
 
 # Navegadores suportados por `--cookies-from-browser` do yt-dlp
 BROWSERS: List[str] = [
