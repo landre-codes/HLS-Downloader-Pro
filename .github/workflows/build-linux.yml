@@ -41,7 +41,9 @@ jobs:
       - name: Package release archive
         run: |
           tar -czf HLS-Downloader-Pro-linux-x86_64.tar.gz \
-            dist/HLS-Downloader-Pro README.md requirements.txt
+            dist/HLS-Downloader-Pro \
+            README.md requirements.txt \
+            install-desktop.sh icon.svg
 
       - name: Attach to GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
@@ -53,13 +55,20 @@ jobs:
 
             Binário Linux (x86_64) — Qt 6 embutido, não precisa de Python instalado.
 
-            Requer apenas **ffmpeg** e **yt-dlp** no sistema:
-            - Debian/Ubuntu: `sudo apt install ffmpeg yt-dlp`
-            - Fedora: `sudo dnf install ffmpeg yt-dlp`
+            Requer **ffmpeg** e **yt-dlp** no sistema, e as libs do Qt:
+            - Debian/Ubuntu: `sudo apt install ffmpeg yt-dlp libxcb-cursor0`
+            - Fedora: `sudo dnf install ffmpeg yt-dlp qt6-qtbase`
             - Arch: `sudo pacman -S ffmpeg yt-dlp`
 
             Para rodar o binário puro:
             ```
             tar -xzf HLS-Downloader-Pro-linux-x86_64.tar.gz
             ./HLS-Downloader-Pro
+            ```
+
+            Para instalar no menu de aplicativos (atalho clicável + libs Qt):
+            ```
+            tar -xzf HLS-Downloader-Pro-linux-x86_64.tar.gz
+            cd HLS-Downloader-Pro-linux-x86_64  # pasta de extração
+            ./install-desktop.sh
             ```
