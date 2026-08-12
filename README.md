@@ -35,6 +35,7 @@ Baixe **HLS-Downloader-Pro-linux-x86_64.tar.gz** na seção [Releases](https://g
 
 ```bash
 tar -xzf HLS-Downloader-Pro-linux-x86_64.tar.gz
+cd HLS-Downloader-Pro-linux-x86_64
 sudo apt install ffmpeg yt-dlp libxcb-cursor0   # requisitos do download + Qt
 ./HLS-Downloader-Pro
 ```
@@ -42,6 +43,7 @@ sudo apt install ffmpeg yt-dlp libxcb-cursor0   # requisitos do download + Qt
 **Atalho clicável no menu de aplicativos** (instala binário em `~/.local/bin`, ícone e entrada no menu):
 
 ```bash
+cd HLS-Downloader-Pro-linux-x86_64
 ./install-desktop.sh
 ```
 
