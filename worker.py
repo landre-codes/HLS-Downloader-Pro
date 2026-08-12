@@ -25,6 +25,7 @@ import logging
 import re
 import shutil
 import subprocess
+import tempfile
 import threading
 import time
 from typing import Dict, List, Optional, Tuple
@@ -137,6 +138,12 @@ def _which(name: str) -> Optional[str]:
     return None
 
 
+def cleanup_thumbs() -> None:
+    """Apaga a pasta temporária de miniaturas (chamado ao fechar o app)."""
+    shutil.rmtree(os.path.join(tempfile.gettempdir(), "hlsdlp-thumbs"),
+                  ignore_errors=True)
+
+
 # Caracteres proibidos no Windows (ASCII) e seus equivalentes fullwidth que o
 # yt-dlp usa ao sanitizar com --windows-filenames (ex.: '?' -> '？' U+FF1F).
 _INVALID_CHARS_RE = re.compile(
@@ -180,6 +187,34 @@ def _resolve_existing_file(path: str) -> str:
     # se houver mais de um, prefere o mais recente (acabou de ser baixado)
     candidates.sort(key=lambda p: os.path.getmtime(p), reverse=True)
     return candidates[0]
+
+
+def _shorten_name(path: str, limit: int = 20) -> str:
+    """Renomeia o arquivo para um nome curto (base <= `limit` caracteres).
+
+    O limite é aplicado por CARACTERES (não bytes), então nunca quebra
+    acentos/UTF-8. Se já está curto, devolve o caminho sem mexer.
+    """
+    folder, name = os.path.split(path)
+    base, ext = os.path.splitext(name)
+    if len(base) <= limit:
+        return path
+    base = base[:limit].rstrip(" ._-")
+    if not base:
+        base = "video"
+    target = os.path.join(folder, base + ext)
+    n = 2
+    while os.path.exists(target) and os.path.normcase(target) != os.path.normcase(path):
+        target = os.path.join(folder, f"{base}-{n}{ext}")
+        n += 1
+    if os.path.normcase(target) == os.path.normcase(path):
+        return path
+    try:
+        os.rename(path, target)
+        log.info("nome encurtado: %r -> %r", name, os.path.basename(target))
+        return target
+    except OSError:
+        return path
 
 
 # ===========================================================================
@@ -396,7 +431,12 @@ class DownloadWorker(QObject):
             return False, "yt-dlp não encontrado no PATH (instale via pip)."
 
         os.makedirs(self.outdir, exist_ok=True)
-        out_template = os.path.join(self.outdir, "%(title).120B [%(id)s].%(ext)s")
+        # Título completo + id: o yt-dlp baixa com o nome inteiro e, ao
+        # concluir, o arquivo é renomeado para um nome curto (<=20 caracteres)
+        # por `_shorten_name` — em Python, por CARACTERES, sem o bug do
+        # `--trim-filenames` do yt-dlp (que corta o caminho inteiro) nem o do
+        # `%(title).120B` (que truncava em bytes e quebrava UTF-8).
+        out_template = os.path.join(self.outdir, "%(title)s [%(id)s].%(ext)s")
 
         cmd = [
             ytdlp,
@@ -595,6 +635,7 @@ class DownloadWorker(QObject):
                         "caminho impresso != arquivo real; resolvido por nome: %r",
                         real,
                     )
+                real = _shorten_name(real)
                 return True, real
         log.warning(
             "yt-dlp rc=0 sem arquivo detectado; stdout:\n%s",
@@ -707,13 +748,15 @@ class DownloadWorker(QObject):
     def _extract_thumbnail(self, video_path: str) -> Optional[str]:
         """Gera uma miniatura .jpg do vídeo com ffmpeg (usada na tabela).
 
-        Se falhar ou o ffmpeg não existir, retorna None (o download não é
-        afetado — miniatura é um extra).
+        As miniaturas são gravadas em uma pasta TEMPORÁRIA do sistema
+        (`hlsdlp-thumbs`) e apagadas ao fechar o app — não poluem a pasta de
+        downloads. Se falhar ou o ffmpeg não existir, retorna None (o download
+        não é afetado — miniatura é um extra).
         """
         ffmpeg = _which("ffmpeg")
         if not ffmpeg or not video_path or not os.path.exists(video_path):
             return None
-        thumbs_dir = os.path.join(self.outdir, ".thumbs")
+        thumbs_dir = os.path.join(tempfile.gettempdir(), "hlsdlp-thumbs")
         try:
             os.makedirs(thumbs_dir, exist_ok=True)
         except OSError:
@@ -721,7 +764,7 @@ class DownloadWorker(QObject):
         base = os.path.splitext(os.path.basename(video_path))[0]
         thumb = os.path.join(thumbs_dir, base + ".jpg")
         if os.path.exists(thumb):
-            return thumb  # já existe de um download anterior
+            return thumb  # já existe de um download anterior na sessão
         for seek in ("2", "0"):
             cmd = [
                 ffmpeg, "-y", "-hide_banner", "-loglevel", "error",

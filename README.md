@@ -10,6 +10,10 @@ Downloader de vídeos (HLS / m3u8) com interface **Qt Quick (QML) + Material Des
 - **Anti-duplicado**: evita links duplicados na fila e não re-baixa arquivos já existentes no disco
 - **Edição inline** do link na tabela (duplo clique) e **copiar link** para a área de transferência
 - **Miniaturas** geradas automaticamente de cada vídeo baixado (ffmpeg)
+- **Idioma PT/EN**: seletor em Configurações → Aparência (preferência persistida)
+- **Nomes de arquivo limitados a 20 caracteres** — evita erros de salvamento com títulos muito longos
+- **Instância única**: abrir o app duas vezes mostra um aviso (sem downloads duplicados acidentais)
+- **Miniaturas temporárias**: ficam em pasta do sistema e são apagadas ao fechar o app
 - **Cancelamento** individual ou de toda a fila
 - Barra de título personalizada (sem borda), arrastável, com botões de minimizar/maximizar/fechar
 - Persistência de configurações em `settings.ini` (tema, concorrência, janela, cookies)
@@ -89,6 +93,8 @@ Habilite na seção **Cookies** com `browser:chrome` (usa os cookies do navegado
 python smoke_test.py        # modelo, fila, dedup, cancelamento, QML carrega
 python functional_test.py   # fluxo completo com servidor HLS local
 python integration_test.py  # downloads reais (Apple sample streams)
+python _i18n_test.py        # troca de idioma PT/EN no QML
+python _single_instance_test.py  # bloqueio de segunda instância
 python layout_debug.py      # dump da geometria do layout
 ```
 

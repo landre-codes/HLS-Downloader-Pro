@@ -17,14 +17,15 @@ from __future__ import annotations
 import os
 import shutil
 import sys
+import tempfile
 from typing import List, Optional
 
 from PyQt6.QtCore import QObject, QRect, QSettings, QUrl, pyqtProperty, pyqtSignal, pyqtSlot
 from PyQt6.QtGui import QFont, QGuiApplication
 from PyQt6.QtQml import QQmlApplicationEngine
-from PyQt6.QtWidgets import QApplication, QFileDialog
+from PyQt6.QtWidgets import QApplication, QFileDialog, QMessageBox
 
-from worker import DownloadModel, QueueManager, extract_urls
+from worker import DownloadModel, QueueManager, cleanup_thumbs, extract_urls
 
 # Pasta do código. Em builds empacotados (PyInstaller --onefile) os arquivos
 # ficam extraídos em sys._MEIPASS; no desenvolvimento, ao lado do main.py.
@@ -63,6 +64,50 @@ BROWSERS: List[str] = [
     "brave",
 ]
 
+# Mensagens emitidas pelo Python (toasts/diálogos) nos idiomas suportados.
+I18N = {
+    "pt": {
+        "links_added_skipped": "{a} link(s) adicionados, {s} duplicado(s) ignorado(s).",
+        "links_added": "{a} link(s) adicionados à fila.",
+        "links_skipped": "{s} link(s) duplicado(s) ignorado(s).",
+        "no_links": "Nenhum link válido encontrado.",
+        "clipboard_empty": "A área de transferência está vazia.",
+        "read_failed": "Falha ao ler o arquivo: {err}",
+        "dlg_links": "Selecionar lista de links (.txt)",
+        "dlg_outdir": "Escolher pasta de saída",
+        "dlg_cookies": "Selecionar arquivo de cookies (Netscape)",
+        "output_folder": "Pasta de saída: {path}",
+        "queue_started": "Fila iniciada.",
+        "downloads_cancelled": "Downloads cancelados.",
+        "item_cancelled": "Item cancelado.",
+        "link_updated": "Link atualizado e reenfileirado.",
+        "link_update_failed": "Não foi possível atualizar (em andamento ou duplicado).",
+        "link_copied": "Link copiado para a área de transferência.",
+        "already_open": "O HLS Downloader Pro já está aberto.",
+    },
+    "en": {
+        "links_added_skipped": "{a} link(s) added, {s} duplicate(s) skipped.",
+        "links_added": "{a} link(s) added to the queue.",
+        "links_skipped": "{s} duplicate(s) skipped.",
+        "no_links": "No valid links found.",
+        "clipboard_empty": "The clipboard is empty.",
+        "read_failed": "Failed to read the file: {err}",
+        "dlg_links": "Select links list (.txt)",
+        "dlg_outdir": "Choose output folder",
+        "dlg_cookies": "Select cookies file (Netscape)",
+        "output_folder": "Output folder: {path}",
+        "queue_started": "Queue started.",
+        "downloads_cancelled": "Downloads cancelled.",
+        "item_cancelled": "Item cancelled.",
+        "link_updated": "Link updated and re-queued.",
+        "link_update_failed": "Could not update (in progress or duplicate).",
+        "link_copied": "Link copied to the clipboard.",
+        "already_open": "HLS Downloader Pro is already open.",
+    },
+}
+
+APP_ID = "HLS-Downloader-Pro"
+
 
 class Bridge(QObject):
     """
@@ -79,6 +124,7 @@ class Bridge(QObject):
     cookiesEnabledChanged = pyqtSignal(bool)
     cookiesBrowserIndexChanged = pyqtSignal(int)
     cookiesFileChanged = pyqtSignal(str)
+    languageChanged = pyqtSignal(str)
 
     def __init__(
         self,
@@ -105,6 +151,9 @@ class Bridge(QObject):
             self._settings.value("cookies/browser_index", 0)
         )
         self._cookies_file = str(self._settings.value("cookies/file", ""))
+        self._lang = str(self._settings.value("i18n/language", "pt"))
+        if self._lang not in I18N:
+            self._lang = "pt"
 
         # ------------------------------------------------------- aplica tudo
         manager.statsChanged.connect(self.statsChanged.emit)
@@ -123,6 +172,26 @@ class Bridge(QObject):
         self._settings.sync()
 
     # ------------------------------------------------------------- atributos QML
+    def _tr(self, key: str, **kw) -> str:
+        """Traduz uma mensagem do Python para o idioma atual."""
+        msg = I18N[self._lang].get(key, I18N["pt"].get(key, key))
+        if kw:
+            msg = msg.format(**kw)
+        return msg
+
+    @pyqtProperty(str, notify=languageChanged)
+    def language(self) -> str:
+        return self._lang
+
+    @pyqtSlot(str)
+    def setLanguage(self, lang: str) -> None:
+        lang = lang if lang in I18N else "pt"
+        if lang == self._lang:
+            return
+        self._lang = lang
+        self._save("i18n/language", lang)
+        self.languageChanged.emit(lang)
+
     @pyqtProperty(str, notify=outputFolderChanged)
     def outputFolder(self) -> str:
         return self._output_folder
@@ -162,14 +231,14 @@ class Bridge(QObject):
         added, skipped = self.manager.addText(text)
         if added and skipped:
             self.notifyText.emit(
-                f"{added} link(s) adicionados, {skipped} duplicado(s) ignorado(s)."
+                self._tr("links_added_skipped", a=added, s=skipped)
             )
         elif added:
-            self.notifyText.emit(f"{added} link(s) adicionados à fila.")
+            self.notifyText.emit(self._tr("links_added", a=added))
         elif skipped:
-            self.notifyText.emit(f"{skipped} link(s) duplicado(s) ignorado(s).")
+            self.notifyText.emit(self._tr("links_skipped", s=skipped))
         else:
-            self.notifyText.emit("Nenhum link válido encontrado.")
+            self.notifyText.emit(self._tr("no_links"))
 
     @pyqtSlot()
     def pasteFromClipboard(self) -> None:
@@ -178,14 +247,14 @@ class Bridge(QObject):
         if text.strip():
             self.addLinks(text)
         else:
-            self.notifyText.emit("A área de transferência está vazia.")
+            self.notifyText.emit(self._tr("clipboard_empty"))
 
     @pyqtSlot()
     def importTxt(self) -> None:
         """Abre um diálogo para importar um arquivo .txt com uma URL por linha."""
         path, _ = QFileDialog.getOpenFileName(
             None,
-            "Selecionar lista de links (.txt)",
+            self._tr("dlg_links"),
             "",
             "Arquivos de texto (*.txt);;Todos os arquivos (*.*)",
         )
@@ -196,20 +265,20 @@ class Bridge(QObject):
                 content = handle.read()
             self.addLinks(content)
         except OSError as exc:
-            self.notifyText.emit(f"Falha ao ler o arquivo: {exc}")
+            self.notifyText.emit(self._tr("read_failed", err=exc))
 
     @pyqtSlot()
     def chooseOutputFolder(self) -> None:
         """Abre um diálogo para escolher a pasta de destino dos downloads."""
         path = QFileDialog.getExistingDirectory(
-            None, "Escolher pasta de saída", self._output_folder
+            None, self._tr("dlg_outdir"), self._output_folder
         )
         if path:
             self._output_folder = path
             self.manager.setOutdir(path)
             self._save("download/folder", path)
             self.outputFolderChanged.emit(path)
-            self.notifyText.emit(f"Pasta de saída: {path}")
+            self.notifyText.emit(self._tr("output_folder", path=path))
 
     @pyqtSlot(int)
     def setConcurrency(self, n: int) -> None:
@@ -279,7 +348,7 @@ class Bridge(QObject):
         """Seleciona um arquivo de cookies no formato Netscape (cookies.txt)."""
         path, _ = QFileDialog.getOpenFileName(
             None,
-            "Selecionar arquivo de cookies (Netscape)",
+            self._tr("dlg_cookies"),
             "",
             "Arquivos de cookie (*.txt);;Todos os arquivos (*.*)",
         )
@@ -295,33 +364,31 @@ class Bridge(QObject):
     @pyqtSlot()
     def startQueue(self) -> None:
         self.manager.start()
-        self.notifyText.emit("Fila iniciada.")
+        self.notifyText.emit(self._tr("queue_started"))
 
     @pyqtSlot()
     def cancelAll(self) -> None:
         self.manager.cancelAll()
-        self.notifyText.emit("Downloads cancelados.")
+        self.notifyText.emit(self._tr("downloads_cancelled"))
 
     @pyqtSlot(int)
     def cancelItem(self, row: int) -> None:
         self.manager.cancelItem(row)
-        self.notifyText.emit("Item cancelado.")
+        self.notifyText.emit(self._tr("item_cancelled"))
 
     @pyqtSlot(int, str)
     def editUrl(self, row: int, new_url: str) -> bool:
         ok = self.manager.editUrl(row, new_url)
         if ok:
-            self.notifyText.emit("Link atualizado e reenfileirado.")
+            self.notifyText.emit(self._tr("link_updated"))
         else:
-            self.notifyText.emit(
-                "Não foi possível atualizar (em andamento ou duplicado)."
-            )
+            self.notifyText.emit(self._tr("link_update_failed"))
         return ok
 
     @pyqtSlot(str)
     def copyLink(self, url: str) -> None:
         QGuiApplication.clipboard().setText(url)
-        self.notifyText.emit("Link copiado para a área de transferência.")
+        self.notifyText.emit(self._tr("link_copied"))
 
     @pyqtSlot()
     def clearFinished(self) -> None:
@@ -378,6 +445,42 @@ def _restore_geometry(window, settings: QSettings) -> None:
         window.show()
 
 
+def _single_instance() -> bool:
+    """Garante que apenas uma instância do app roda por vez.
+
+    Usa um lock file com trava do próprio SO (msvcrt no Windows, fcntl no
+    Linux) — o SO libera a trava automaticamente se o processo morrer.
+    Retorna True se esta instância é a principal, False se já existe outra.
+    """
+    lock_path = os.path.join(tempfile.gettempdir(), "hlsdlp-pro.lock")
+    try:
+        if os.name == "nt":
+            import msvcrt
+            fh = open(lock_path, "a+", encoding="utf-8")
+            fh.write("x")
+            fh.flush()
+            fh.seek(0)
+            msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fh = open(lock_path, "w", encoding="utf-8")
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        msg = I18N["pt"]["already_open"]
+        try:
+            if isinstance(QApplication.instance(), QApplication):
+                QMessageBox.information(None, "HLS Downloader Pro", msg)
+        except Exception:
+            pass
+        sys.stderr.write(msg + "\n")
+        return False
+    _LOCK_FILES.append(fh)  # mantém o handle aberto durante a vida do app
+    return True
+
+
+_LOCK_FILES: List = []
+
+
 def main() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName("HLS Downloader Pro")
@@ -387,6 +490,11 @@ def main() -> int:
     # Fonte limpa e legível (Segoe UI no Windows; padrão do sistema no Linux)
     font = QFont("Segoe UI", 10) if os.name == "nt" else QFont("Sans Serif", 10)
     app.setFont(font)
+
+    if not _single_instance():
+        return 0
+    # Apaga a pasta temporária de miniaturas (não ficam salvas no disco)
+    app.aboutToQuit.connect(cleanup_thumbs)
 
     outdir = default_output_folder()
     model = DownloadModel([])
