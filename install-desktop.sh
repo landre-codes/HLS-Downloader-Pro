@@ -31,6 +31,24 @@ elif command -v dnf >/dev/null 2>&1; then
         xcb-util-renderutil xkbcomp libxkbcommon-x11
 fi
 
+# ------------------------------------------------- yt-dlp + ffmpeg
+# O yt-dlp do apt fica desatualizado e quebra em vários sites; o pip sempre
+# entrega a última versão (essencial: sites mudam constantemente).
+if command -v apt-get >/dev/null 2>&1; then
+    echo "==> Instalando ffmpeg..."
+    sudo apt-get install -y -qq ffmpeg
+fi
+if command -v python3 >/dev/null 2>&1; then
+    echo "==> Instalando/atualizando yt-dlp (última versão via pip)..."
+    if command -v yt-dlp >/dev/null 2>&1; then
+        echo "    (yt-dlp presente: $(yt-dlp --version 2>/dev/null | head -1))"
+    fi
+    sudo apt-get install -y -qq python3-pip 2>/dev/null || true
+    sudo python3 -m pip install --break-system-packages -q -U yt-dlp 2>/dev/null \
+        || sudo python3 -m pip install -q -U yt-dlp
+    echo "    agora: $(yt-dlp --version 2>/dev/null | head -1)"
+fi
+
 # ------------------------------------------------------- copia binário+ícone
 BIN_TARGET_DIR="$(dirname "$BIN_TARGET")"
 mkdir -p "$BIN_TARGET_DIR" "$ICON_DIR" "$APPS_DIR"

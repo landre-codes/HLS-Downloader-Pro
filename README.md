@@ -40,7 +40,7 @@ sudo apt install ffmpeg yt-dlp libxcb-cursor0   # requisitos do download + Qt
 ./HLS-Downloader-Pro
 ```
 
-**Atalho clicável no menu de aplicativos** (instala binário em `~/.local/bin`, ícone e entrada no menu):
+**Atalho clicável no menu de aplicativos** (instala binário em `~/.local/bin`, ícone, entrada no menu, **ffmpeg** e o **yt-dlp mais recente via pip** — o do `apt` é antigo e quebra em vários sites):
 
 ```bash
 cd HLS-Downloader-Pro-linux-x86_64
