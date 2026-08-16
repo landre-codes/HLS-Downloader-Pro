@@ -629,6 +629,75 @@ ApplicationWindow {
                         }
                     }
 
+                    // ------------------------------------------------------- Rede
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 150
+                        Layout.minimumHeight: 150
+                        radius: 12
+                        color: root.dark ? "#1d2329" : "#ffffff"
+                        border.color: root.dark ? "#2a323a" : "#e0e0e0"
+                        border.width: 1
+                        ColumnLayout {
+                            anchors.fill: parent
+                            anchors.margins: 16
+                            spacing: 12
+                            Label {
+                                text: strings.cfg_network
+                                font.pixelSize: 15
+                                font.weight: Font.DemiBold
+                                ToolTip.text: strings.cfg_network_tip
+                                ToolTip.visible: hovered
+                                ToolTip.delay: 500
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Label {
+                                    text: strings.cfg_limit_rate
+                                    font.pixelSize: 13
+                                }
+                                SpinBox {
+                                    id: limitRateSpin
+                                    from: 0
+                                    to: 100
+                                    stepSize: 1
+                                    value: bridge.limitRateMB
+                                    editable: true
+                                    ToolTip.text: strings.cfg_limit_rate_tip
+                                    ToolTip.visible: hovered
+                                    ToolTip.delay: 500
+                                    onValueChanged: {
+                                        if (value !== bridge.limitRateMB)
+                                            bridge.setLimitRateMB(value)
+                                    }
+                                }
+                                Item { Layout.fillWidth: true }
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Label {
+                                    text: strings.cfg_fragments
+                                    font.pixelSize: 13
+                                }
+                                SpinBox {
+                                    id: fragmentsSpin
+                                    from: 1
+                                    to: 8
+                                    value: bridge.fragments
+                                    editable: true
+                                    ToolTip.text: strings.cfg_fragments_tip
+                                    ToolTip.visible: hovered
+                                    ToolTip.delay: 500
+                                    onValueChanged: {
+                                        if (value !== bridge.fragments)
+                                            bridge.setFragments(value)
+                                    }
+                                }
+                                Item { Layout.fillWidth: true }
+                            }
+                        }
+                    }
+
                     // -------------------------------------------------- Cookies
                     Rectangle {
                         Layout.fillWidth: true

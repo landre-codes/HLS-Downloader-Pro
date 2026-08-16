@@ -345,6 +345,8 @@ class DownloadWorker(QObject):
         outdir: str,
         use_ffmpeg_hls: bool = True,
         cookies: str = "",
+        limit_rate: str = "",
+        fragments: int = 1,
         parent: Optional[QObject] = None,
     ):
         super().__init__(parent)
@@ -352,6 +354,8 @@ class DownloadWorker(QObject):
         self.outdir = outdir
         self.use_ffmpeg_hls = use_ffmpeg_hls
         self.cookies = cookies or ""
+        self.limit_rate = limit_rate or ""
+        self.fragments = max(1, int(fragments))
         self._cancel = False
         self._proc: Optional[subprocess.Popen] = None
         self._stdout_tail: List[str] = []
@@ -467,12 +471,15 @@ class DownloadWorker(QObject):
             "--retries", "3",
             "--fragment-retries", "5",
             "--socket-timeout", "20",
+            "--concurrent-fragments", str(self.fragments),
             "-f", "bv*+ba/b",     # melhor vídeo + melhor áudio (ou o melhor único)
             "--merge-output-format", "mp4",
             "--print", "after_move:filepath",  # caminho final pós-pós-processamento
             "-o", out_template,
             "--user-agent", USER_AGENT,
         ]
+        if self.limit_rate:
+            cmd += ["--limit-rate", self.limit_rate]
         if referer:
             cmd += ["--add-header", f"Referer:{referer}"]
         cookie_args = self._build_cookies_args()
@@ -949,6 +956,8 @@ class QueueManager(QObject):
         self._threads: Dict[int, Tuple[QThread, DownloadWorker, dict]] = {}
         self._counter = 0
         self._cookies = ""
+        self._limit_rate = ""
+        self._fragments = 1
 
     # ------------------------------------------------------------ propriedades
     @pyqtProperty(str, notify=outdirChanged)
@@ -966,6 +975,16 @@ class QueueManager(QObject):
     def setCookies(self, cookies: str) -> None:
         """Define a configuração de cookies repassada aos workers."""
         self._cookies = cookies or ""
+
+    @pyqtSlot(str)
+    def setLimitRate(self, rate: str) -> None:
+        """Limite de velocidade repassado aos workers (ex.: "5M" ou "" = off)."""
+        self._limit_rate = (rate or "").strip()
+
+    @pyqtSlot(int)
+    def setFragments(self, n: int) -> None:
+        """Número de conexões por download (segmentos paralelos do HLS)."""
+        self._fragments = max(1, int(n))
 
     @pyqtSlot(int)
     def setConcurrency(self, n: int) -> None:
@@ -1125,6 +1144,8 @@ class QueueManager(QObject):
             self._outdir,
             use_ffmpeg_hls=True,
             cookies=self._cookies,
+            limit_rate=self._limit_rate,
+            fragments=self._fragments,
             parent=None,
         )
         worker.moveToThread(thread)

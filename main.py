@@ -121,6 +121,8 @@ class Bridge(QObject):
     outputFolderChanged = pyqtSignal(str)
     darkChanged = pyqtSignal(bool)
     concurrencyChanged = pyqtSignal(int)
+    limitRateChanged = pyqtSignal(int)
+    fragmentsChanged = pyqtSignal(int)
     cookiesEnabledChanged = pyqtSignal(bool)
     cookiesBrowserIndexChanged = pyqtSignal(int)
     cookiesFileChanged = pyqtSignal(str)
@@ -143,6 +145,10 @@ class Bridge(QObject):
         self._dark = self._settings.value("theme/dark", True, type=bool)
         self._concurrency = int(self._settings.value("download/concurrency", 3))
         self._concurrency = max(1, min(8, self._concurrency))
+        self._limit_rate_mb = int(self._settings.value("download/limit_rate", 0))
+        self._limit_rate_mb = max(0, min(1000, self._limit_rate_mb))
+        self._fragments = int(self._settings.value("download/fragments", 1))
+        self._fragments = max(1, min(8, self._fragments))
         self._output_folder = str(
             self._settings.value("download/folder", default_outdir)
         )
@@ -161,6 +167,8 @@ class Bridge(QObject):
         manager.outdir = self._output_folder
         manager.setConcurrency(self._concurrency)
         manager.setCookies(self._build_cookies_arg())
+        manager.setLimitRate(self._limit_rate_arg())
+        manager.setFragments(self._fragments)
 
         # Detecção de ferramentas externas (exibida como aviso na GUI)
         self.ffmpeg_found = bool(shutil.which("ffmpeg") or shutil.which("ffmpeg.exe"))
@@ -203,6 +211,14 @@ class Bridge(QObject):
     @pyqtProperty(int, notify=concurrencyChanged)
     def concurrency(self) -> int:
         return self._concurrency
+
+    @pyqtProperty(int, notify=limitRateChanged)
+    def limitRateMB(self) -> int:
+        return self._limit_rate_mb
+
+    @pyqtProperty(int, notify=fragmentsChanged)
+    def fragments(self) -> int:
+        return self._fragments
 
     @pyqtProperty(bool, notify=cookiesEnabledChanged)
     def cookiesEnabled(self) -> bool:
@@ -289,6 +305,33 @@ class Bridge(QObject):
         self.manager.setConcurrency(n)
         self._save("download/concurrency", n)
         self.concurrencyChanged.emit(n)
+
+    # ------------------------------------------------------------ rede/WiFi
+    def _limit_rate_arg(self) -> str:
+        """Converte MB/s em argumento do yt-dlp ("0" ou "" = sem limite)."""
+        if self._limit_rate_mb <= 0:
+            return ""
+        return f"{self._limit_rate_mb}M"
+
+    @pyqtSlot(int)
+    def setLimitRateMB(self, mb: int) -> None:
+        mb = max(0, min(1000, int(mb)))
+        if mb == self._limit_rate_mb:
+            return
+        self._limit_rate_mb = mb
+        self.manager.setLimitRate(self._limit_rate_arg())
+        self._save("download/limit_rate", mb)
+        self.limitRateChanged.emit(mb)
+
+    @pyqtSlot(int)
+    def setFragments(self, n: int) -> None:
+        n = max(1, min(8, int(n)))
+        if n == self._fragments:
+            return
+        self._fragments = n
+        self.manager.setFragments(n)
+        self._save("download/fragments", n)
+        self.fragmentsChanged.emit(n)
 
     @pyqtSlot(bool)
     def setDark(self, value: bool) -> None:

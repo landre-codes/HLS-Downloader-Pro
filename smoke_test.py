@@ -76,11 +76,18 @@ b2 = Bridge(manager, manager.outdir, settings_path=tmp)
 assert b2.dark is True
 b2.setDark(False)
 b2.setConcurrency(5)
+b2.setLimitRateMB(7)
+b2.setFragments(2)
 b2.setCookiesEnabled(True)
 b2.setCookiesBrowserIndex(3)  # firefox
 b3 = Bridge(manager, manager.outdir, settings_path=tmp)
 assert b3.dark is False, b3.dark
 assert b3.concurrency == 5, b3.concurrency
+assert b3.limitRateMB == 7, b3.limitRateMB
+assert b3.fragments == 2, b3.fragments
+assert b3._limit_rate_arg() == "7M"
+b3.setLimitRateMB(0)
+assert b3._limit_rate_arg() == ""
 assert b3.cookiesEnabled is True
 assert b3.cookiesBrowserIndex == 3
 assert b3._build_cookies_arg() == "browser:firefox"
@@ -99,7 +106,8 @@ print("QML loaded OK ->", len(engine.rootObjects()), "root object(s)")
 
 # 5) slots da ponte existem
 for name in ("addLinks", "pasteFromClipboard", "importTxt", "chooseOutputFolder",
-             "setConcurrency", "startQueue", "cancelAll", "clearFinished", "clearAll",
+             "setConcurrency", "setLimitRateMB", "setFragments", "startQueue",
+             "cancelAll", "clearFinished", "clearAll",
              "setDark", "setCookiesEnabled", "setCookiesBrowserIndex", "setCookiesFile",
              "chooseCookiesFile", "saveGeometry"):
     assert getattr(bridge, name), name

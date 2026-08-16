@@ -6,6 +6,7 @@ Downloader de vídeos (HLS / m3u8) com interface **Qt Quick (QML) + Material Des
 
 - Baixa vídeos de URLs de playlist `.m3u8` e links de vídeo diretos
 - Fluxo de engenharia em camadas: `yt-dlp` → raspagem do HTML (`requests` + `BeautifulSoup`) → `ffmpeg` como fallback final
+- **Rede amigável ao WiFi**: limite de velocidade (`--limit-rate`) e conexões por download (`--concurrent-fragments`) configuráveis em Configurações → Rede — evita derrubar o WiFi de roteadores domésticos em downloads pesados
 - **Extensões incomuns (`.php`, `.aspx`, ...)**: quando o yt-dlp recusa a URL por segurança (CVE-2024-38519), o app tenta UMA vez com `--compat-options allow-unsafe-ext` e extensão `.mp4` forçada — se o resultado não for um vídeo (HTML ou playlist crua), o download é descartado e o fluxo segue para a raspagem/ffmpeg
 - Múltiplos downloads simultâneos (concorrência configurável)
 - **Anti-duplicado**: evita links duplicados na fila e não re-baixa arquivos já existentes no disco
