@@ -33,6 +33,8 @@ ApplicationWindow {
     // Traduções (PT/EN): T é reatribuído quando o idioma muda, reavaliando
     // todos os bindings `strings.chave`.
     property var strings: ({})
+    // Erro selecionado para exibição no diálogo de detalhes
+    property string errorText: ""
     function retranslate() {
         I18n.setLang(bridge.language)
         strings = I18n.getAll()
@@ -958,26 +960,49 @@ ApplicationWindow {
                     }
                 }
 
-                // Selo de status
-                Rectangle {
+                // Selo de status + erro visível
+                Column {
                     Layout.preferredWidth: 104
-                    Layout.preferredHeight: 24
                     Layout.alignment: Qt.AlignVCenter
-                    radius: 12
-                    color: root.badgeColor(model.status)
+                    spacing: 3
 
-                    Label {
-                        anchors.centerIn: parent
-                        text: strings["s_" + model.status] || model.status
-                        font.pixelSize: 11
-                        font.bold: true
-                        color: "white"
+                    Rectangle {
+                        width: 104
+                        height: 24
+                        radius: 12
+                        color: root.badgeColor(model.status)
+
+                        Label {
+                            anchors.centerIn: parent
+                            text: strings["s_" + model.status] || model.status
+                            font.pixelSize: 11
+                            font.bold: true
+                            color: "white"
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            ToolTip.text: model.error
+                            ToolTip.visible: containsMouse && model.error.length > 0
+                        }
                     }
-                    MouseArea {
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        ToolTip.text: model.error
-                        ToolTip.visible: containsMouse && model.error.length > 0
+
+                    // Erro truncado, clicável → diálogo com a mensagem completa
+                    Label {
+                        width: parent.width
+                        visible: model.status === "Erro" && model.error.length > 0
+                        text: model.error
+                        elide: Text.ElideRight
+                        font.pixelSize: 9
+                        color: "#c62828"
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                root.errorText = model.error
+                                errorDialog.open()
+                            }
+                        }
                     }
                 }
 
@@ -1086,6 +1111,25 @@ ApplicationWindow {
                 height: 1
                 color: root.dark ? "#262e35" : "#ececec"
             }
+        }
+    }
+
+    // --------------------------------------------------------- erro detalhado
+    Dialog {
+        id: errorDialog
+        parent: root
+        modal: true
+        title: strings.dlg_error
+        standardButtons: Dialog.Ok
+        width: 540
+        x: (root.width - width) / 2
+        y: (root.height - height) / 2
+        contentItem: Label {
+            width: errorDialog.availableWidth
+            text: root.errorText
+            wrapMode: Text.Wrap
+            font.pixelSize: 12
+            color: "#c62828"
         }
     }
 }

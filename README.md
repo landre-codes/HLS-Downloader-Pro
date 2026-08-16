@@ -10,6 +10,7 @@ Downloader de vídeos (HLS / m3u8) com interface **Qt Quick (QML) + Material Des
 - **Anti-duplicado**: evita links duplicados na fila e não re-baixa arquivos já existentes no disco
 - **Edição inline** do link na tabela (duplo clique) e **copiar link** para a área de transferência
 - **Miniaturas** geradas automaticamente de cada vídeo baixado (ffmpeg)
+- **Erros com detalhes**: a linha com falha mostra a mensagem em vermelho; clique para ver o erro completo em um diálogo (também gravado em `~/.config/HLSDownloaderPro/hls_downloader.log` no Linux / `%APPDATA%\HLSDownloaderPro` no Windows)
 - **Idioma PT/EN**: seletor em Configurações → Aparência (preferência persistida)
 - **Nomes de arquivo limitados a 20 caracteres** — evita erros de salvamento com títulos muito longos
 - **Instância única**: abrir o app duas vezes mostra um aviso (sem downloads duplicados acidentais)
@@ -96,6 +97,7 @@ python smoke_test.py        # modelo, fila, dedup, cancelamento, QML carrega
 python functional_test.py   # fluxo completo com servidor HLS local
 python integration_test.py  # downloads reais (Apple sample streams)
 python _i18n_test.py        # troca de idioma PT/EN no QML
+python _error_dialog_test.py  # diálogo de detalhes do erro
 python _single_instance_test.py  # bloqueio de segunda instância
 python layout_debug.py      # dump da geometria do layout
 ```

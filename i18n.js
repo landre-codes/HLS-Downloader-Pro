@@ -79,6 +79,7 @@ var dict = {
         tip_cancel: "Cancelar este download",
         tip_open: "Abrir pasta do arquivo",
         btn_open: "Abrir",
+        dlg_error: "Detalhes do erro",
 
         s_Aguardando: "Aguardando",
         s_Baixando: "Baixando",
@@ -160,6 +161,7 @@ var dict = {
         tip_cancel: "Cancel this download",
         tip_open: "Open file folder",
         btn_open: "Open",
+        dlg_error: "Error details",
 
         s_Aguardando: "Waiting",
         s_Baixando: "Downloading",

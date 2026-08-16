@@ -77,17 +77,33 @@ FFMPEG_SIZE_RE = re.compile(r"size=\s*([\d.]+\w+)")
 TRAILING = ".,;:!?)]}>\"'"
 
 # ---------------------------------------------------------------------------
-# Log de diagnóstico (mesmo diretório do app) para inspecionar falhas reais
+# Log de diagnóstico — em pasta estável do usuário (em binário empacotado o
+# diretório do script é /tmp/_MEIxxxx, que some ao fechar o app).
 # ---------------------------------------------------------------------------
+def _stable_log_path() -> str:
+    if os.name == "nt":
+        base = os.environ.get("APPDATA") or os.path.expanduser("~")
+    else:
+        base = os.path.join(os.path.expanduser("~"), ".config")
+    folder = os.path.join(base, "HLSDownloaderPro")
+    try:
+        os.makedirs(folder, exist_ok=True)
+        return os.path.join(folder, "hls_downloader.log")
+    except OSError:
+        return os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "hls_downloader.log"
+        )
+
+
 try:
     logging.basicConfig(
-        filename=os.path.join(os.path.dirname(os.path.abspath(__file__)), "hls_downloader.log"),
+        filename=_stable_log_path(),
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(message)s",
         encoding="utf-8",
     )
     log = logging.getLogger("hlsdl")
-except OSError:  # diretório sem permissão de escrita
+except OSError:  # sem permissão de escrita em lugar nenhum
     log = logging.getLogger("hlsdl")
     log.addHandler(logging.NullHandler())
 
