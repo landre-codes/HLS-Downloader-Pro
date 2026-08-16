@@ -6,6 +6,7 @@ Downloader de vídeos (HLS / m3u8) com interface **Qt Quick (QML) + Material Des
 
 - Baixa vídeos de URLs de playlist `.m3u8` e links de vídeo diretos
 - Fluxo de engenharia em camadas: `yt-dlp` → raspagem do HTML (`requests` + `BeautifulSoup`) → `ffmpeg` como fallback final
+- **Extensões incomuns (`.php`, `.aspx`, ...)**: quando o yt-dlp recusa a URL por segurança (CVE-2024-38519), o app tenta UMA vez com `--compat-options allow-unsafe-ext` e extensão `.mp4` forçada — se o resultado não for um vídeo (HTML ou playlist crua), o download é descartado e o fluxo segue para a raspagem/ffmpeg
 - Múltiplos downloads simultâneos (concorrência configurável)
 - **Anti-duplicado**: evita links duplicados na fila e não re-baixa arquivos já existentes no disco
 - **Edição inline** do link na tabela (duplo clique) e **copiar link** para a área de transferência
@@ -99,6 +100,7 @@ python integration_test.py  # downloads reais (Apple sample streams)
 python _i18n_test.py        # troca de idioma PT/EN no QML
 python _error_dialog_test.py  # diálogo de detalhes do erro
 python _single_instance_test.py  # bloqueio de segunda instância
+python php_flow_test.py     # fluxo .php: bloqueio do yt-dlp → retry → scraper/ffmpeg
 python layout_debug.py      # dump da geometria do layout
 ```
 

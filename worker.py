@@ -479,7 +479,45 @@ class DownloadWorker(QObject):
             cmd += cookie_args
         cmd.append(target)
 
-        return self._run_process(cmd)
+        ok, msg = self._run_process(cmd)
+        if ok or "unusual" not in msg.lower():
+            return ok, msg
+
+        # Bloqueio de segurança do yt-dlp (CVE-2024-38519): URLs cuja
+        # extensão é incomum (.php, .aspx, ...) são recusadas mesmo quando o
+        # conteúdo é um vídeo legítimo. Retentamos UMA vez com
+        # `allow-unsafe-ext` e a extensão .mp4 FORÇADA no template — o nome
+        # final fica seguro e a extensão suspeita nunca entra no arquivo.
+        log.warning(
+            "extensão incomum detectada (%r) — retry allow-unsafe-ext + .mp4",
+            msg[:200],
+        )
+        retry_cmd = cmd.copy()
+        retry_cmd += ["--compat-options", "allow-unsafe-ext"]
+        try:
+            i = retry_cmd.index("-o")
+            retry_cmd[i + 1] = os.path.join(
+                self.outdir, "%(title)s [%(id)s].mp4"
+            )
+        except ValueError:
+            pass
+        ok2, msg2 = self._run_process(retry_cmd)
+        if ok2 and isinstance(msg2, str) and os.path.isfile(msg2):
+            # O retry pode baixar a PÁGINA HTML em vez do vídeo (extensão .php
+            # vale para os dois) ou a playlist HLS crua (sem os segmentos,
+            # inútil como .mp4). Se o conteúdo não for vídeo, descarta e
+            # devolve o erro original — o fluxo segue para o scraper/ffmpeg.
+            if self._looks_like_non_video(msg2):
+                log.warning(
+                    "retry baixou conteúdo não-vídeo (HTML/playlist) — descartando: %s",
+                    msg2,
+                )
+                try:
+                    os.remove(msg2)
+                except OSError:
+                    pass
+                return False, msg
+        return ok2, msg2
 
     def _build_cookies_args(self) -> List[str]:
         """Converte a configuração de cookies em argumentos do yt-dlp.
@@ -658,6 +696,22 @@ class DownloadWorker(QObject):
             "\n".join(self._stdout_tail[-12:]) or "(vazio)",
         )
         return False, result_msg or "yt-dlp não gerou o arquivo de saída."
+
+    def _looks_like_non_video(self, path: str) -> bool:
+        """True se o arquivo baixado não for um vídeo: página HTML ou
+        playlist HLS crua (sem os segmentos baixados)."""
+        try:
+            with open(path, "rb") as fh:
+                head = fh.read(4096).lower()
+        except OSError:
+            return False
+        return (
+            b"<html" in head
+            or b"<!doctype" in head
+            or b"<head" in head
+            or b"<body" in head
+            or head.lstrip().startswith(b"#extm3u")
+        )
 
     def _cleanup_temp_files(self, out_path: str) -> None:
         """Remove arquivos temporários (.part / .ytdl) de downloads cancelados."""
