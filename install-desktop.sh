@@ -44,8 +44,8 @@ if command -v python3 >/dev/null 2>&1; then
         echo "    (yt-dlp presente: $(yt-dlp --version 2>/dev/null | head -1))"
     fi
     sudo apt-get install -y -qq python3-pip 2>/dev/null || true
-    sudo python3 -m pip install --break-system-packages -q -U yt-dlp 2>/dev/null \
-        || sudo python3 -m pip install -q -U yt-dlp
+    sudo python3 -m pip install --break-system-packages --ignore-installed -q -U yt-dlp 2>/dev/null \
+        || sudo python3 -m pip install --ignore-installed -q -U yt-dlp
     echo "    agora: $(yt-dlp --version 2>/dev/null | head -1)"
 fi
 
