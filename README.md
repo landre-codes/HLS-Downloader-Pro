@@ -13,7 +13,7 @@ Downloader de vídeos (HLS / m3u8) com interface **Qt Quick (QML) + Material Des
 - **Miniaturas** geradas automaticamente de cada vídeo baixado (ffmpeg)
 - **Erros com detalhes**: a linha com falha mostra a mensagem em vermelho; clique para ver o erro completo em um diálogo (também gravado em `~/.config/HLSDownloaderPro/hls_downloader.log` no Linux / `%APPDATA%\HLSDownloaderPro` no Windows)
 - **Idioma PT/EN**: seletor em Configurações → Aparência (preferência persistida)
-- **Nomes de arquivo limitados a 20 caracteres** — evita erros de salvamento com títulos muito longos
+- **Nomes de arquivo curtos e estáveis**: hash da URL (`vid_XXXXXXXXXX.mp4`), nunca título/id raspado — sem caracteres especiais (`?`, `/`, acentos), sem colisões, e o mesmo link nunca gera arquivo duplicado
 - **Instância única**: abrir o app duas vezes mostra um aviso (sem downloads duplicados acidentais)
 - **Miniaturas temporárias**: ficam em pasta do sistema e são apagadas ao fechar o app
 - **Cancelamento** individual ou de toda a fila

@@ -447,12 +447,14 @@ class DownloadWorker(QObject):
             return False, "yt-dlp não encontrado no PATH (instale via pip)."
 
         os.makedirs(self.outdir, exist_ok=True)
-        # Título completo + id: o yt-dlp baixa com o nome inteiro e, ao
-        # concluir, o arquivo é renomeado para um nome curto (<=20 caracteres)
-        # por `_shorten_name` — em Python, por CARACTERES, sem o bug do
-        # `--trim-filenames` do yt-dlp (que corta o caminho inteiro) nem o do
-        # `%(title).120B` (que truncava em bytes e quebrava UTF-8).
-        out_template = os.path.join(self.outdir, "%(title)s [%(id)s].%(ext)s")
+        # Nome do arquivo: curto, estável e sem caracteres especiais —
+        # hash da URL (mesmo padrão do fallback ffmpeg). O mesmo link sempre
+        # gera o mesmo nome, então `--no-overwrites` nunca duplica arquivos;
+        # e o nome nunca contém título/id raspado (que traz `?`, `/`, acentos
+        # e URLs inteiras — fonte de falhas ao salvar, principalmente no Linux).
+        digest = hashlib.sha1(target.encode("utf-8")).hexdigest()[:10]
+        name_base = f"vid_{digest}"
+        out_template = os.path.join(self.outdir, f"{name_base}.%(ext)s")
 
         cmd = [
             ytdlp,
@@ -480,7 +482,8 @@ class DownloadWorker(QObject):
         cmd.append(target)
 
         ok, msg = self._run_process(cmd)
-        if ok or "unusual" not in msg.lower():
+        lower = msg.lower()
+        if ok or not ("unusual" in lower or "unsafe" in lower or "skipped for" in lower):
             return ok, msg
 
         # Bloqueio de segurança do yt-dlp (CVE-2024-38519): URLs cuja
@@ -497,7 +500,7 @@ class DownloadWorker(QObject):
         try:
             i = retry_cmd.index("-o")
             retry_cmd[i + 1] = os.path.join(
-                self.outdir, "%(title)s [%(id)s].mp4"
+                self.outdir, f"{name_base}.mp4"
             )
         except ValueError:
             pass
