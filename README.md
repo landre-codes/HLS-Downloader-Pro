@@ -4,53 +4,67 @@ Downloader de vídeos (HLS / m3u8) com interface **Qt Quick (QML) + Material Des
 
 ## Funcionalidades
 
+- **Duas abas de download**: **Download Individual** (um link, com progresso dedicado) e **Lote** (fila com dezenas/centenas de links)
+- **Aba de Playlists**: carrega os itens de uma playlist (**YouTube** ou sites em geral), permite selecionar os desejados e enviá-los à fila
+- **Modo de extração** (Individual e Lote): **Vídeo + áudio**, **Apenas vídeo** ou **Somente áudio**
+- **Qualidade de 144p a 4K** (2160p) e **escolha do arquivo** de saída: **mp4, mkv, webm, avi, mov** (ou **mp3, m4a, wav, flac, opus** no modo áudio)
+- **Compressão de vídeo**: mantenha o original (sem reencode) ou recomprima para **H.264** ou **H.265 (HEVC)**, com nível **Leve / Média / Forte**. O arquivo comprimido substitui o original; se a compressão falhar, o original é preservado
+- **Nome do arquivo**: escolha entre o **ID estável** (hash da URL, `vid_XXXXXXXXXX`) ou o **título da página** (metadados do vídeo)
+- **8 idiomas**: Português, English, Español, Italiano, Français, Русский, 日本語 e 中文 (简体)
 - Baixa vídeos de URLs de playlist `.m3u8` e links de vídeo diretos
 - Fluxo de engenharia em camadas: `yt-dlp` → raspagem do HTML (`requests` + `BeautifulSoup`) → `ffmpeg` como fallback final
-- **Rede amigável ao WiFi**: limite de velocidade (`--limit-rate`) e conexões por download (`--concurrent-fragments`) configuráveis em Configurações → Rede — evita derrubar o WiFi de roteadores domésticos em downloads pesados
-- **Extensões incomuns (`.php`, `.aspx`, ...)**: quando o yt-dlp recusa a URL por segurança (CVE-2024-38519), o app tenta UMA vez com `--compat-options allow-unsafe-ext` e extensão `.mp4` forçada — se o resultado não for um vídeo (HTML ou playlist crua), o download é descartado e o fluxo segue para a raspagem/ffmpeg
-- Múltiplos downloads simultâneos (concorrência configurável)
+- **Gerenciador de dependências**: detecta `yt-dlp`, `ffmpeg`, `requests`, `beautifulsoup4` e `PySide6` e permite **instalar/atualizar** direto na aba Configurações → Dependências (com confirmação), incluindo a escolha do **canal do yt-dlp** (Estável / Nightly / Master)
+- **Rede amigável ao WiFi**: limite de velocidade (`--limit-rate`) e conexões por download (`--concurrent-fragments`) configuráveis — evita derrubar o WiFi de roteadores domésticos em downloads pesados
+- **Extensões incomuns (`.php`, `.aspx`, ...)**: quando o yt-dlp recusa a URL por segurança (CVE-2024-38519), o app tenta UMA vez com `--compat-options allow-unsafe-ext` e extensão `.mp4` forçada; se o resultado não for vídeo, o download é descartado e o fluxo segue para a raspagem/ffmpeg
+- Múltiplos downloads simultâneos, com **pausar/retomar/cancelar** (individual ou tudo)
 - **Anti-duplicado**: evita links duplicados na fila e não re-baixa arquivos já existentes no disco
-- **Edição inline** do link na tabela (duplo clique) e **copiar link** para a área de transferência
+- **Edição inline** do link (duplo clique ou botão ✎), **copiar link**, **tentar novamente** e **abrir pasta**
+- **Menu de contexto** (clique com o botão direito) e **atalhos**: `Ctrl+V` (colar da área de transferência), `Ctrl+Enter` (adicionar), `F5` (iniciar), `Delete` (remover)
+- **Arrastar e soltar** links ou arquivos `.txt` na janela
 - **Miniaturas** geradas automaticamente de cada vídeo baixado (ffmpeg)
-- **Erros com detalhes**: a linha com falha mostra a mensagem em vermelho; clique para ver o erro completo em um diálogo (também gravado em `~/.config/HLSDownloaderPro/hls_downloader.log` no Linux / `%APPDATA%\HLSDownloaderPro` no Windows)
-- **Idioma PT/EN**: seletor em Configurações → Aparência (preferência persistida)
-- **Nomes de arquivo curtos e estáveis**: hash da URL (`vid_XXXXXXXXXX.mp4`), nunca título/id raspado — sem caracteres especiais (`?`, `/`, acentos), sem colisões, e o mesmo link nunca gera arquivo duplicado
-- **Instância única**: abrir o app duas vezes mostra um aviso (sem downloads duplicados acidentais)
-- **Miniaturas temporárias**: ficam em pasta do sistema e são apagadas ao fechar o app
-- **Cancelamento** individual ou de toda a fila
-- Barra de título personalizada (sem borda), arrastável, com botões de minimizar/maximizar/fechar
-- Persistência de configurações em `settings.ini` (tema, concorrência, janela, cookies)
-- Compatível com **Windows e Linux** (pastas padrão e abertura de pasta adaptadas por SO)
+- **Erros com detalhes**: a linha com falha mostra a mensagem em vermelho; clique para ver o erro completo (com botão de copiar). Log rotativo em `%APPDATA%\HLSDownloaderPro` (Windows) / `~/.config/HLSDownloaderPro` (Linux)
+- **Idioma PT/EN** completo, inclusive das mensagens de erro do backend
+- **Nomes de arquivo curtos e estáveis**: hash da URL (`vid_XXXXXXXXXX.mp4`), sem caracteres especiais nem colisões
+- **Instância única**: abrir o app de novo traz a janela existente para frente
+- **Miniaturas temporárias** (apagadas ao fechar) e **encerramento gracioso** (mata downloads pendentes)
+- Barra de título personalizada (sem borda), arrastável
+- Persistência de configurações em `settings.ini` (tema, idioma, concorrência, janela, cookies)
+- Compatível com **Windows e Linux** (e macOS para os caminhos de arquivo abertos)
 
 ## Requisitos
 
 - Python 3.10+
-- PyQt6 (Qt 6)
+- PySide6 (Qt 6)
 - yt-dlp
 - ffmpeg (fallback + miniaturas)
 - requests + beautifulsoup4 (opcionais, habilitam o fallback de raspagem)
+
+Todas podem ser instaladas pelo próprio app (Configurações → Dependências).
 
 ## Instalação
 
 ### Linux — binário pronto (Releases)
 
-Baixe **HLS-Downloader-Pro-linux-x86_64.tar.gz** na seção [Releases](https://github.com/landre-codes/HLS-Downloader-Pro/releases) (Qt 6 embutido, não precisa de Python):
+Baixe **HLS-Downloader-Pro-linux-x86_64.tar.gz** na seção
+[Releases](https://github.com/landre-codes/HLS-Downloader-Pro/releases)
+(Qt 6 embutido, não precisa de Python):
 
 ```bash
 tar -xzf HLS-Downloader-Pro-linux-x86_64.tar.gz
 cd HLS-Downloader-Pro-linux-x86_64
-sudo apt install ffmpeg yt-dlp libxcb-cursor0   # requisitos do download + Qt
+sudo apt install ffmpeg yt-dlp libxcb-cursor0   # ou instale pelo app
 ./HLS-Downloader-Pro
 ```
 
-**Atalho clicável no menu de aplicativos** (instala binário em `~/.local/bin`, ícone, entrada no menu, **ffmpeg** e o **yt-dlp mais recente via pip** — o do `apt` é antigo e quebra em vários sites):
+**Atalho clicável no menu de aplicativos** (instala o binário, ícone, entrada no
+menu, **ffmpeg** e o **yt-dlp mais recente via pip**):
 
 ```bash
 cd HLS-Downloader-Pro-linux-x86_64
 ./install-desktop.sh
 ```
 
-> **Se aparecer `qt.qpa.plugin: ... xcb-cursor0`**: falta a lib do Qt —
+> Se aparecer `qt.qpa.plugin: ... xcb-cursor0`: falta a lib do Qt —
 > `sudo apt install libxcb-cursor0` (o `install-desktop.sh` instala tudo).
 
 ### Linux — via script (código-fonte)
@@ -64,17 +78,34 @@ hls-downloader-pro  # (ou .venv/bin/python main.py)
 
 ### Windows
 
+**Instalador (recomendado)** — baixe `HLS-Downloader-Pro-<versão>-setup.exe` nas
+[Releases](https://github.com/landre-codes/HLS-Downloader-Pro/releases).
+Instala **por usuário, sem administrador**, cria atalho no Menu Iniciar,
+desinstalador e abre o app ao final. O instalador **não inclui** ffmpeg/yt-dlp:
+o próprio app oferece baixá-los em Configurações → Dependências.
+
+**Portátil (sem instalar)** — baixe
+`HLS-Downloader-Pro-<versão>-portable-win64.zip`, extraia e rode
+`HLS-Downloader-Pro.exe`. O `portable.flag` mantém configurações, logs e
+ferramentas dentro da própria pasta (bom para pen drive).
+
+Os artefatos têm **SHA-256** publicado (`SHA256SUMS-windows.txt`) e o build
+Windows usa `--onedir` (startup mais rápido e menos falsos positivos de
+antivírus). Sem certificado de assinatura, o SmartScreen pode avisar na
+primeira execução — confira o hash.
+
+### Windows — código-fonte
+
 ```powershell
-pip install PyQt6 yt-dlp requests beautifulsoup4
-choco install ffmpeg   # ou coloque o ffmpeg.exe no PATH
-python main.py
+pip install -r requirements.txt
+python main.py            # ou: python main.py --portable
 ```
 
 ### Linux (Ubuntu/Debian)
 
 ```bash
 sudo apt install ffmpeg python3-pip
-python3 -m pip install PyQt6 yt-dlp requests beautifulsoup4
+python3 -m pip install -r requirements.txt
 python3 main.py
 ```
 
@@ -82,33 +113,105 @@ Se a janela der problema no Wayland: `QT_QPA_PLATFORM=xcb python3 main.py`.
 
 ## Como usar
 
-1. Cole os links na caixa de texto (um por linha) e clique em **Baixar** — ou importe de um arquivo `.txt`
-2. Acompanhe o progresso na tabela: status, percentual, velocidade e tamanho
-3. Ao concluir, o botão **Abrir** mostra a pasta do arquivo
-4. Duplo clique em um link para editá-lo; `⧉` copia o link; `✕` cancela o download individual
-5. **Baixar** de novo um link já finalizado tenta novamente sem duplicar arquivos
+1. **Download Individual**: cole a URL, escolha o formato, a qualidade (144p–4K), o arquivo e a compressão (H.264/H.265), e clique em **Baixar agora**. O progresso aparece na mesma aba.
+2. **Lote**: cole vários links (um por linha) — ou importe/arraste um `.txt` —, ajuste formato/qualidade/arquivo/compressão e clique em **Adicionar à Fila**.
+3. **Playlists**: cole a URL de uma playlist (YouTube ou site), clique em **Carregar itens**, marque os desejados e use **Adicionar selecionados à fila** (ou **Baixar selecionados agora**).
+4. Em **Configurações → Downloads** você escolhe o **nome do arquivo** (ID estável ou título da página).
+5. Clique em **Iniciar Fila** e acompanhe status, percentual, velocidade e tamanho.
+6. Ao concluir, o botão **Abrir** mostra a pasta do arquivo; botões laterais permitem editar, copiar, tentar novamente e cancelar.
+7. Duplo clique em um link para editá-lo (campo de edição na própria linha); botão direito abre o menu de contexto.
 
 ### Cookies (sites protegidos)
 
-Habilite na seção **Cookies** com `browser:chrome` (usa os cookies do navegador) ou `file:caminho/para/cookies.txt` (formato Netscape).
+Habilite na seção **Cookies** e escolha o navegador (usa os cookies dele) ou um
+arquivo `cookies.txt` (formato Netscape), que tem prioridade.
+
+### Dependências
+
+Em **Configurações → Dependências** o app lista cada ferramenta com estado,
+versão e botões **Instalar/Atualizar** — sem exigir conhecimento de Python:
+
+- **yt-dlp**: baixa o binário oficial autônomo para a pasta do usuário
+  (`%APPDATA%\HLSDownloaderPro\tools` / `~/.config/HLSDownloaderPro/tools`) e o
+  coloca no PATH automaticamente. Você escolhe o **canal**: Estável, Nightly ou
+  Master.
+- **ffmpeg**: instala pelo gerenciador de pacotes quando disponível
+  (`winget`/`choco`/`scoop`, `apt`/`dnf`/`pacman`, `brew`); se não houver,
+  baixa um build estático e extrai `ffmpeg`/`ffprobe` na mesma pasta.
+- **PySide6 / requests / beautifulsoup4**: já vêm embutidos no binário; em
+  ambiente de desenvolvimento podem ser atualizados via pip.
+
+Na primeira execução, se faltar algo obrigatório, o app **pergunta** se deseja
+instalar agora (e não volta a perguntar depois que você escolhe "continuar").
+
+## Modo portátil
+
+Para manter tudo ao lado do executável (sem gravar em `%APPDATA%`):
+
+- na versão portátil (ZIP), já existe um `portable.flag`;
+- no executável/atalho, use `HLS-Downloader-Pro.exe --portable`;
+- ou crie manualmente um arquivo `portable.flag` na pasta do executável.
+
+Nesse modo, `settings.ini`, `hls_downloader.log` e `tools/` ficam na mesma pasta.
 
 ## Testes
 
+A suíte principal usa **pytest** e é offscreen (sem rede por padrão):
+
 ```bash
-python smoke_test.py        # modelo, fila, dedup, cancelamento, QML carrega
-python functional_test.py   # fluxo completo com servidor HLS local
-python integration_test.py  # downloads reais (Apple sample streams)
-python _i18n_test.py        # troca de idioma PT/EN no QML
-python _error_dialog_test.py  # diálogo de detalhes do erro
+pip install -e ".[dev]"     # ou: pip install pytest ruff
+python -m pytest -q
+ruff check hlsdl tests main.py worker.py
+```
+
+Scripts de integração/manuais (requerem rede ou ffmpeg):
+
+```bash
+python smoke_test.py         # backend + carregamento do QML
+python functional_test.py    # fluxo completo com servidor HLS local
+python integration_test.py   # downloads reais (Apple sample streams)
+python _i18n_test.py         # troca de idiomas no QML
+python _error_dialog_test.py # diálogo de detalhes do erro
 python _single_instance_test.py  # bloqueio de segunda instância
-python php_flow_test.py     # fluxo .php: bloqueio do yt-dlp → retry → scraper/ffmpeg
-python layout_debug.py      # dump da geometria do layout
+python php_flow_test.py      # fluxo .php: bloqueio do yt-dlp → retry → scraper/ffmpeg
+python layout_debug.py       # dump da geometria do layout
 ```
 
 ## Estrutura
 
 | Arquivo | Papel |
 |---|---|
-| `main.py` | Janela QML + ponte Python↔QML + persistência |
-| `worker.py` | Motor de download: modelo da fila, threads QThread, yt-dlp/ffmpeg |
-| `ui.qml` | Interface completa (Material Design, tema claro/escuro) |
+| `hlsdl/app.py` | Entry point: logging rotativo, instância única, shutdown gracioso |
+| `hlsdl/bridge.py` | Ponte Python↔QML (slots, sinais, persistência, dependências) |
+| `hlsdl/config.py` | Caminhos (inclui build congelado), constantes, preferências |
+| `hlsdl/model.py` | `DownloadModel` — **dono único** da lista de itens |
+| `hlsdl/queue.py` | `QueueManager` — escalonador de threads/concorrência |
+| `hlsdl/downloader.py` | `DownloadWorker` — yt-dlp, ffmpeg e progresso |
+| `hlsdl/playlist.py` | Carregador de itens de playlist (YouTube/site) |
+| `hlsdl/formats.py` | Modos, qualidades e contêineres suportados |
+| `hlsdl/deps.py` | Detecção/instalação/atualização de dependências |
+| `hlsdl/i18n.py` | Mensagens do backend (8 idiomas) |
+| `hlsdl/status.py` | Enum de status (fonte única de verdade) |
+| `hlsdl/naming.py`, `hlsdl/urlutils.py` | Nomes de arquivo e URLs |
+| `hlsdl/services/` | Scraper HTML e utilitários de processo/ffmpeg |
+| `hlsdl/ui/main.qml`, `hlsdl/ui/i18n.js` | Interface completa |
+| `installer/` | Script Inno Setup do instalador Windows |
+| `scripts/` | Geração do ícone e dos metadados de versão do exe |
+| `assets/` | Ícone (`icon.ico`/`icon.png`) |
+| `LICENSE`, `THIRD_PARTY_NOTICES.md`, `CHANGELOG.md` | Licença e documentação legal |
+| `main.py`, `worker.py` | Fachadas de compatibilidade (empacotamento/scripts) |
+
+## Notas de arquitetura
+
+- **Uma só lista de itens** compartilhada por modelo e gerente (evita corrupção de índices).
+- **Status como enum**, nunca strings de apresentação na lógica.
+- **Motores e serviços isolados** (`services/`) e injetáveis (`worker_factory`).
+- **Configuração tipada** e ciente de build empacotado (Windows: `--onedir`; Linux: `--onefile`).
+- **Testes** cobrem deduplicação, ciclo de vida da fila, persistência e o carregamento do QML.
+
+## Licença
+
+MIT — ver [LICENSE](LICENSE). Avisos de bibliotecas de terceiros em
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). O aplicativo usa
+**PySide6/Qt (LGPL)** e baixa yt-dlp/ffmpeg em tempo de execução (não os
+redistribui no instalador).
