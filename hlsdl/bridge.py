@@ -31,6 +31,7 @@ from .formats import (
 from .i18n import LANGUAGE_NAMES, LANGUAGES, tr
 from .playlist import PlaylistLoader
 from .queue import QueueManager
+from .urlutils import normalize_url
 
 
 class Bridge(QObject):
@@ -48,6 +49,7 @@ class Bridge(QObject):
     cookiesFileChanged = Signal(str)
     languageChanged = Signal(str)
     queueActiveChanged = Signal(bool)
+    queuePausedChanged = Signal(bool)
     formatModeChanged = Signal(str)
     qualityChanged = Signal(str)
     containerChanged = Signal(str)
@@ -122,6 +124,9 @@ class Bridge(QObject):
         self._deps_list: list[dict] = []
         self._deps_busy = False
         self._last_item: dict = {}
+        self._single_item_id: int | None = None
+        self._queue_active = False
+        self._queue_paused = False
         self._playlist_items: list = []
         self._playlist_loading = False
 
@@ -143,6 +148,7 @@ class Bridge(QObject):
         manager.statsChanged.connect(self.statsChanged.emit)
         manager.outdirChanged.connect(self.outputFolderChanged.emit)
         manager.itemUpdated.connect(self._on_item_updated)
+        manager.queueStateChanged.connect(self._on_queue_state)
         manager.outdir = self._output_folder
         manager.setConcurrency(self._concurrency)
         manager.set_translator(self._translator())
@@ -232,7 +238,19 @@ class Bridge(QObject):
 
     @Property(bool, notify=queueActiveChanged)
     def queueActive(self) -> bool:
-        return self.manager.isActive
+        return self._queue_active
+
+    @Property(bool, notify=queuePausedChanged)
+    def queuePaused(self) -> bool:
+        return self._queue_paused
+
+    def _on_queue_state(self, active: bool, paused: bool) -> None:
+        if active != self._queue_active:
+            self._queue_active = active
+            self.queueActiveChanged.emit(active)
+        if paused != self._queue_paused:
+            self._queue_paused = paused
+            self.queuePausedChanged.emit(paused)
 
     def _ytdlp_available(self) -> bool:
         return any(d["key"] == "ytdlp" and d["found"] for d in self._deps_list)
@@ -349,6 +367,9 @@ class Bridge(QObject):
         return self._last_item
 
     def _on_item_updated(self, item: dict) -> None:
+        # A aba Individual só reflete o item iniciado por downloadSingle().
+        if self._single_item_id is None or item.get("id") != self._single_item_id:
+            return
         status = item.get("status")
         self._last_item = {
             "url": item.get("url", ""),
@@ -361,6 +382,16 @@ class Bridge(QObject):
             "path": item.get("path", ""),
             "thumbnail": item.get("thumb", ""),
         }
+        self.lastItemChanged.emit()
+
+    def _sync_single_item(self) -> None:
+        """Limpa o card individual se o item saiu da fila."""
+        if self._single_item_id is None:
+            return
+        if any(i["id"] == self._single_item_id for i in self.manager.items):
+            return
+        self._single_item_id = None
+        self._last_item = {}
         self.lastItemChanged.emit()
 
     # ------------------------------------------------------------ playlists
@@ -390,7 +421,7 @@ class Bridge(QObject):
         elif skipped:
             self.notifyText.emit(self._tr("links_skipped", s=skipped))
         self.manager.start()
-        self.queueActiveChanged.emit(True)
+        # O estado (ativo/pausado) vem de manager.queueStateChanged.
 
     def _on_playlist_loading(self, loading: bool) -> None:
         self._playlist_loading = loading
@@ -610,14 +641,28 @@ class Bridge(QObject):
         if not url:
             self.notifyText.emit(self._tr("no_links"))
             return
-        self.manager.addText(url)
+        before = len(self.manager.items)
+        added, _skipped = self.manager.addText(url)
+        if added:
+            item = self.manager.items[before]
+            self._single_item_id = item["id"]
+            self._on_item_updated(item)
+        else:
+            # Duplicado: foca o item existente com a mesma URL.
+            normalized = normalize_url(url)
+            match = next(
+                (i for i in reversed(self.manager.items)
+                 if normalize_url(i["url"]) == normalized),
+                None,
+            )
+            if match is not None:
+                self._single_item_id = match["id"]
+                self._on_item_updated(match)
         self.manager.start()
-        self.queueActiveChanged.emit(True)
 
     @Slot()
     def startQueue(self) -> None:
         self.manager.start()
-        self.queueActiveChanged.emit(True)
         self.notifyText.emit(self._tr("queue_started"))
 
     @Slot()
@@ -633,7 +678,6 @@ class Bridge(QObject):
     @Slot()
     def cancelAll(self) -> None:
         self.manager.cancelAll()
-        self.queueActiveChanged.emit(False)
         self.notifyText.emit(self._tr("downloads_cancelled"))
 
     @Slot(int)
@@ -644,6 +688,7 @@ class Bridge(QObject):
     @Slot(int)
     def removeItem(self, row: int) -> None:
         self.manager.removeItem(row)
+        self._sync_single_item()
         self.notifyText.emit(self._tr("item_removed"))
 
     @Slot(int)
@@ -664,11 +709,28 @@ class Bridge(QObject):
     @Slot()
     def clearFinished(self) -> None:
         self.manager.clearFinished()
+        self._sync_single_item()
 
     @Slot()
     def clearAll(self) -> None:
         self.manager.clearAll()
-        self.queueActiveChanged.emit(False)
+        self._single_item_id = None
+        self._last_item = {}
+        self.lastItemChanged.emit()
+
+    def shutdown(self) -> None:
+        """Encerra download/playlist/instalação em andamento ao fechar."""
+        try:
+            self._playlist.cancel()
+        except Exception:
+            pass
+        cancel = getattr(self.deps, "cancel", None)
+        if callable(cancel):
+            try:
+                cancel()
+            except Exception:
+                pass
+        self.manager.shutdown()
 
     @Slot(str)
     def openDownloadPath(self, path: str) -> None:

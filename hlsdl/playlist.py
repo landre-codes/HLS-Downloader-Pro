@@ -18,7 +18,7 @@ from PySide6.QtCore import QObject, Signal
 
 from . import config
 from .i18n import translator
-from .services.procutils import which
+from .services.procutils import spawn_kwargs, terminate_tree, which
 
 log = logging.getLogger("hlsdl")
 
@@ -34,6 +34,8 @@ class PlaylistLoader(QObject):
         super().__init__(parent)
         self._t = translate or translator("pt")
         self._busy = False
+        self._cancel = False
+        self._proc = None
 
     def set_translator(self, fn: Callable[..., str]) -> None:
         self._t = fn
@@ -72,6 +74,7 @@ class PlaylistLoader(QObject):
         if not argv:
             self.failed.emit(self._t("err_ytdlp_missing"))
             return
+        self._cancel = False
         self._busy = True
         self.loadingChanged.emit(True)
         threading.Thread(
@@ -79,6 +82,7 @@ class PlaylistLoader(QObject):
         ).start()
 
     def _run(self, argv: list[str], url: str, limit: int, cookies: str) -> None:
+        proc = None
         try:
             cmd = argv + [
                 "--flat-playlist",
@@ -90,15 +94,31 @@ class PlaylistLoader(QObject):
                 cmd += ["--playlist-end", str(limit)]
             cmd += self._cookies_args(cookies)
             cmd.append(url)
-            out = subprocess.run(
-                cmd, capture_output=True, text=True,
-                encoding="utf-8", errors="replace", timeout=180,
+            proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                **spawn_kwargs(),
             )
-            if out.returncode != 0 and not (out.stdout or "").strip():
-                msg = (out.stderr or "").strip().splitlines()
+            self._proc = proc
+            try:
+                out, err = proc.communicate(timeout=180)
+            except subprocess.TimeoutExpired:
+                terminate_tree(proc)
+                out, err = proc.communicate()
+                if not self._cancel:
+                    self.failed.emit(self._t("playlist_load_failed", err="timeout"))
+                return
+            if self._cancel:
+                return
+            if proc.returncode != 0 and not (out or "").strip():
+                msg = (err or "").strip().splitlines()
                 self.failed.emit(msg[-1] if msg else self._t("playlist_load_failed", err=""))
                 return
-            data = json.loads(out.stdout or "{}")
+            data = json.loads(out or "{}")
             entries = data.get("entries") or [data]
             items = []
             for i, entry in enumerate(entries):
@@ -110,11 +130,18 @@ class PlaylistLoader(QObject):
                 return
             self.loaded.emit(items)
         except Exception as exc:
-            log.exception("falha ao carregar playlist")
-            self.failed.emit(self._t("playlist_load_failed", err=exc))
+            if not self._cancel:
+                log.exception("falha ao carregar playlist")
+                self.failed.emit(self._t("playlist_load_failed", err=exc))
         finally:
+            self._proc = None
             self._busy = False
             self.loadingChanged.emit(False)
+
+    def cancel(self) -> None:
+        """Cancela a listagem em andamento (chamado ao fechar o app)."""
+        self._cancel = True
+        terminate_tree(self._proc)
 
     @staticmethod
     def _to_item(entry: dict, index: int) -> dict:

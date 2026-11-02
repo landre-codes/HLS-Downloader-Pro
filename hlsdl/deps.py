@@ -35,6 +35,7 @@ from dataclasses import dataclass
 from PySide6.QtCore import QObject, Signal
 
 from . import config
+from .services.procutils import popen_kwargs, spawn_kwargs, terminate_tree
 
 log = logging.getLogger("hlsdl")
 
@@ -129,7 +130,7 @@ def _pip_available() -> bool:
     try:
         subprocess.run(
             [sys.executable, "-m", "pip", "--version"],
-            capture_output=True, timeout=20,
+            capture_output=True, timeout=20, **popen_kwargs(),
         )
         return True
     except Exception:
@@ -160,7 +161,7 @@ def _binary_version(spec: ToolSpec, path: str) -> str:
         if spec.key == "ffmpeg":
             out = subprocess.run(
                 [path, "-version"], capture_output=True, text=True, timeout=10,
-                encoding="utf-8", errors="replace",
+                encoding="utf-8", errors="replace", **popen_kwargs(),
             )
             lines = (out.stdout or "").splitlines()
             if lines:
@@ -168,7 +169,7 @@ def _binary_version(spec: ToolSpec, path: str) -> str:
         else:
             out = subprocess.run(
                 [path, "--version"], capture_output=True, text=True, timeout=10,
-                encoding="utf-8", errors="replace",
+                encoding="utf-8", errors="replace", **popen_kwargs(),
             )
             return (out.stdout or "").splitlines()[0].strip()
     except Exception:
@@ -246,6 +247,8 @@ class DependencyManager(QObject):
     def __init__(self, parent: QObject | None = None):
         super().__init__(parent)
         self._busy = False
+        self._cancel = False
+        self._proc = None
         self.variant = "stable"  # canal do yt-dlp: stable | nightly | master
 
     def set_variant(self, variant: str) -> None:
@@ -305,7 +308,7 @@ class DependencyManager(QObject):
 
     def install(self, key: str) -> bool:
         """Inicia a instalação/atualização de ``key``. Retorna False se ocupado."""
-        if self._busy:
+        if self._busy or self._cancel:
             return False
         spec = self._spec(key)
         if spec is None:
@@ -365,19 +368,31 @@ class DependencyManager(QObject):
             proc = subprocess.Popen(
                 cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                 text=True, encoding="utf-8", errors="replace", bufsize=1,
+                **spawn_kwargs(),
             )
+            self._proc = proc
             assert proc.stdout is not None
             for line in proc.stdout:
+                if self._cancel:
+                    terminate_tree(proc)
+                    break
                 self.installOutput.emit(line.rstrip("\n"))
             rc = proc.wait()
             if rc == 0:
                 # A ferramenta pode ter sido instalada em pasta nova: reflete
                 # no PATH e nas pastas conhecidas antes de re-detectar.
                 config.ensure_tools_on_path()
-            return rc == 0
+            return rc == 0 and not self._cancel
         except FileNotFoundError:
             self.installOutput.emit(f"{cmd[0]}: executável não encontrado")
             return False
+        finally:
+            self._proc = None
+
+    def cancel(self) -> None:
+        """Encerra a instalação em andamento (chamado ao fechar o app)."""
+        self._cancel = True
+        terminate_tree(self._proc)
 
     # -------------------------------------------------------------- download
     def _download(self, url: str, dest: str) -> None:
@@ -389,6 +404,8 @@ class DependencyManager(QObject):
             done = 0
             last_report = 0
             while True:
+                if self._cancel:
+                    raise RuntimeError("cancelado")
                 chunk = resp.read(262144)
                 if not chunk:
                     break
@@ -489,13 +506,17 @@ class DependencyManager(QObject):
         """Atualiza em sequência todas as ferramentas atualizáveis."""
         def worker() -> None:
             for spec in SPECS:
+                if self._cancel:
+                    break
                 if not self.detect(spec).found:
                     continue
                 job = self._job_for(spec)
                 if job is None:
                     continue
-                while self._busy:
+                while self._busy and not self._cancel:
                     time.sleep(0.2)
+                if self._cancel:
+                    break
                 self._busy = True
                 self.installStarted.emit(spec.key)
                 self._run_job(spec.key, spec.name, job)
@@ -506,13 +527,17 @@ class DependencyManager(QObject):
         """Instala, em sequência, todas as ferramentas obrigatórias ausentes."""
         def worker() -> None:
             for spec in SPECS:
+                if self._cancel:
+                    break
                 if not spec.required or self.detect(spec).found:
                     continue
                 job = self._job_for(spec)
                 if job is None:
                     continue
-                while self._busy:
+                while self._busy and not self._cancel:
                     time.sleep(0.2)
+                if self._cancel:
+                    break
                 self._busy = True
                 self.installStarted.emit(spec.key)
                 self._run_job(spec.key, spec.name, job)

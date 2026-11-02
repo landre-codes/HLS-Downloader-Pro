@@ -38,7 +38,13 @@ from .formats import (
 )
 from .i18n import translator
 from .naming import resolve_existing_file, shorten_name, url_digest
-from .services.procutils import extract_thumbnail, probe_duration, which
+from .services.procutils import (
+    extract_thumbnail,
+    probe_duration,
+    spawn_kwargs,
+    terminate_tree,
+    which,
+)
 from .services.scraper import HtmlMediaScraper
 from .status import Status
 
@@ -110,10 +116,7 @@ class DownloadWorker(QObject):
         self._cancel = True
         proc = self._proc
         if proc is not None:
-            try:
-                proc.terminate()
-            except Exception:
-                pass
+            terminate_tree(proc)
 
     # ----------------------------------------------------- ponto de entrada
     def run(self) -> None:
@@ -380,6 +383,7 @@ class DownloadWorker(QObject):
             encoding="utf-8",
             errors="replace",
             bufsize=1,
+            **spawn_kwargs(),
         )
 
         stderr_lines: list[str] = []
@@ -404,7 +408,7 @@ class DownloadWorker(QObject):
             try:
                 rc = self._proc.wait(timeout=10)
             except subprocess.TimeoutExpired:
-                self._proc.kill()
+                terminate_tree(self._proc)
                 rc = self._proc.wait()
             drainer.join(timeout=2)
             self._proc = None
@@ -491,7 +495,7 @@ class DownloadWorker(QObject):
         out_path: str | None = None
         for line in proc.stdout:
             if self._cancel:
-                proc.terminate()
+                terminate_tree(proc)
                 break
             line = line.strip()
             if not line:
@@ -539,10 +543,7 @@ class DownloadWorker(QObject):
             if self._cancel:
                 proc = self._proc
                 if proc is not None:
-                    try:
-                        proc.terminate()
-                    except Exception:
-                        pass
+                    terminate_tree(proc)
                 break
             try:
                 line = line_queue.get(timeout=0.25)
@@ -553,10 +554,7 @@ class DownloadWorker(QObject):
                     break
                 if time.time() - last_activity > FFMPEG_STALL_TIMEOUT:
                     log.warning("ffmpeg sem progresso por %.0fs — encerrando", FFMPEG_STALL_TIMEOUT)
-                    try:
-                        proc.terminate()
-                    except Exception:
-                        pass
+                    terminate_tree(proc)
                     break
                 continue
             tm = FFMPEG_TIME_RE.search(line)

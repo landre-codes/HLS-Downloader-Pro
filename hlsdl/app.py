@@ -218,7 +218,16 @@ def _raise_window(window) -> None:
 # ===========================================================================
 # main
 # ===========================================================================
+def _ensure_std_streams() -> None:
+    """Em build --windowed, sys.stdout/stderr podem ser None."""
+    if sys.stdout is None:
+        sys.stdout = open(os.devnull, "w", encoding="utf-8")
+    if sys.stderr is None:
+        sys.stderr = open(os.devnull, "w", encoding="utf-8")
+
+
 def main() -> int:
+    _ensure_std_streams()
     if "--portable" in sys.argv:
         os.environ["HLSDL_PORTABLE"] = "1"
         sys.argv = [arg for arg in sys.argv if arg != "--portable"]
@@ -268,8 +277,8 @@ def main() -> int:
     if _SINGLE is not None:
         _SINGLE.activated.connect(lambda: _raise_window(window))
 
-    # Encerramento gracioso: cancela downloads e aguarda as threads.
-    app.aboutToQuit.connect(lambda: manager.shutdown())
+    # Encerramento gracioso: cancela downloads/playlist/instalação e aguarda.
+    app.aboutToQuit.connect(bridge.shutdown)
 
     return app.exec()
 

@@ -31,6 +31,7 @@ class QueueManager(QObject):
     statsChanged = Signal(int, int, int, int)  # aguardando, baixando, ok, erro
     outdirChanged = Signal(str)
     itemUpdated = Signal(object)  # um item da fila mudou (dict)
+    queueStateChanged = Signal(bool, bool)  # ativo, pausado
 
     def __init__(
         self,
@@ -74,9 +75,13 @@ class QueueManager(QObject):
             self._outdir = value
             self.outdirChanged.emit(value)
 
-    @Property(bool, notify=statsChanged)
+    @Property(bool, notify=queueStateChanged)
     def isActive(self) -> bool:
         return self._active
+
+    @Property(bool, notify=queueStateChanged)
+    def isPaused(self) -> bool:
+        return self._paused
 
     def set_translator(self, fn: Callable[..., str]) -> None:
         self._translate = fn
@@ -169,12 +174,14 @@ class QueueManager(QObject):
         self._paused = False
         self._pump()
         self._emit_stats()
+        self._emit_state()
 
     @Slot()
     def pause(self) -> None:
         """Para de agendar novos itens (os ativos continuam até terminar)."""
         self._paused = True
         self._emit_stats()
+        self._emit_state()
 
     @Slot()
     def resume(self) -> None:
@@ -182,6 +189,7 @@ class QueueManager(QObject):
         if self._active:
             self._pump()
         self._emit_stats()
+        self._emit_state()
 
     @Slot()
     def cancelAll(self) -> None:
@@ -193,6 +201,7 @@ class QueueManager(QObject):
                 self._set_status(item, Status.CANCELLED)
         for _, worker, _ in list(self._threads.values()):
             worker.cancel()
+        self._emit_state()
 
     @Slot()
     def clearFinished(self) -> None:
@@ -431,3 +440,17 @@ class QueueManager(QObject):
         done = sum(1 for i in self.items if i["status"] == Status.DONE)
         errors = sum(1 for i in self.items if i["status"] == Status.ERROR)
         self.statsChanged.emit(waiting, downloading, done, errors)
+        # Fila ociosa (nada pendente/ativo e nenhuma thread viva): volta ao
+        # estado inicial para o botão "Iniciar Fila" reaparecer.
+        if (
+            self._active
+            and not self._paused
+            and waiting == 0
+            and downloading == 0
+            and not self._threads
+        ):
+            self._active = False
+            self._emit_state()
+
+    def _emit_state(self) -> None:
+        self.queueStateChanged.emit(self._active, self._paused)

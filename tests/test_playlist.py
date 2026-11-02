@@ -28,11 +28,18 @@ def test_to_item_full_url_and_thumb():
     assert item["index"] == 5
 
 
-class _Result:
-    def __init__(self, stdout: str, returncode: int = 0, stderr: str = ""):
-        self.stdout = stdout
+class _FakeProc:
+    def __init__(self, stdout: str = "", returncode: int = 0, stderr: str = ""):
+        self._out = stdout
+        self._err = stderr
         self.returncode = returncode
-        self.stderr = stderr
+        self.pid = 4242
+
+    def communicate(self, timeout=None):
+        return self._out, self._err
+
+    def poll(self):
+        return self.returncode
 
 
 def test_loader_parses_entries(qapp, monkeypatch):
@@ -41,7 +48,7 @@ def test_loader_parses_entries(qapp, monkeypatch):
         {"id": "b", "title": "B", "url": "b"},
         None,  # entrada vazia deve ser ignorada
     ]})
-    monkeypatch.setattr(subprocess, "run", lambda *a, **k: _Result(payload))
+    monkeypatch.setattr(subprocess, "Popen", lambda *a, **k: _FakeProc(payload))
     loader = PlaylistLoader()
     loader._ytdlp_argv = lambda: ["yt-dlp"]
     got: list = []
@@ -54,7 +61,9 @@ def test_loader_parses_entries(qapp, monkeypatch):
 
 
 def test_loader_reports_failure_on_error(qapp, monkeypatch):
-    monkeypatch.setattr(subprocess, "run", lambda *a, **k: _Result("", 1, "ERROR: nope"))
+    monkeypatch.setattr(
+        subprocess, "Popen", lambda *a, **k: _FakeProc("", 1, "ERROR: nope")
+    )
     loader = PlaylistLoader()
     loader._ytdlp_argv = lambda: ["yt-dlp"]
     errors: list = []

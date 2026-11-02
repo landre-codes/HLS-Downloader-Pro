@@ -180,16 +180,70 @@ def test_bridge_persists_format_mode(qapp, tmp_path, fake_deps):
     assert b2.formatMode == "audio_only"
 
 
-def test_bridge_last_item(qapp, tmp_path, fake_deps):
+def test_bridge_last_item_scoped_to_single(qapp, tmp_path, fake_deps):
+    class DoneWorker(DownloadWorker):
+        def run(self) -> None:  # type: ignore[override]
+            self.progressChanged.emit(100.0, "—", "—")
+            self._succeed("/nope/fake.mp4")
+
     model = DownloadModel([])
-    manager = QueueManager(model, outdir="out")
+    manager = QueueManager(model, outdir="out", worker_factory=DoneWorker)
     bridge = Bridge(manager, "out", settings_path=str(tmp_path / "s.ini"), deps=fake_deps)
-    received = []
-    bridge.lastItemChanged.connect(lambda: received.append(bridge.lastItem))
-    manager.addText("https://x.com/v")
-    assert received, "lastItemChanged deveria ter sido emitido"
-    assert bridge.lastItem["url"] == "https://x.com/v"
-    assert bridge.lastItem["status"] == "waiting"
+
+    # Item adicionado pelo lote NÃO deve aparecer na aba Individual.
+    manager.addText("https://batch/1")
+    assert bridge.lastItem == {}
+
+    # Já o download individual deve aparecer.
+    bridge.downloadSingle("https://single/1")
+    assert bridge.lastItem["url"] == "https://single/1"
+    manager.shutdown(timeout=3)
+
+
+def test_queue_pause_resume_state(qapp):
+    model = DownloadModel([])
+    manager = QueueManager(model, outdir="out", worker_factory=_NoopWorker)
+    states: list = []
+    manager.queueStateChanged.connect(lambda active, paused: states.append((active, paused)))
+
+    manager.addText("https://x/1")
+    manager.start()
+    manager.pause()
+    assert manager.isPaused is True
+    manager.resume()
+    assert manager.isPaused is False
+    assert states, "queueStateChanged deveria ter sido emitido"
+    manager.shutdown(timeout=3)
+
+
+def test_queue_becomes_idle_after_finish(qapp):
+    from tests.conftest import process_until
+
+    class DoneWorker(DownloadWorker):
+        def run(self) -> None:  # type: ignore[override]
+            self.progressChanged.emit(100.0, "—", "—")
+            self._succeed("/nope/x.mp4")
+
+    model = DownloadModel([])
+    manager = QueueManager(model, outdir="out", concurrency=1, worker_factory=DoneWorker)
+    manager.addText("https://x/1")
+    manager.start()
+    assert process_until(
+        qapp, lambda: all(i["status"].is_final for i in manager.items), timeout=15
+    )
+    assert process_until(qapp, lambda: manager.isActive is False, timeout=8)
+
+
+def test_download_single_adds_and_starts(qapp, tmp_path, fake_deps):
+    model = DownloadModel([])
+    manager = QueueManager(model, outdir="out", worker_factory=_NoopWorker)
+    bridge = Bridge(manager, "out", settings_path=str(tmp_path / "s.ini"), deps=fake_deps)
+    bridge.setFormatMode("audio_only")
+    bridge.downloadSingle("https://x.com/v")
+    assert model.rowCount() == 1
+    assert manager.items[0]["url"] == "https://x.com/v"
+    assert manager.isActive is True
+    manager.shutdown(timeout=3)
 
 
 class _NoopWorker(DownloadWorker):
@@ -216,17 +270,5 @@ def test_queue_passes_format_mode_to_worker(qapp):
 
     process_until(qapp, lambda: "format_mode" in captured, timeout=10)
     assert captured.get("format_mode") == "video_only"
-    manager.shutdown(timeout=3)
-
-
-def test_download_single_adds_and_starts(qapp, tmp_path, fake_deps):
-    model = DownloadModel([])
-    manager = QueueManager(model, outdir="out", worker_factory=_NoopWorker)
-    bridge = Bridge(manager, "out", settings_path=str(tmp_path / "s.ini"), deps=fake_deps)
-    bridge.setFormatMode("audio_only")
-    bridge.downloadSingle("https://x.com/v")
-    assert model.rowCount() == 1
-    assert manager.items[0]["url"] == "https://x.com/v"
-    assert manager.isActive is True
     manager.shutdown(timeout=3)
 

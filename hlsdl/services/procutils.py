@@ -5,12 +5,68 @@ from __future__ import annotations
 import logging
 import os
 import shutil
+import signal
 import subprocess
 
 log = logging.getLogger("hlsdl")
 
 
 from .. import config
+
+
+def popen_kwargs() -> dict:
+    """Flags para NÃO abrir janela de console no Windows.
+
+    Em build ``--windowed`` (GUI), iniciar um executável de console
+    (yt-dlp/ffmpeg/pip/winget) sem estas flags cria uma janela visível.
+    """
+    if os.name != "nt":
+        return {}
+    startupinfo = subprocess.STARTUPINFO()
+    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    startupinfo.wShowWindow = subprocess.SW_HIDE
+    return {
+        "creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000),
+        "startupinfo": startupinfo,
+    }
+
+
+def spawn_kwargs() -> dict:
+    """Como :func:`popen_kwargs`, mas inicia um novo grupo/sessão de processo.
+
+    Isso permite encerrar a árvore inteira (yt-dlp + ffmpeg) no cancelamento.
+    """
+    kwargs = popen_kwargs()
+    if os.name != "nt":
+        kwargs["start_new_session"] = True
+    return kwargs
+
+
+def terminate_tree(proc) -> None:
+    """Encerra o processo e seus filhos (yt-dlp pode ter iniciado o ffmpeg)."""
+    if proc is None or proc.poll() is not None:
+        return
+    if os.name == "nt":
+        try:
+            subprocess.run(
+                ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+                capture_output=True,
+                **popen_kwargs(),
+            )
+            return
+        except Exception:
+            pass
+    else:
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+            return
+        except OSError:
+            pass
+    try:
+        proc.terminate()
+    except Exception:
+        pass
+
 
 
 def which(name: str) -> str | None:
@@ -52,6 +108,7 @@ def probe_duration(media_url: str) -> float | None:
             timeout=40,
             encoding="utf-8",
             errors="replace",
+            **popen_kwargs(),
         )
         return float(out.stdout.strip())
     except Exception:
@@ -97,7 +154,7 @@ def extract_thumbnail(video_path: str) -> str | None:
             thumb,
         ]
         try:
-            subprocess.run(cmd, capture_output=True, timeout=40)
+            subprocess.run(cmd, capture_output=True, timeout=40, **popen_kwargs())
         except Exception:
             continue
         if os.path.exists(thumb):
