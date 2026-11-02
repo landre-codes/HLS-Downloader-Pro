@@ -10,7 +10,7 @@ var lang = "pt"
 var dict = {
     "pt": {
         app_title: "HLS Downloader Pro",
-        titlebar_sub: "yt-dlp + ffmpeg + fallback HTML",
+        titlebar_sub: "Baixe vídeos e áudios da web",
         tab_single: "Download Individual",
         tab_single_tip: "Baixa um único link imediatamente",
         tab_downloads: "Lote",
@@ -33,6 +33,7 @@ var dict = {
         fmt_audio_only: "Somente áudio",
         fmt_tip: "O que baixar: o vídeo com áudio, só o vídeo, ou extrair apenas o áudio.",
         batch_fmt_label: "Formato da fila:",
+        batch_options: "Opções…",
         quality_label: "Qualidade:",
         q_best: "Melhor disponível",
         container_label: "Arquivo:",
@@ -93,6 +94,7 @@ var dict = {
         btn_load_playlist: "Carregar itens",
         playlist_loading: "Carregando…",
         playlist_limit: "Limite de itens:",
+        playlist_no_limit: "0 = sem limite",
         playlist_items: "itens",
         playlist_empty_ui: "Nenhuma playlist carregada.",
         btn_select_all: "Selecionar tudo",
@@ -187,7 +189,7 @@ var dict = {
 
     "en": {
         app_title: "HLS Downloader Pro",
-        titlebar_sub: "yt-dlp + ffmpeg + HTML fallback",
+        titlebar_sub: "Download video and audio from the web",
         tab_single: "Single Download",
         tab_single_tip: "Download a single link right away",
         tab_downloads: "Batch",
@@ -210,6 +212,7 @@ var dict = {
         fmt_audio_only: "Audio only",
         fmt_tip: "What to download: video with audio, video only, or extract audio only.",
         batch_fmt_label: "Queue format:",
+        batch_options: "Options…",
         quality_label: "Quality:",
         q_best: "Best available",
         container_label: "File:",
@@ -270,6 +273,7 @@ var dict = {
         btn_load_playlist: "Load items",
         playlist_loading: "Loading…",
         playlist_limit: "Item limit:",
+        playlist_no_limit: "0 = no limit",
         playlist_items: "items",
         playlist_empty_ui: "No playlist loaded.",
         btn_select_all: "Select all",
@@ -364,7 +368,7 @@ var dict = {
 
     "es": {
         app_title: "HLS Downloader Pro",
-        titlebar_sub: "yt-dlp + ffmpeg + fallback HTML",
+        titlebar_sub: "Descarga vídeo y audio de la web",
         tab_single: "Descarga Individual",
         tab_single_tip: "Descarga un único enlace al instante",
         tab_downloads: "Lote",
@@ -387,6 +391,7 @@ var dict = {
         fmt_audio_only: "Solo audio",
         fmt_tip: "Qué descargar: el vídeo con audio, solo el vídeo, o extraer solo el audio.",
         batch_fmt_label: "Formato de la cola:",
+        batch_options: "Opciones…",
         quality_label: "Calidad:",
         q_best: "La mejor disponible",
         container_label: "Archivo:",
@@ -447,6 +452,7 @@ var dict = {
         btn_load_playlist: "Cargar elementos",
         playlist_loading: "Cargando…",
         playlist_limit: "Límite de elementos:",
+        playlist_no_limit: "0 = sin límite",
         playlist_items: "elementos",
         playlist_empty_ui: "Ninguna lista cargada.",
         btn_select_all: "Seleccionar todo",
@@ -541,7 +547,7 @@ var dict = {
 
     "it": {
         app_title: "HLS Downloader Pro",
-        titlebar_sub: "yt-dlp + ffmpeg + fallback HTML",
+        titlebar_sub: "Scarica video e audio dal web",
         tab_single: "Download Singolo",
         tab_single_tip: "Scarica subito un singolo link",
         tab_downloads: "Batch",
@@ -564,6 +570,7 @@ var dict = {
         fmt_audio_only: "Solo audio",
         fmt_tip: "Cosa scaricare: video con audio, solo video, oppure estrarre solo l'audio.",
         batch_fmt_label: "Formato coda:",
+        batch_options: "Opzioni…",
         quality_label: "Qualità:",
         q_best: "Migliore disponibile",
         container_label: "File:",
@@ -624,6 +631,7 @@ var dict = {
         btn_load_playlist: "Carica elementi",
         playlist_loading: "Caricamento…",
         playlist_limit: "Limite elementi:",
+        playlist_no_limit: "0 = senza limite",
         playlist_items: "elementi",
         playlist_empty_ui: "Nessuna playlist caricata.",
         btn_select_all: "Seleziona tutto",
@@ -718,7 +726,7 @@ var dict = {
 
     "fr": {
         app_title: "HLS Downloader Pro",
-        titlebar_sub: "yt-dlp + ffmpeg + fallback HTML",
+        titlebar_sub: "Téléchargez vidéos et audios du web",
         tab_single: "Téléchargement Simple",
         tab_single_tip: "Télécharge un seul lien immédiatement",
         tab_downloads: "Lot",
@@ -741,6 +749,7 @@ var dict = {
         fmt_audio_only: "Audio seul",
         fmt_tip: "Quoi télécharger : la vidéo avec audio, la vidéo seule, ou extraire l'audio seul.",
         batch_fmt_label: "Format de la file :",
+        batch_options: "Options…",
         quality_label: "Qualité :",
         q_best: "Meilleure disponible",
         container_label: "Fichier :",
@@ -801,6 +810,7 @@ var dict = {
         btn_load_playlist: "Charger les éléments",
         playlist_loading: "Chargement…",
         playlist_limit: "Limite d'éléments :",
+        playlist_no_limit: "0 = sans limite",
         playlist_items: "éléments",
         playlist_empty_ui: "Aucune playlist chargée.",
         btn_select_all: "Tout sélectionner",
@@ -895,7 +905,7 @@ var dict = {
 
     "ru": {
         app_title: "HLS Downloader Pro",
-        titlebar_sub: "yt-dlp + ffmpeg + HTML fallback",
+        titlebar_sub: "Скачивайте видео и аудио из интернета",
         tab_single: "Одиночная загрузка",
         tab_single_tip: "Загружает одну ссылку сразу",
         tab_downloads: "Список",
@@ -918,6 +928,7 @@ var dict = {
         fmt_audio_only: "Только аудио",
         fmt_tip: "Что скачать: видео со звуком, только видео или извлечь только аудио.",
         batch_fmt_label: "Формат очереди:",
+        batch_options: "Параметры…",
         quality_label: "Качество:",
         q_best: "Лучшее доступное",
         container_label: "Файл:",
@@ -978,6 +989,7 @@ var dict = {
         btn_load_playlist: "Загрузить элементы",
         playlist_loading: "Загрузка…",
         playlist_limit: "Лимит элементов:",
+        playlist_no_limit: "0 = без ограничений",
         playlist_items: "элементов",
         playlist_empty_ui: "Плейлист не загружен.",
         btn_select_all: "Выбрать всё",
@@ -1072,7 +1084,7 @@ var dict = {
 
     "ja": {
         app_title: "HLS Downloader Pro",
-        titlebar_sub: "yt-dlp + ffmpeg + HTML フォールバック",
+        titlebar_sub: "ウェブから動画・音声をダウンロード",
         tab_single: "単体ダウンロード",
         tab_single_tip: "1つのリンクをすぐにダウンロード",
         tab_downloads: "一括",
@@ -1095,6 +1107,7 @@ var dict = {
         fmt_audio_only: "音声のみ",
         fmt_tip: "何をダウンロードするか: 映像と音声、映像のみ、音声のみの抽出。",
         batch_fmt_label: "キューの形式:",
+        batch_options: "オプション…",
         quality_label: "画質:",
         q_best: "最高画質",
         container_label: "ファイル:",
@@ -1155,6 +1168,7 @@ var dict = {
         btn_load_playlist: "項目を読み込む",
         playlist_loading: "読み込み中…",
         playlist_limit: "項目数の上限:",
+        playlist_no_limit: "0 = 無制限",
         playlist_items: "項目",
         playlist_empty_ui: "プレイリストが読み込まれていません。",
         btn_select_all: "すべて選択",
@@ -1249,7 +1263,7 @@ var dict = {
 
     "zh": {
         app_title: "HLS Downloader Pro",
-        titlebar_sub: "yt-dlp + ffmpeg + HTML 回退",
+        titlebar_sub: "从网络下载视频和音频",
         tab_single: "单个下载",
         tab_single_tip: "立即下载单个链接",
         tab_downloads: "批量",
@@ -1272,6 +1286,7 @@ var dict = {
         fmt_audio_only: "仅音频",
         fmt_tip: "下载内容：带音频的视频、仅视频，或仅提取音频。",
         batch_fmt_label: "队列格式：",
+        batch_options: "选项…",
         quality_label: "画质：",
         q_best: "最佳可用",
         container_label: "文件：",
@@ -1332,6 +1347,7 @@ var dict = {
         btn_load_playlist: "加载项目",
         playlist_loading: "加载中…",
         playlist_limit: "项目上限：",
+        playlist_no_limit: "0 = 不限",
         playlist_items: "个项目",
         playlist_empty_ui: "尚未加载播放列表。",
         btn_select_all: "全选",

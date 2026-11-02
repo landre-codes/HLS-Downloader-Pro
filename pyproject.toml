@@ -33,7 +33,7 @@ packages = ["hlsdl", "hlsdl.services"]
 license-files = ["LICENSE"]
 
 [tool.setuptools.package-data]
-hlsdl = ["ui/*.qml", "ui/*.js"]
+hlsdl = ["ui/*.qml", "ui/*.js", "ui/icons/*.svg"]
 
 [tool.setuptools.dynamic]
 version = { attr = "hlsdl.__version__" }

@@ -44,7 +44,7 @@ ApplicationWindow {
         case "done":        return "#2e7d32"
         case "error":       return "#c62828"
         case "downloading": return "#00838f"
-        case "analyzing":   return "#ef6c00"
+        case "analyzing":   return "#b45309"
         case "encoding":    return "#6a1b9a"
         case "cancelled":   return "#546e7a"
         default:            return "#455a64"
@@ -122,6 +122,24 @@ ApplicationWindow {
         var m = Math.floor(sec / 60)
         var s = sec % 60
         return m + ":" + (s < 10 ? "0" + s : s)
+    }
+
+    // Caminho do ícone SVG conforme o tema.
+    function iconPath(name) {
+        return "icons/" + name + (root.dark ? "_dark.svg" : "_light.svg")
+    }
+
+    // Resumo compacto do perfil de download (aba Lote).
+    function downloadSummary() {
+        if (bridge.formatMode === "audio_only")
+            return bridge.container.toUpperCase()
+        var quality = bridge.quality === "best"
+            ? strings.q_best
+            : bridge.quality + "p"
+        var codec = bridge.codec === "copy"
+            ? strings.codec_copy
+            : (bridge.codec === "h264" ? "H.264" : "H.265")
+        return quality + " · " + bridge.container.toUpperCase() + " · " + codec
     }
 
     // Seletor de formato (vídeo+áudio / vídeo / áudio).
@@ -234,7 +252,7 @@ ApplicationWindow {
     }
 
     Material.theme: root.dark ? Material.Dark : Material.Light
-    Material.accent: "#00bfa5"
+    Material.accent: "#1e88e5"
     Material.background: root.dark ? "#14181c" : "#f5f5f5"
 
     property int statWaiting: 0
@@ -607,9 +625,9 @@ ApplicationWindow {
                                 Layout.fillWidth: true
                                 visible: bridge.lastItem.status === "error" && bridge.lastItem.error.length > 0
                                 text: bridge.lastItem.error
-                                color: "#c62828"
+                                color: root.dark ? "#ff8a80" : "#c62828"
                                 wrapMode: Text.Wrap
-                                font.pixelSize: 11
+                                font.pixelSize: 12
                             }
 
                             RowLayout {
@@ -648,14 +666,14 @@ ApplicationWindow {
                         id: batchEntryCol
                         anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
                         anchors.margins: 16
-                        spacing: 10
+                        spacing: 8
 
                         Label { text: strings.entry_title; font.pixelSize: 15; font.weight: Font.DemiBold }
 
                         TextArea {
                             id: inputArea
                             Layout.fillWidth: true
-                            Layout.preferredHeight: 90
+                            Layout.preferredHeight: 66
                             placeholderText: strings.entry_placeholder
                             wrapMode: TextEdit.Wrap
                             selectByMouse: true
@@ -689,57 +707,25 @@ ApplicationWindow {
 
                         RowLayout {
                             Layout.fillWidth: true
-                            spacing: 12
+                            spacing: 10
                             Label {
                                 text: strings.batch_fmt_label; font.pixelSize: 13
                                 color: Material.secondaryTextColor; Layout.alignment: Qt.AlignVCenter
                             }
                             FormatSelector { Layout.alignment: Qt.AlignVCenter }
                             Item { Layout.fillWidth: true }
-                        }
-
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 12
                             Label {
-                                visible: bridge.formatMode !== "audio_only"
-                                text: strings.quality_label; font.pixelSize: 13
-                                color: Material.secondaryTextColor; Layout.alignment: Qt.AlignVCenter
-                            }
-                            QualityCombo {
-                                visible: bridge.formatMode !== "audio_only"
+                                text: root.downloadSummary()
+                                font.pixelSize: 11
+                                color: Material.secondaryTextColor
+                                elide: Text.ElideRight
+                                Layout.maximumWidth: 260
                                 Layout.alignment: Qt.AlignVCenter
                             }
-                            Item { Layout.fillWidth: true }
-                            Label {
-                                text: strings.container_label; font.pixelSize: 13
-                                color: Material.secondaryTextColor; Layout.alignment: Qt.AlignVCenter
+                            Button {
+                                text: strings.batch_options
+                                onClicked: batchOptionsDialog.open()
                             }
-                            ContainerCombo { Layout.alignment: Qt.AlignVCenter }
-                        }
-
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 12
-                            Label {
-                                visible: bridge.formatMode !== "audio_only"
-                                text: strings.codec_label; font.pixelSize: 13
-                                color: Material.secondaryTextColor; Layout.alignment: Qt.AlignVCenter
-                            }
-                            CodecCombo {
-                                visible: bridge.formatMode !== "audio_only"
-                                Layout.alignment: Qt.AlignVCenter
-                            }
-                            Label {
-                                visible: bridge.formatMode !== "audio_only" && bridge.codec !== "copy"
-                                text: strings.compress_label; font.pixelSize: 13
-                                color: Material.secondaryTextColor; Layout.alignment: Qt.AlignVCenter
-                            }
-                            CompressCombo {
-                                visible: bridge.formatMode !== "audio_only" && bridge.codec !== "copy"
-                                Layout.alignment: Qt.AlignVCenter
-                            }
-                            Item { Layout.fillWidth: true }
                         }
 
                         Label {
@@ -885,9 +871,16 @@ ApplicationWindow {
                     }
                     Button {
                         text: strings.btn_pause
-                        visible: bridge.queueActive
+                        visible: bridge.queueActive && !bridge.queuePaused
                         ToolTip.text: strings.btn_pause_tip; ToolTip.visible: hovered; ToolTip.delay: 500
                         onClicked: bridge.pauseQueue()
+                    }
+                    Button {
+                        text: strings.btn_resume
+                        visible: bridge.queueActive && bridge.queuePaused
+                        highlighted: true
+                        ToolTip.text: strings.btn_resume_tip; ToolTip.visible: hovered; ToolTip.delay: 500
+                        onClicked: bridge.resumeQueue()
                     }
                     Button {
                         text: strings.btn_cancel_all
@@ -952,7 +945,7 @@ ApplicationWindow {
                                 from: 0; to: 5000; stepSize: 50
                                 value: 200
                                 editable: true
-                                ToolTip.text: "0 = sem limite"; ToolTip.visible: hovered; ToolTip.delay: 500
+                                ToolTip.text: strings.playlist_no_limit; ToolTip.visible: hovered; ToolTip.delay: 500
                             }
                             Item { Layout.fillWidth: true }
                         }
@@ -1480,7 +1473,7 @@ ApplicationWindow {
                                     id: depsConsole
                                     readOnly: true
                                     text: root.depsLog
-                                    font.family: "Consolas"
+                                    font.family: "monospace"
                                     font.pixelSize: 11
                                     wrapMode: TextEdit.NoWrap
                                 }
@@ -1590,12 +1583,12 @@ ApplicationWindow {
                             fillMode: Image.PreserveAspectCrop
                             clip: true
                         }
-                        Label {
+                        Image {
                             anchors.centerIn: parent
                             visible: model.thumb === ""
-                            text: "▶"
-                            font.pixelSize: 12
-                            color: Material.secondaryTextColor
+                            source: root.iconPath("play")
+                            sourceSize.width: 18
+                            sourceSize.height: 18
                         }
                     }
 
@@ -1671,8 +1664,8 @@ ApplicationWindow {
                         visible: rowItem.st === "error" && model.error.length > 0
                         text: model.error
                         elide: Text.ElideRight
-                        font.pixelSize: 9
-                        color: "#c62828"
+                        font.pixelSize: 11
+                        color: root.dark ? "#ff8a80" : "#c62828"
                         MouseArea {
                             anchors.fill: parent
                             cursorShape: Qt.PointingHandCursor
@@ -1714,31 +1707,51 @@ ApplicationWindow {
                         anchors.centerIn: parent
                         spacing: 3
                         ToolButton {
-                            width: 30; height: 28; text: "✎"; font.pixelSize: 11
+                            width: 32; height: 28
+                            display: AbstractButton.IconOnly
+                            icon.source: root.iconPath("edit")
+                            icon.width: 16; icon.height: 16
                             visible: rowItem.canEdit
+                            Accessible.name: strings.tip_edit
                             ToolTip.text: strings.tip_edit; ToolTip.visible: hovered; ToolTip.delay: 500
                             onClicked: rowItem.editing = true
                         }
                         ToolButton {
-                            width: 30; height: 28; text: "⧉"; font.pixelSize: 11
+                            width: 32; height: 28
+                            display: AbstractButton.IconOnly
+                            icon.source: root.iconPath("copy")
+                            icon.width: 16; icon.height: 16
+                            Accessible.name: strings.tip_copy
                             ToolTip.text: strings.tip_copy; ToolTip.visible: hovered; ToolTip.delay: 500
                             onClicked: bridge.copyLink(model.url)
                         }
                         ToolButton {
-                            width: 30; height: 28; text: "⟳"; font.pixelSize: 13
+                            width: 32; height: 28
+                            display: AbstractButton.IconOnly
+                            icon.source: root.iconPath("retry")
+                            icon.width: 16; icon.height: 16
                             visible: rowItem.final
+                            Accessible.name: strings.tip_retry
                             ToolTip.text: strings.tip_retry; ToolTip.visible: hovered; ToolTip.delay: 500
                             onClicked: bridge.retryItem(index)
                         }
                         ToolButton {
-                            width: 30; height: 28; text: "✕"; font.pixelSize: 11
+                            width: 32; height: 28
+                            display: AbstractButton.IconOnly
+                            icon.source: root.iconPath("cancel")
+                            icon.width: 16; icon.height: 16
                             visible: rowItem.active || rowItem.st === "waiting"
+                            Accessible.name: strings.tip_cancel
                             ToolTip.text: strings.tip_cancel; ToolTip.visible: hovered; ToolTip.delay: 500
                             onClicked: bridge.cancelItem(index)
                         }
                         ToolButton {
-                            width: 40; height: 28; text: strings.btn_open; font.pixelSize: 9
+                            width: 32; height: 28
+                            display: AbstractButton.IconOnly
+                            icon.source: root.iconPath("open")
+                            icon.width: 16; icon.height: 16
                             visible: rowItem.st === "done"
+                            Accessible.name: strings.tip_open
                             ToolTip.text: strings.tip_open; ToolTip.visible: hovered; ToolTip.delay: 500
                             onClicked: bridge.openDownloadPath(model.path)
                         }
@@ -1762,7 +1775,7 @@ ApplicationWindow {
         parent: root
         modal: true
         title: strings.dlg_error
-        standardButtons: Dialog.Ok
+        standardButtons: Dialog.NoButton
         width: 540
         x: (root.width - width) / 2
         y: (root.height - height) / 2
@@ -1772,11 +1785,18 @@ ApplicationWindow {
                 text: root.errorText
                 wrapMode: Text.Wrap
                 font.pixelSize: 12
-                color: "#c62828"
+                color: root.dark ? "#ff8a80" : "#c62828"
             }
             Button {
                 text: strings.dlg_error_copy
                 onClicked: { bridge.copyLink(root.errorText); errorDialog.close() }
+            }
+        }
+        footer: DialogButtonBox {
+            Button {
+                text: strings.dlg_error_close
+                DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
+                onClicked: errorDialog.close()
             }
         }
     }
@@ -1787,7 +1807,7 @@ ApplicationWindow {
         parent: root
         modal: true
         title: strings.confirm_cancel_title
-        standardButtons: Dialog.Ok | Dialog.Cancel
+        standardButtons: Dialog.NoButton
         width: 420
         x: (root.width - width) / 2
         y: (root.height - height) / 2
@@ -1796,7 +1816,18 @@ ApplicationWindow {
             text: strings.confirm_cancel_text
             wrapMode: Text.Wrap
         }
-        onAccepted: bridge.cancelAll()
+        footer: DialogButtonBox {
+            Button {
+                text: strings.confirm_ok
+                DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
+                onClicked: { bridge.cancelAll(); confirmCancel.close() }
+            }
+            Button {
+                text: strings.confirm_cancel
+                DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
+                onClicked: confirmCancel.close()
+            }
+        }
     }
 
     Dialog {
@@ -1804,7 +1835,7 @@ ApplicationWindow {
         parent: root
         modal: true
         title: strings.confirm_clear_title
-        standardButtons: Dialog.Ok | Dialog.Cancel
+        standardButtons: Dialog.NoButton
         width: 420
         x: (root.width - width) / 2
         y: (root.height - height) / 2
@@ -1813,7 +1844,67 @@ ApplicationWindow {
             text: strings.confirm_clear_text
             wrapMode: Text.Wrap
         }
-        onAccepted: bridge.clearFinished()
+        footer: DialogButtonBox {
+            Button {
+                text: strings.confirm_ok
+                DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
+                onClicked: { bridge.clearFinished(); confirmClear.close() }
+            }
+            Button {
+                text: strings.confirm_cancel
+                DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
+                onClicked: confirmClear.close()
+            }
+        }
+    }
+
+    // ------------------------------------------- opções avançadas do lote
+    Dialog {
+        id: batchOptionsDialog
+        parent: root
+        modal: true
+        title: strings.batch_options
+        width: 520
+        x: (root.width - width) / 2
+        y: (root.height - height) / 2
+        standardButtons: Dialog.NoButton
+        contentItem: ColumnLayout {
+            spacing: 12
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 12
+                visible: bridge.formatMode !== "audio_only"
+                Label { text: strings.quality_label; Layout.fillWidth: true; font.pixelSize: 13 }
+                QualityCombo { Layout.alignment: Qt.AlignVCenter }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 12
+                Label { text: strings.container_label; Layout.fillWidth: true; font.pixelSize: 13 }
+                ContainerCombo { Layout.alignment: Qt.AlignVCenter }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 12
+                visible: bridge.formatMode !== "audio_only"
+                Label { text: strings.codec_label; Layout.fillWidth: true; font.pixelSize: 13 }
+                CodecCombo { Layout.alignment: Qt.AlignVCenter }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 12
+                visible: bridge.formatMode !== "audio_only" && bridge.codec !== "copy"
+                Label { text: strings.compress_label; Layout.fillWidth: true; font.pixelSize: 13 }
+                CompressCombo { Layout.alignment: Qt.AlignVCenter }
+            }
+        }
+        footer: DialogButtonBox {
+            Button {
+                text: strings.dlg_error_close
+                DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
+                onClicked: batchOptionsDialog.close()
+            }
+        }
     }
 
     // ----------------------------------------------------- diálogo de dependências
@@ -1844,7 +1935,7 @@ ApplicationWindow {
                     }
                     return parts.join("\n")
                 }
-                color: "#c62828"
+                color: root.dark ? "#ff8a80" : "#c62828"
                 font.pixelSize: 12
             }
             Label {
@@ -1861,7 +1952,7 @@ ApplicationWindow {
                 TextArea {
                     readOnly: true
                     text: root.depsLog
-                    font.family: "Consolas"
+                    font.family: "monospace"
                     font.pixelSize: 11
                     wrapMode: TextEdit.NoWrap
                 }

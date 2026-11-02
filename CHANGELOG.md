@@ -23,6 +23,8 @@ e o versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 - Build Windows em **`--onedir`** (startup mais rápido, menos falsos positivos) + `--icon`/`--version-file`.
 - Log rotativo, encerramento gracioso e instância única (lock de SO + ativação da janela).
 - Interface de configurações com cards dimensionados pelo conteúdo.
+- Aba **Lote** compacta: opções avançadas em diálogo; resumo do perfil na linha.
+- Ícones **SVG** (tema claro/escuro), nomes acessíveis e accent alinhado ao ícone do app.
 
 ### Corrigido
 - Dessincronização entre modelo e fila ao limpar itens.
@@ -30,6 +32,12 @@ e o versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 - Aba travada por quebra de binding do `SwipeView`.
 - Detecção de ffmpeg instalado fora do PATH (winget/choco).
 - Alinhamento do aviso de dependências e do campo de edição da fila.
+- **Janelas de console** de yt-dlp/ffmpeg não aparecem mais no build Windows;
+  cancelar/fechar encerra a árvore de processos.
+- **Pausar/Retomar** funciona e a fila volta ao estado ocioso ao terminar.
+- A aba **Download Individual** não exibe mais o progresso de itens do lote/playlist.
+- Botões de diálogo localizados (sem “OK/Cancel” fixos em inglês) e textos
+  como “0 = sem limite” traduzidos.
 
 ## [1.2.3] — anterior
 - Controle de rede: limite de velocidade e conexões por download.
