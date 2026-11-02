@@ -1,0 +1,182 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ------------------------------------------------------------------ testes
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pytest ruff
+      - name: Qt runtime libraries (offscreen)
+        run: sudo apt-get update -q && sudo apt-get install -y -q libegl1 libgl1 libxkbcommon0 libxcb-cursor0
+      - name: Lint
+        run: ruff check hlsdl tests main.py worker.py
+      - name: Tests
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m pytest -q
+
+  # ------------------------------------------------------------ build Linux
+  build-linux:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install dependencies
+        run: pip install -r requirements.txt pyinstaller
+      - name: Build binary (onefile para Linux)
+        run: |
+          pyinstaller --noconfirm --clean --onefile --windowed \
+            --name "HLS-Downloader-Pro" \
+            --add-data "hlsdl/ui/main.qml:hlsdl/ui" \
+            --add-data "hlsdl/ui/i18n.js:hlsdl/ui" \
+            --exclude-module yt_dlp \
+            --noupx \
+            main.py
+      - name: Verify binary
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q libegl1 libgl1 libxkbcommon0 libxcb-cursor0
+          ls -lh dist/
+          test -x dist/HLS-Downloader-Pro
+          QT_QPA_PLATFORM=offscreen timeout 25 ./dist/HLS-Downloader-Pro \
+            > /tmp/app.log 2>&1 || true
+          if grep -qi "failed to load component\|No such file\|Traceback" /tmp/app.log; then
+            echo "=== falha ao iniciar ==="; cat /tmp/app.log; exit 1
+          fi
+          echo "=== app rodou 25s offscreen sem erros ==="
+      - name: Package release archive
+        run: |
+          chmod +x install-desktop.sh
+          mkdir -p package/HLS-Downloader-Pro-linux-x86_64
+          cp dist/HLS-Downloader-Pro README.md requirements.txt \
+             install-desktop.sh icon.svg LICENSE THIRD_PARTY_NOTICES.md CHANGELOG.md \
+             package/HLS-Downloader-Pro-linux-x86_64/
+          tar -czf HLS-Downloader-Pro-linux-x86_64.tar.gz -C package .
+          sha256sum HLS-Downloader-Pro-linux-x86_64.tar.gz > SHA256SUMS-linux.txt
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-build
+          path: |
+            HLS-Downloader-Pro-linux-x86_64.tar.gz
+            SHA256SUMS-linux.txt
+      - name: Attach to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            HLS-Downloader-Pro-linux-x86_64.tar.gz
+            SHA256SUMS-linux.txt
+
+  # ---------------------------------------------------------- build Windows
+  build-windows:
+    needs: test
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install dependencies
+        run: pip install -r requirements.txt pyinstaller
+      - name: Generate version metadata
+        run: python scripts/gen_version_info.py
+      - name: Build binary (onedir + icon + version info)
+        run: pyinstaller --noconfirm --clean --onedir --windowed --name "HLS-Downloader-Pro" --icon "assets/icon.ico" --version-file "build/version_info.txt" --add-data "hlsdl/ui/main.qml;hlsdl/ui" --add-data "hlsdl/ui/i18n.js;hlsdl/ui" --exclude-module yt_dlp --noupx main.py
+      - name: Verify binary (offscreen)
+        shell: pwsh
+        run: |
+          $env:QT_QPA_PLATFORM = "offscreen"
+          Get-ChildItem dist\HLS-Downloader-Pro
+          $exe = ".\dist\HLS-Downloader-Pro\HLS-Downloader-Pro.exe"
+          $p = Start-Process -FilePath $exe -PassThru -RedirectStandardError app.err -RedirectStandardOutput app.out
+          Start-Sleep -Seconds 20
+          if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
+          if (Select-String -Path app.err -Pattern "failed to load component|No such file|Traceback" -Quiet) {
+            Write-Error "falha ao iniciar"; Get-Content app.err; exit 1
+          }
+          Write-Host "app rodou offscreen sem erros"
+      - name: Build portable ZIP
+        shell: pwsh
+        run: |
+          $version = python -c "import hlsdl; print(hlsdl.__version__)"
+          "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          New-Item -ItemType Directory -Force "dist\portable" | Out-Null
+          Copy-Item -Recurse -Force "dist\HLS-Downloader-Pro" "dist\portable\HLS-Downloader-Pro"
+          New-Item -ItemType File -Path "dist\portable\HLS-Downloader-Pro\portable.flag" | Out-Null
+          Copy-Item README.md, LICENSE, THIRD_PARTY_NOTICES.md, CHANGELOG.md "dist\portable\HLS-Downloader-Pro\"
+          Compress-Archive -Path "dist\portable\HLS-Downloader-Pro" -DestinationPath "HLS-Downloader-Pro-$version-portable-win64.zip" -Force
+      - name: Build installer (Inno Setup)
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup -y --no-progress
+            $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          }
+          & $iscc "/DAppVersion=$env:VERSION" "installer\HLS-Downloader-Pro.iss"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Get-ChildItem "dist\installer"
+      - name: Checksums
+        shell: pwsh
+        run: |
+          $files = @(
+            "dist\installer\HLS-Downloader-Pro-$env:VERSION-setup.exe",
+            "HLS-Downloader-Pro-$env:VERSION-portable-win64.zip"
+          )
+          $lines = foreach ($f in $files) {
+            $h = (Get-FileHash $f -Algorithm SHA256).Hash.ToLower()
+            "$h  $(Split-Path $f -Leaf)"
+          }
+          $lines | Set-Content "SHA256SUMS-windows.txt" -Encoding ascii
+          Get-Content "SHA256SUMS-windows.txt"
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-build
+          path: |
+            dist/installer/*.exe
+            HLS-Downloader-Pro-*-portable-win64.zip
+            SHA256SUMS-windows.txt
+      - name: Attach to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/installer/*.exe
+            HLS-Downloader-Pro-*-portable-win64.zip
+            SHA256SUMS-windows.txt

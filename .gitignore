@@ -4,12 +4,29 @@ __pycache__/
 *.pyo
 
 # Ambiente local
+.venv/
 settings.ini
 
 # Downloads de teste / temporários
 test_out/
 .thumbs/
 *.log
+
+# Ferramentas
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+build/
+dist/
+*.spec
+package/
+
+# Portátil / artefatos gerados
+portable.flag
+/tools/
+SHA256SUMS-*.txt
+HLS-Downloader-Pro-*.zip
+HLS-Downloader-Pro-*.tar.gz
 
 # IDEs
 .vscode/
