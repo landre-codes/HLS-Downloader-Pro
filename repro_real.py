@@ -3,13 +3,12 @@ não-progresso, para ver qual padrão o worker perde. Usa --download-sections
 para baixar só os primeiros 12s (rápido) mantendo o fluxo de merge real."""
 
 import os
-import re
 import subprocess
 import sys
 import threading
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from worker import PROGRESS_RE, _which, USER_AGENT
+from worker import PROGRESS_RE, USER_AGENT, _which
 
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_out")
 os.makedirs(OUT, exist_ok=True)
@@ -47,7 +46,7 @@ for url in URLS:
                             text=True, encoding="utf-8", errors="replace", bufsize=1)
     errs = []
 
-    def drain():
+    def drain(proc=proc, errs=errs):
         for line in proc.stderr:
             errs.append(line.rstrip())
 
@@ -64,6 +63,6 @@ for url in URLS:
     rc = proc.wait()
     print("rc =", rc)
     print("stderr (ultimas 6):")
-    for l in errs[-6:]:
-        print("  ERR>", l[:220])
+    for line in errs[-6:]:
+        print("  ERR>", line[:220])
     print()

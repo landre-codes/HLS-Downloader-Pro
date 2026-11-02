@@ -4,7 +4,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from worker import PROGRESS_RE, _which, USER_AGENT
+from worker import PROGRESS_RE, USER_AGENT, _which
 
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_out")
 os.makedirs(OUT, exist_ok=True)
@@ -30,6 +30,7 @@ def drain():
     for line in proc.stderr:
         stderr_lines.append(line.rstrip())
 import threading
+
 threading.Thread(target=drain, daemon=True).start()
 
 matched_prog = 0
@@ -65,11 +66,11 @@ print("rc =", rc)
 print("linhas progresso:", matched_prog, "| dest:", matched_dest, "| outras:", other)
 print("out_path existe?", out_path and os.path.exists(out_path))
 print("stderr_lines:", len(stderr_lines))
-for l in stderr_lines[-5:]:
-    print("ERR>", l[:200])
+for line in stderr_lines[-5:]:
+    print("ERR>", line[:200])
 print("=== as linhas 'outras' ===")
-for l in first_lines:
-    print("OUT>", repr(l[:200]))
+for line in first_lines:
+    print("OUT>", repr(line[:200]))
 print("=== amostra das linhas 'outras' posteriores ===")
-for l in other_sample:
-    print("SMP>", repr(l[:200]))
+for line in other_sample:
+    print("SMP>", repr(line[:200]))

@@ -3,12 +3,13 @@
 import os
 import sys
 
-from PyQt6.QtCore import QTimer, QUrl
-from PyQt6.QtGui import QFont
-from PyQt6.QtQml import QQmlApplicationEngine
-from PyQt6.QtQuick import QQuickItem
-from PyQt6.QtWidgets import QApplication
+from PySide6.QtCore import QTimer, QUrl
+from PySide6.QtGui import QFont
+from PySide6.QtQml import QQmlApplicationEngine
+from PySide6.QtQuick import QQuickItem
+from PySide6.QtWidgets import QApplication
 
+from hlsdl.config import qml_path
 from main import Bridge, default_output_folder
 from worker import DownloadModel, QueueManager
 
@@ -22,7 +23,7 @@ bridge = Bridge(manager, default_output_folder())
 engine = QQmlApplicationEngine()
 engine.rootContext().setContextProperty("downloadModel", model)
 engine.rootContext().setContextProperty("bridge", bridge)
-engine.load(QUrl.fromLocalFile(os.path.join(os.path.dirname(os.path.abspath(__file__)), "ui.qml")))
+engine.load(QUrl.fromLocalFile(qml_path()))
 root = engine.rootObjects()[0]
 
 

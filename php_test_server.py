@@ -33,9 +33,9 @@ class H(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/page.php":
             body = (
-                "<html><body><video src=\"/media.php?file=stream.m3u8\"></video>"
-                "<a href=\"/media.php?file=stream.m3u8\">m3u8</a></body></html>"
-            ).encode()
+                b"<html><body><video src=\"/media.php?file=stream.m3u8\"></video>"
+                b"<a href=\"/media.php?file=stream.m3u8\">m3u8</a></body></html>"
+            )
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))

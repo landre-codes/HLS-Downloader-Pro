@@ -2,21 +2,23 @@
 diálogo abre com a mensagem completa (via QQmlExpression, sem item.property).
 
 NOTA: exceções dentro do callback do QTimer crasham (0xC0000409) nessa build
-do PyQt6 — nada de raise no run(); coleta falhas e sai com código.
+do PySide6 — nada de raise no run(); coleta falhas e sai com código.
 """
 
 from __future__ import annotations
 
 import os
 import sys
+import tempfile
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt6.QtCore import QTimer, QUrl
-from PyQt6.QtGui import QFont
-from PyQt6.QtQml import QQmlApplicationEngine, QQmlExpression
-from PyQt6.QtWidgets import QApplication
+from PySide6.QtCore import QTimer, QUrl
+from PySide6.QtGui import QFont
+from PySide6.QtQml import QQmlApplicationEngine, QQmlExpression
+from PySide6.QtWidgets import QApplication
 
+from hlsdl.config import qml_path
 from main import Bridge, default_output_folder
 from worker import DownloadModel, QueueManager, Status
 
@@ -44,7 +46,10 @@ def main() -> int:
     outdir = default_output_folder()
     model = DownloadModel([])
     manager = QueueManager(model, outdir=outdir, concurrency=3)
-    bridge = Bridge(manager, outdir)
+    bridge = Bridge(
+        manager, outdir,
+        settings_path=os.path.join(tempfile.gettempdir(), "hlsdlp-errdialog-test.ini"),
+    )
 
     model.add({
         "id": 1,
@@ -61,12 +66,12 @@ def main() -> int:
     engine = QQmlApplicationEngine()
     engine.rootContext().setContextProperty("downloadModel", model)
     engine.rootContext().setContextProperty("bridge", bridge)
-    engine.load(QUrl.fromLocalFile(os.path.join(os.path.dirname(os.path.abspath(__file__)), "ui.qml")))
+    engine.load(QUrl.fromLocalFile(qml_path()))
     root = engine.rootObjects()[0]
     ctx = engine.contextForObject(root)
 
     def run():
-        from PyQt6.QtCore import QModelIndex
+        from PySide6.QtCore import QModelIndex
         n = model.rowCount(QModelIndex())
         chk("linhas no modelo (python)", n, 1)
         err = model.data(model.index(0, 0), model.ERROR)

@@ -1,6 +1,6 @@
 """Dump da árvore de geometria do QML para depuração do layout.
 
-NOTA: nao usamos item.property() aqui — nessa build do PyQt6 ler certas
+NOTA: nao usamos item.property() aqui — nessa build do PySide6 ler certas
 propriedades QML pelo Python crasha o processo (0xC0000409, __fastfail).
 """
 
@@ -9,12 +9,12 @@ from __future__ import annotations
 import os
 import sys
 
-from PyQt6.QtCore import QTimer, QUrl
-from PyQt6.QtGui import QFont
-from PyQt6.QtQml import QQmlApplicationEngine
-from PyQt6.QtQuick import QQuickItem
-from PyQt6.QtWidgets import QApplication
+from PySide6.QtCore import QTimer, QUrl
+from PySide6.QtGui import QFont
+from PySide6.QtQml import QQmlApplicationEngine
+from PySide6.QtWidgets import QApplication
 
+from hlsdl.config import qml_path
 from main import Bridge, default_output_folder
 from worker import DownloadModel, QueueManager
 
@@ -43,9 +43,7 @@ def main() -> int:
     engine = QQmlApplicationEngine()
     engine.rootContext().setContextProperty("downloadModel", model)
     engine.rootContext().setContextProperty("bridge", bridge)
-    qml_file = sys.argv[1] if len(sys.argv) > 1 else os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "ui.qml"
-    )
+    qml_file = sys.argv[1] if len(sys.argv) > 1 else qml_path()
     engine.load(QUrl.fromLocalFile(qml_file))
 
     root = engine.rootObjects()[0]

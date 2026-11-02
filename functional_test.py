@@ -5,11 +5,11 @@ import time
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from PyQt6.QtCore import QThread
-from PyQt6.QtWidgets import QApplication
+from PySide6.QtCore import QThread
+from PySide6.QtWidgets import QApplication
 
-from worker import DownloadWorker
 from hls_test_server import HLSFixture
+from worker import DownloadWorker
 
 app = QApplication(sys.argv)
 OUTDIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_out")
@@ -135,12 +135,12 @@ print("OK\n")
 print("=== Teste 4: scraper de HTML (fallback BS4) ===")
 # Página cujo HTML embute o m3u8 em JSON-LD e em <source>.
 page = os.path.join(fixture.hls_dir, "player.html")
+url = fixture.url()
 with open(page, "w", encoding="utf-8") as f:
     f.write(
         '<html><head><script type="application/ld+json">'
-        '{"video": {"contentUrl": "%s"}}</script></head>'
-        '<body><video><source src="%s"></video></body></html>'
-        % (fixture.url(), fixture.url())
+        + '{"video": {"contentUrl": "' + url + '"}}</script></head>'
+        + '<body><video><source src="' + url + '"></video></body></html>'
     )
 found = DownloadWorker(fixture.url("player.html"), OUTDIR)._find_media_in_html()
 print("Stream encontrado pelo scraper:", found)

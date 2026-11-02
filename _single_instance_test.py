@@ -8,7 +8,7 @@ os.environ["PYTHONIOENCODING"] = "utf-8"
 
 A = """
 import sys, os
-from PyQt6.QtCore import QCoreApplication, QTimer
+from PySide6.QtCore import QCoreApplication, QTimer
 sys.path.insert(0, os.getcwd())
 import main
 app = QCoreApplication([])
@@ -19,7 +19,7 @@ sys.exit(app.exec())
 
 B = """
 import sys, os
-from PyQt6.QtCore import QCoreApplication
+from PySide6.QtCore import QCoreApplication
 sys.path.insert(0, os.getcwd())
 import main
 app = QCoreApplication([])
@@ -38,5 +38,6 @@ pb = subprocess.run(
 out_a, _ = pa.communicate(timeout=30)
 print(out_a.strip().splitlines()[0])
 print(pb.stdout.strip())
-assert "True" in out_a and "False" in pb.stdout, "FALHOU"
+assert out_a.strip().splitlines()[0].endswith("True"), out_a
+assert pb.stdout.strip().endswith("False"), pb.stdout
 print("OK: A principal, B bloqueado")

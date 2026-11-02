@@ -9,8 +9,8 @@ import time
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from PyQt6.QtCore import QThread
-from PyQt6.QtWidgets import QApplication
+from PySide6.QtCore import QThread
+from PySide6.QtWidgets import QApplication
 
 from worker import DownloadWorker
 

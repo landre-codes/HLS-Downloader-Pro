@@ -1,0 +1,747 @@
+"""Ponte entre o QML e o backend.
+
+O QML chama os ``@Slot`` e reage aos sinais. Também persiste as
+preferências em ``settings.ini`` e expõe o estado das dependências externas.
+"""
+
+from __future__ import annotations
+
+import os
+import subprocess
+
+from PySide6.QtCore import Property, QObject, QSettings, Signal, Slot
+from PySide6.QtGui import QGuiApplication
+from PySide6.QtWidgets import QApplication, QFileDialog
+
+from . import __version__
+from .config import BROWSERS, user_config_dir
+from .config import settings_path as default_settings_path
+from .deps import YTDLP_VARIANTS, DependencyManager
+from .formats import (
+    AUDIO_CONTAINERS,
+    CODECS,
+    COMPRESS_LEVELS,
+    DEFAULT_AUDIO_CONTAINER,
+    DEFAULT_VIDEO_CONTAINER,
+    FORMAT_MODES,
+    NAMING_MODES,
+    QUALITIES,
+    VIDEO_CONTAINERS,
+)
+from .i18n import LANGUAGE_NAMES, LANGUAGES, tr
+from .playlist import PlaylistLoader
+from .queue import QueueManager
+
+
+class Bridge(QObject):
+    """Ponte entre o QML e o backend (``QueueManager``/``DependencyManager``)."""
+
+    statsChanged = Signal(int, int, int, int)   # aguardando, baixando, ok, erro
+    notifyText = Signal(str)                    # toast no QML
+    outputFolderChanged = Signal(str)
+    darkChanged = Signal(bool)
+    concurrencyChanged = Signal(int)
+    limitRateChanged = Signal(int)
+    fragmentsChanged = Signal(int)
+    cookiesEnabledChanged = Signal(bool)
+    cookiesBrowserIndexChanged = Signal(int)
+    cookiesFileChanged = Signal(str)
+    languageChanged = Signal(str)
+    queueActiveChanged = Signal(bool)
+    formatModeChanged = Signal(str)
+    qualityChanged = Signal(str)
+    containerChanged = Signal(str)
+    codecChanged = Signal(str)
+    compressLevelChanged = Signal(str)
+    namingModeChanged = Signal(str)
+    ytdlpVariantChanged = Signal(str)
+    lastItemChanged = Signal()
+    playlistChanged = Signal()
+    playlistLoadingChanged = Signal(bool)
+    depsChanged = Signal()
+    depsOutput = Signal(str)
+    depsInstallFinished = Signal(str, bool, str)
+
+    def __init__(
+        self,
+        manager: QueueManager,
+        default_outdir: str,
+        parent: QObject | None = None,
+        settings_path: str | None = None,
+        deps: DependencyManager | None = None,
+    ):
+        super().__init__(parent)
+        self.manager = manager
+        self._settings = QSettings(
+            settings_path or default_settings_path(), QSettings.Format.IniFormat
+        )
+
+        # -------------------------------------------------- carrega o estado
+        self._dark = self._settings.value("theme/dark", True, type=bool)
+        self._concurrency = self._clamp(int(self._settings.value("download/concurrency", 3)), 1, 8)
+        self._limit_rate_mb = self._clamp(int(self._settings.value("download/limit_rate", 0)), 0, 1000)
+        self._fragments = self._clamp(int(self._settings.value("download/fragments", 1)), 1, 8)
+        self._output_folder = str(self._settings.value("download/folder", default_outdir))
+        self._cookies_enabled = self._settings.value("cookies/enabled", False, type=bool)
+        self._cookies_browser_index = self._clamp(
+            int(self._settings.value("cookies/browser_index", 0)), 0, len(BROWSERS) - 1
+        )
+        self._cookies_file = str(self._settings.value("cookies/file", ""))
+        self._deps_prompt_dismissed = self._settings.value(
+            "deps/prompt_dismissed", False, type=bool
+        )
+        self._lang = str(self._settings.value("i18n/language", "pt"))
+        if self._lang not in LANGUAGES:
+            self._lang = "pt"
+        self._format_mode = str(self._settings.value("download/format_mode", "video_audio"))
+        if self._format_mode not in FORMAT_MODES:
+            self._format_mode = "video_audio"
+        self._quality = str(self._settings.value("download/quality", "best"))
+        if self._quality not in QUALITIES:
+            self._quality = "best"
+        self._container = str(self._settings.value("download/container", ""))
+        _valid_containers = AUDIO_CONTAINERS if self._format_mode == "audio_only" else VIDEO_CONTAINERS
+        if self._container not in _valid_containers:
+            self._container = (
+                DEFAULT_AUDIO_CONTAINER if self._format_mode == "audio_only"
+                else DEFAULT_VIDEO_CONTAINER
+            )
+        self._codec = str(self._settings.value("encode/codec", "copy"))
+        if self._codec not in CODECS:
+            self._codec = "copy"
+        self._compress_level = str(self._settings.value("encode/level", "medium"))
+        if self._compress_level not in COMPRESS_LEVELS:
+            self._compress_level = "medium"
+        self._naming_mode = str(self._settings.value("naming/mode", "id"))
+        if self._naming_mode not in NAMING_MODES:
+            self._naming_mode = "id"
+        self._ytdlp_variant = str(self._settings.value("deps/ytdlp_variant", "stable"))
+        if self._ytdlp_variant not in YTDLP_VARIANTS:
+            self._ytdlp_variant = "stable"
+
+        self._deps_list: list[dict] = []
+        self._deps_busy = False
+        self._last_item: dict = {}
+        self._playlist_items: list = []
+        self._playlist_loading = False
+
+        # -------------------------------------------------- dependências
+        self.deps = deps or DependencyManager(self)
+        self.deps.variant = self._ytdlp_variant
+        self.deps.checked.connect(self._on_deps_checked)
+        self.deps.installStarted.connect(self._on_deps_started)
+        self.deps.installOutput.connect(self.depsOutput.emit)
+        self.deps.installFinished.connect(self._on_deps_finished)
+
+        # ------------------------------------------------------ playlists
+        self._playlist = PlaylistLoader(self._translator(), self)
+        self._playlist.loadingChanged.connect(self._on_playlist_loading)
+        self._playlist.loaded.connect(self._on_playlist_loaded)
+        self._playlist.failed.connect(self._on_playlist_failed)
+
+        # ------------------------------------------------------- aplica tudo
+        manager.statsChanged.connect(self.statsChanged.emit)
+        manager.outdirChanged.connect(self.outputFolderChanged.emit)
+        manager.itemUpdated.connect(self._on_item_updated)
+        manager.outdir = self._output_folder
+        manager.setConcurrency(self._concurrency)
+        manager.set_translator(self._translator())
+        manager.setCookies(self._build_cookies_arg())
+        manager.setLimitRate(self._limit_rate_arg())
+        manager.setFragments(self._fragments)
+        manager.setFormatMode(self._format_mode)
+        manager.setQuality(self._quality)
+        manager.setContainer(self._container)
+        manager.setCodec(self._codec)
+        manager.setCompressLevel(self._compress_level)
+        manager.setNamingMode(self._naming_mode)
+
+        self.deps.check_all()
+
+    # ------------------------------------------------------------- utilidades
+    @staticmethod
+    def _clamp(value: int, low: int, high: int) -> int:
+        return max(low, min(high, value))
+
+    def _save(self, key: str, value) -> None:
+        self._settings.setValue(key, value)
+        self._settings.sync()
+
+    def _tr(self, key: str, **kw) -> str:
+        return tr(self._lang, key, **kw)
+
+    def _translator(self):
+        return lambda key, **kw: tr(self._lang, key, **kw)
+
+    # ------------------------------------------------------------- atributos
+    @Property(str, constant=True)
+    def appVersion(self) -> str:
+        return __version__
+
+    @Property(str, notify=languageChanged)
+    def language(self) -> str:
+        return self._lang
+
+    @Slot(str)
+    def setLanguage(self, lang: str) -> None:
+        lang = lang if lang in LANGUAGES else "pt"
+        if lang == self._lang:
+            return
+        self._lang = lang
+        self._save("i18n/language", lang)
+        self.manager.set_translator(self._translator())
+        self._playlist.set_translator(self._translator())
+        self.languageChanged.emit(lang)
+
+    @Property(list, constant=True)
+    def languages(self) -> list:
+        """Idiomas disponíveis para o seletor (código + nome)."""
+        return [{"code": code, "name": LANGUAGE_NAMES[code]} for code in LANGUAGES]
+
+    @Property(str, notify=outputFolderChanged)
+    def outputFolder(self) -> str:
+        return self._output_folder
+
+    @Property(bool, notify=darkChanged)
+    def dark(self) -> bool:
+        return self._dark
+
+    @Property(int, notify=concurrencyChanged)
+    def concurrency(self) -> int:
+        return self._concurrency
+
+    @Property(int, notify=limitRateChanged)
+    def limitRateMB(self) -> int:
+        return self._limit_rate_mb
+
+    @Property(int, notify=fragmentsChanged)
+    def fragments(self) -> int:
+        return self._fragments
+
+    @Property(bool, notify=cookiesEnabledChanged)
+    def cookiesEnabled(self) -> bool:
+        return self._cookies_enabled
+
+    @Property(int, notify=cookiesBrowserIndexChanged)
+    def cookiesBrowserIndex(self) -> int:
+        return self._cookies_browser_index
+
+    @Property(str, notify=cookiesFileChanged)
+    def cookiesFile(self) -> str:
+        return self._cookies_file
+
+    @Property(bool, notify=queueActiveChanged)
+    def queueActive(self) -> bool:
+        return self.manager.isActive
+
+    def _ytdlp_available(self) -> bool:
+        return any(d["key"] == "ytdlp" and d["found"] for d in self._deps_list)
+
+    @Property(str, notify=formatModeChanged)
+    def formatMode(self) -> str:
+        return self._format_mode
+
+    @Slot(str)
+    def setFormatMode(self, mode: str) -> None:
+        mode = mode if mode in FORMAT_MODES else "video_audio"
+        if mode == self._format_mode:
+            return
+        self._format_mode = mode
+        self.manager.setFormatMode(mode)
+        self._save("download/format_mode", mode)
+        # Ajusta o contêiner se ele não fizer sentido no novo modo.
+        valid = AUDIO_CONTAINERS if mode == "audio_only" else VIDEO_CONTAINERS
+        if self._container not in valid:
+            self.setContainer(
+                DEFAULT_AUDIO_CONTAINER if mode == "audio_only" else DEFAULT_VIDEO_CONTAINER
+            )
+        self.formatModeChanged.emit(mode)
+
+    @Property(str, notify=qualityChanged)
+    def quality(self) -> str:
+        return self._quality
+
+    @Slot(str)
+    def setQuality(self, quality: str) -> None:
+        quality = quality if quality in QUALITIES else "best"
+        if quality == self._quality:
+            return
+        self._quality = quality
+        self.manager.setQuality(quality)
+        self._save("download/quality", quality)
+        self.qualityChanged.emit(quality)
+
+    @Property(str, notify=containerChanged)
+    def container(self) -> str:
+        return self._container
+
+    @Slot(str)
+    def setContainer(self, container: str) -> None:
+        valid = AUDIO_CONTAINERS if self._format_mode == "audio_only" else VIDEO_CONTAINERS
+        container = container if container in valid else valid[0]
+        if container == self._container:
+            return
+        self._container = container
+        self.manager.setContainer(container)
+        self._save("download/container", container)
+        self.containerChanged.emit(container)
+
+    @Property(str, notify=codecChanged)
+    def codec(self) -> str:
+        return self._codec
+
+    @Slot(str)
+    def setCodec(self, codec: str) -> None:
+        codec = codec if codec in CODECS else "copy"
+        if codec == self._codec:
+            return
+        self._codec = codec
+        self.manager.setCodec(codec)
+        self._save("encode/codec", codec)
+        self.codecChanged.emit(codec)
+
+    @Property(str, notify=compressLevelChanged)
+    def compressLevel(self) -> str:
+        return self._compress_level
+
+    @Slot(str)
+    def setCompressLevel(self, level: str) -> None:
+        level = level if level in COMPRESS_LEVELS else "medium"
+        if level == self._compress_level:
+            return
+        self._compress_level = level
+        self.manager.setCompressLevel(level)
+        self._save("encode/level", level)
+        self.compressLevelChanged.emit(level)
+
+    @Property(str, notify=namingModeChanged)
+    def namingMode(self) -> str:
+        return self._naming_mode
+
+    @Slot(str)
+    def setNamingMode(self, mode: str) -> None:
+        mode = mode if mode in NAMING_MODES else "id"
+        if mode == self._naming_mode:
+            return
+        self._naming_mode = mode
+        self.manager.setNamingMode(mode)
+        self._save("naming/mode", mode)
+        self.namingModeChanged.emit(mode)
+
+    @Property(str, notify=ytdlpVariantChanged)
+    def ytdlpVariant(self) -> str:
+        return self._ytdlp_variant
+
+    @Slot(str)
+    def setYtdlpVariant(self, variant: str) -> None:
+        variant = variant if variant in YTDLP_VARIANTS else "stable"
+        if variant == self._ytdlp_variant:
+            return
+        self._ytdlp_variant = variant
+        self._save("deps/ytdlp_variant", variant)
+        set_variant = getattr(self.deps, "set_variant", None)
+        if callable(set_variant):
+            set_variant(variant)
+        self.ytdlpVariantChanged.emit(variant)
+
+    @Property("QVariantMap", notify=lastItemChanged)
+    def lastItem(self) -> dict:
+        return self._last_item
+
+    def _on_item_updated(self, item: dict) -> None:
+        status = item.get("status")
+        self._last_item = {
+            "url": item.get("url", ""),
+            "title": item.get("title") or item.get("url", ""),
+            "status": getattr(status, "value", str(status)),
+            "progress": round(float(item.get("progress", 0.0)), 1),
+            "speed": item.get("speed", "—"),
+            "size": item.get("size", "—"),
+            "error": item.get("error", ""),
+            "path": item.get("path", ""),
+            "thumbnail": item.get("thumb", ""),
+        }
+        self.lastItemChanged.emit()
+
+    # ------------------------------------------------------------ playlists
+    @Property(list, notify=playlistChanged)
+    def playlistItems(self) -> list:
+        return self._playlist_items
+
+    @Property(bool, notify=playlistLoadingChanged)
+    def playlistLoading(self) -> bool:
+        return self._playlist_loading
+
+    @Slot(str, int)
+    def loadPlaylist(self, url: str, limit: int) -> None:
+        self._playlist.load(url, int(limit), self._build_cookies_arg())
+
+    @Slot()
+    def clearPlaylist(self) -> None:
+        self._playlist_items = []
+        self.playlistChanged.emit()
+
+    @Slot(str)
+    def addLinksAndStart(self, text: str) -> None:
+        """Adiciona links (ex.: selecionados de uma playlist) e inicia a fila."""
+        added, skipped = self.manager.addText(text)
+        if added:
+            self.notifyText.emit(self._tr("links_added", a=added))
+        elif skipped:
+            self.notifyText.emit(self._tr("links_skipped", s=skipped))
+        self.manager.start()
+        self.queueActiveChanged.emit(True)
+
+    def _on_playlist_loading(self, loading: bool) -> None:
+        self._playlist_loading = loading
+        self.playlistLoadingChanged.emit(loading)
+
+    def _on_playlist_loaded(self, items: list) -> None:
+        self._playlist_items = items
+        self.playlistChanged.emit()
+
+    def _on_playlist_failed(self, message: str) -> None:
+        self.notifyText.emit(message)
+
+    def _ffmpeg_available(self) -> bool:
+        return any(d["key"] == "ffmpeg" and d["found"] for d in self._deps_list)
+
+    @Property(bool, notify=depsChanged)
+    def ytdlpAvailable(self) -> bool:
+        return self._ytdlp_available()
+
+    @Property(bool, notify=depsChanged)
+    def ffmpegAvailable(self) -> bool:
+        return self._ffmpeg_available()
+
+    @Property(bool, notify=depsChanged)
+    def anyEssentialMissing(self) -> bool:
+        if not self._deps_list:
+            return False
+        return any(d["required"] and not d["found"] for d in self._deps_list)
+
+    @Property(list, notify=depsChanged)
+    def dependencies(self) -> list:
+        return self._deps_list
+
+    @Property(bool, notify=depsChanged)
+    def depsBusy(self) -> bool:
+        return self._deps_busy
+
+    @Property(bool, notify=depsChanged)
+    def depsPromptDismissed(self) -> bool:
+        return self._deps_prompt_dismissed
+
+    @Slot()
+    def dismissDepsPrompt(self) -> None:
+        """Não volta a perguntar sobre dependências nesta máquina."""
+        if not self._deps_prompt_dismissed:
+            self._deps_prompt_dismissed = True
+            self._save("deps/prompt_dismissed", True)
+            self.depsChanged.emit()
+
+    # ---------------------------------------------------------------- slots
+    @Slot(str)
+    def addLinks(self, text: str) -> None:
+        added, skipped = self.manager.addText(text)
+        if added and skipped:
+            self.notifyText.emit(self._tr("links_added_skipped", a=added, s=skipped))
+        elif added:
+            self.notifyText.emit(self._tr("links_added", a=added))
+        elif skipped:
+            self.notifyText.emit(self._tr("links_skipped", s=skipped))
+        else:
+            self.notifyText.emit(self._tr("no_links"))
+
+    @Slot()
+    def pasteFromClipboard(self) -> None:
+        text = QApplication.clipboard().text()
+        if text.strip():
+            self.addLinks(text)
+        else:
+            self.notifyText.emit(self._tr("clipboard_empty"))
+
+    @Slot()
+    def importTxt(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            None,
+            self._tr("dlg_links"),
+            "",
+            "Arquivos de texto (*.txt);;Todos os arquivos (*.*)",
+        )
+        if path:
+            self.importTxtPath(path)
+
+    @Slot(str)
+    def importTxtPath(self, path: str) -> None:
+        """Lê um .txt (usado pelo botão e pelo arrastar-e-soltar)."""
+        if not path:
+            return
+        try:
+            with open(path, encoding="utf-8", errors="ignore") as handle:
+                content = handle.read()
+        except OSError as exc:
+            self.notifyText.emit(self._tr("read_failed", err=exc))
+            return
+        self.addLinks(content)
+
+    @Slot()
+    def chooseOutputFolder(self) -> None:
+        path = QFileDialog.getExistingDirectory(
+            None, self._tr("dlg_outdir"), self._output_folder
+        )
+        if path:
+            self._output_folder = path
+            self.manager.setOutdir(path)
+            self._save("download/folder", path)
+            self.outputFolderChanged.emit(path)
+            self.notifyText.emit(self._tr("output_folder", path=path))
+
+    @Slot(int)
+    def setConcurrency(self, n: int) -> None:
+        n = self._clamp(int(n), 1, 8)
+        if n == self._concurrency:
+            return
+        self._concurrency = n
+        self.manager.setConcurrency(n)
+        self._save("download/concurrency", n)
+        self.concurrencyChanged.emit(n)
+
+    # -------------------------------------------------------------- rede
+    def _limit_rate_arg(self) -> str:
+        if self._limit_rate_mb <= 0:
+            return ""
+        return f"{self._limit_rate_mb}M"
+
+    @Slot(int)
+    def setLimitRateMB(self, mb: int) -> None:
+        mb = self._clamp(int(mb), 0, 1000)
+        if mb == self._limit_rate_mb:
+            return
+        self._limit_rate_mb = mb
+        self.manager.setLimitRate(self._limit_rate_arg())
+        self._save("download/limit_rate", mb)
+        self.limitRateChanged.emit(mb)
+
+    @Slot(int)
+    def setFragments(self, n: int) -> None:
+        n = self._clamp(int(n), 1, 8)
+        if n == self._fragments:
+            return
+        self._fragments = n
+        self.manager.setFragments(n)
+        self._save("download/fragments", n)
+        self.fragmentsChanged.emit(n)
+
+    @Slot(bool)
+    def setDark(self, value: bool) -> None:
+        value = bool(value)
+        if value == self._dark:
+            return
+        self._dark = value
+        self._save("theme/dark", value)
+        self.darkChanged.emit(value)
+
+    # -------------------------------------------------------------- cookies
+    def _build_cookies_arg(self) -> str:
+        if not self._cookies_enabled:
+            return ""
+        if self._cookies_file.strip():
+            return "file:" + self._cookies_file.strip()
+        if 0 <= self._cookies_browser_index < len(BROWSERS):
+            return "browser:" + BROWSERS[self._cookies_browser_index]
+        return ""
+
+    def _push_cookies(self) -> None:
+        self.manager.setCookies(self._build_cookies_arg())
+
+    @Slot(bool)
+    def setCookiesEnabled(self, value: bool) -> None:
+        value = bool(value)
+        if value == self._cookies_enabled:
+            return
+        self._cookies_enabled = value
+        self._save("cookies/enabled", value)
+        self._push_cookies()
+        self.cookiesEnabledChanged.emit(value)
+
+    @Slot(int)
+    def setCookiesBrowserIndex(self, index: int) -> None:
+        index = self._clamp(int(index), 0, len(BROWSERS) - 1)
+        if index == self._cookies_browser_index:
+            return
+        self._cookies_browser_index = index
+        self._save("cookies/browser_index", index)
+        self._push_cookies()
+        self.cookiesBrowserIndexChanged.emit(index)
+
+    @Slot(str)
+    def setCookiesFile(self, path: str) -> None:
+        path = (path or "").strip()
+        if path == self._cookies_file:
+            return
+        self._cookies_file = path
+        self._save("cookies/file", path)
+        self._push_cookies()
+        self.cookiesFileChanged.emit(path)
+
+    @Slot()
+    def chooseCookiesFile(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            None,
+            self._tr("dlg_cookies"),
+            "",
+            "Arquivos de cookie (*.txt);;Todos os arquivos (*.*)",
+        )
+        if path:
+            self.setCookiesFile(path)
+
+    # -------------------------------------------------------- janela/geometria
+    @Slot(int, int, int, int, bool)
+    def saveGeometry(self, x: int, y: int, w: int, h: int, maximized: bool) -> None:
+        self._save("window/geometry", f"{x},{y},{w},{h}")
+        self._save("window/maximized", maximized)
+
+    # ------------------------------------------------------------ fila
+    @Slot(str)
+    def downloadSingle(self, url: str) -> None:
+        """Adiciona um único link e inicia a fila (aba Download Individual)."""
+        url = (url or "").strip()
+        if not url:
+            self.notifyText.emit(self._tr("no_links"))
+            return
+        self.manager.addText(url)
+        self.manager.start()
+        self.queueActiveChanged.emit(True)
+
+    @Slot()
+    def startQueue(self) -> None:
+        self.manager.start()
+        self.queueActiveChanged.emit(True)
+        self.notifyText.emit(self._tr("queue_started"))
+
+    @Slot()
+    def pauseQueue(self) -> None:
+        self.manager.pause()
+        self.notifyText.emit(self._tr("queue_paused"))
+
+    @Slot()
+    def resumeQueue(self) -> None:
+        self.manager.resume()
+        self.notifyText.emit(self._tr("queue_resumed"))
+
+    @Slot()
+    def cancelAll(self) -> None:
+        self.manager.cancelAll()
+        self.queueActiveChanged.emit(False)
+        self.notifyText.emit(self._tr("downloads_cancelled"))
+
+    @Slot(int)
+    def cancelItem(self, row: int) -> None:
+        self.manager.cancelItem(row)
+        self.notifyText.emit(self._tr("item_cancelled"))
+
+    @Slot(int)
+    def removeItem(self, row: int) -> None:
+        self.manager.removeItem(row)
+        self.notifyText.emit(self._tr("item_removed"))
+
+    @Slot(int)
+    def retryItem(self, row: int) -> None:
+        self.manager.retryItem(row)
+
+    @Slot(int, str)
+    def editUrl(self, row: int, new_url: str) -> bool:
+        ok = self.manager.editUrl(row, new_url)
+        self.notifyText.emit(self._tr("link_updated" if ok else "link_update_failed"))
+        return ok
+
+    @Slot(str)
+    def copyLink(self, url: str) -> None:
+        QGuiApplication.clipboard().setText(url)
+        self.notifyText.emit(self._tr("link_copied"))
+
+    @Slot()
+    def clearFinished(self) -> None:
+        self.manager.clearFinished()
+
+    @Slot()
+    def clearAll(self) -> None:
+        self.manager.clearAll()
+        self.queueActiveChanged.emit(False)
+
+    @Slot(str)
+    def openDownloadPath(self, path: str) -> None:
+        """Abre o gerenciador de arquivos na pasta onde o arquivo foi salvo."""
+        folder = os.path.dirname(path)
+        if not os.path.isdir(folder):
+            return
+        try:
+            if os.name == "nt":
+                os.startfile(folder)  # type: ignore[attr-defined]
+            elif sys_platform_darwin():
+                subprocess.Popen(["open", folder])
+            else:
+                subprocess.Popen(["xdg-open", folder])
+        except OSError:
+            pass
+
+    @Slot()
+    def openLogFolder(self) -> None:
+        """Abre a pasta onde ficam logs e settings."""
+        folder = user_config_dir()
+        try:
+            if os.name == "nt":
+                os.startfile(folder)  # type: ignore[attr-defined]
+            elif sys_platform_darwin():
+                subprocess.Popen(["open", folder])
+            else:
+                subprocess.Popen(["xdg-open", folder])
+        except OSError:
+            pass
+
+    # ---------------------------------------------------- dependências (slots)
+    def _on_deps_checked(self, items: list) -> None:
+        self._deps_list = items
+        self.depsChanged.emit()
+
+    def _on_deps_started(self, key: str) -> None:
+        self._deps_busy = True
+        self.depsChanged.emit()
+
+    def _on_deps_finished(self, key: str, ok: bool, name: str) -> None:
+        self._deps_busy = False
+        if ok:
+            self.notifyText.emit(self._tr("dep_updated", name=name))
+        else:
+            self.notifyText.emit(self._tr("dep_install_failed", name=name))
+        self.depsInstallFinished.emit(key, ok, name)
+        self.depsChanged.emit()
+
+    @Slot()
+    def refreshDependencies(self) -> None:
+        self.deps.check_all()
+
+    @Slot()
+    def installMissingDependencies(self) -> None:
+        self.deps.install_missing_required()
+
+    @Slot(str)
+    def installDependency(self, key: str) -> None:
+        if not self.deps.install(key):
+            if not self._deps_busy:
+                self.notifyText.emit(self._tr("dep_not_applicable", name=key))
+
+    @Slot()
+    def updateDependencies(self) -> None:
+        self.deps.update_all()
+
+    def set_dependencies(self, items: list[dict]) -> None:
+        """Permite injetar o estado (usado em testes)."""
+        self._on_deps_checked(items)
+
+
+def sys_platform_darwin() -> bool:
+    import sys
+
+    return sys.platform == "darwin"

@@ -1,0 +1,68 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hls-downloader-pro"
+description = "Downloader de vídeos HLS/m3u8 com interface Qt Quick + Material Design"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+keywords = ["hls", "m3u8", "yt-dlp", "ffmpeg", "qt", "qml", "downloader"]
+dynamic = ["version"]
+dependencies = [
+    "PySide6>=6.6.0",
+    "yt-dlp>=2024.4.9",
+    "requests>=2.31.0",
+    "beautifulsoup4>=4.12.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.6",
+    "mypy>=1.10",
+    "pillow>=10.0",
+]
+
+[project.gui-scripts]
+hls-downloader-pro = "hlsdl.app:main"
+
+[tool.setuptools]
+packages = ["hlsdl", "hlsdl.services"]
+license-files = ["LICENSE"]
+
+[tool.setuptools.package-data]
+hlsdl = ["ui/*.qml", "ui/*.js"]
+
+[tool.setuptools.dynamic]
+version = { attr = "hlsdl.__version__" }
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+extend-exclude = [".venv", "test_out"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = [
+    "E501",  # quebras de linha longas ficam a cargo do formatador
+    "B008",  # chamadas em defaults de argumento (padrão Qt)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["B011"]
+"*.py" = ["E402"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+markers = [
+    "network: testes que acessam a rede (desabilitados por padrão com -m 'not network')",
+]
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+warn_unused_ignores = true
+exclude = "(\\.venv|test_out|build|dist)"

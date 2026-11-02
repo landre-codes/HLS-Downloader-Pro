@@ -1,5 +1,8 @@
-# Dependências do HLS Downloader Pro
-PyQt6>=6.5.0
+# Dependências de execução do HLS Downloader Pro
+PySide6>=6.6.0
 yt-dlp>=2024.4.9
 requests>=2.31.0
 beautifulsoup4>=4.12.0
+
+# Ferramentas de desenvolvimento (instale com: pip install -e ".[dev]"):
+#   pytest, ruff, mypy  — ver pyproject.toml

@@ -16,9 +16,9 @@ M3U8 = (
 SEG0 = b"\x47\x00\x00\x00" + b"A" * 1024
 SEG1 = b"\x47\x00\x00\x00" + b"B" * 1024
 PAGE = (
-    '<html><body><video src="media.php?file=stream.m3u8"></video>'
-    '<a href="media.php?file=stream.m3u8">m3u8</a></body></html>'
-).encode()
+    b'<html><body><video src="media.php?file=stream.m3u8"></video>'
+    b'<a href="media.php?file=stream.m3u8">m3u8</a></body></html>'
+)
 
 
 class H(BaseHTTPRequestHandler):

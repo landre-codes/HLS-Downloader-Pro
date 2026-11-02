@@ -9,9 +9,8 @@ import time
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from PyQt6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication
 
-import worker as worker_mod
 from worker import DownloadModel, DownloadWorker, QueueManager, Status
 
 OUTDIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_out")
@@ -27,11 +26,9 @@ class FastWorker(DownloadWorker):
         return super()._run_process(cmd, **kw)
 
 
-worker_mod.DownloadWorker = FastWorker
-
 app = QApplication(sys.argv)
 model = DownloadModel([])
-mgr = QueueManager(model, outdir=OUTDIR)
+mgr = QueueManager(model, outdir=OUTDIR, worker_factory=FastWorker)
 
 URLS = [
     "https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_4x3/bipbop_4x3_variant.m3u8",

@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from PyQt6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication
 
 import worker as worker_mod
 from worker import DownloadModel, QueueManager, Status
@@ -26,9 +26,9 @@ M3U8 = (
     "#EXTINF:6.0,\nseg0.ts\n#EXTINF:6.0,\nseg1.ts\n#EXT-X-ENDLIST\n"
 )
 PAGE = (
-    '<html><body><video src="media.php?file=stream.m3u8"></video>'
-    '<a href="media.php?file=stream.m3u8">m3u8</a></body></html>'
-).encode()
+    b'<html><body><video src="media.php?file=stream.m3u8"></video>'
+    b'<a href="media.php?file=stream.m3u8">m3u8</a></body></html>'
+)
 SEG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "php_test_seg.ts")
 
 
@@ -95,10 +95,10 @@ def main() -> int:
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     base = f"http://127.0.0.1:{port}"
 
-    worker_mod.DownloadWorker = FastWorker
+    worker_mod.DownloadWorker = FastWorker  # (compat) mantido para clareza
     app = QApplication(sys.argv)
     model = DownloadModel([])
-    mgr = QueueManager(model, outdir=OUTDIR)
+    mgr = QueueManager(model, outdir=OUTDIR, worker_factory=FastWorker)
     mgr.addText(f"{base}/page.php")
     mgr.start()
     print("fila iniciada,", len(mgr.items), "itens")
