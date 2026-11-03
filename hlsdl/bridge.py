@@ -11,16 +11,24 @@ import subprocess
 
 from PySide6.QtCore import Property, QObject, QSettings, QUrl, Signal, Slot
 from PySide6.QtGui import QDesktopServices, QGuiApplication
-from PySide6.QtWidgets import QApplication, QFileDialog
+from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox
 
 from . import __version__
 from .compress import (
+    CODEC_NAMES,
+    CONTAINERS,
+    DEFAULT_CONTAINERS,
     ENCODER_NAMES,
     ENCODER_ORDER,
     SPEEDS,
     CompressionManager,
     CompressionModel,
     CompressionSettings,
+    available_vendors,
+    estimate_saving,
+)
+from .compress import (
+    CODECS as COMPRESSION_CODECS,
 )
 from .config import BROWSERS, is_portable, user_config_dir
 from .config import settings_path as default_settings_path
@@ -157,6 +165,8 @@ class Bridge(QObject):
         self.compression.qsvDevicesChanged.connect(self.compressionQsvDevicesChanged.emit)
         self._comp_settings = CompressionSettings(
             encoder=str(self._settings.value("compress/encoder", "auto")),
+            codec=str(self._settings.value("compress/codec", "hevc")),
+            container=str(self._settings.value("compress/container", "mp4")),
             quality=self._clamp(int(self._settings.value("compress/quality", 24)), 1, 51),
             speed=str(self._settings.value("compress/speed", "balanced")),
             parallel=self._clamp(int(self._settings.value("compress/parallel", 1)), 1, 8),
@@ -169,11 +179,18 @@ class Bridge(QObject):
                 int(self._settings.value("compress/qsv_device", -1)), -1, 15
             ),
         )
+        if self._comp_settings.encoder == "x265":
+            self._comp_settings.encoder = "software"
         if self._comp_settings.encoder not in ("auto", *ENCODER_ORDER):
             self._comp_settings.encoder = "auto"
+        if self._comp_settings.codec not in COMPRESSION_CODECS:
+            self._comp_settings.codec = "hevc"
+        if self._comp_settings.container not in CONTAINERS[self._comp_settings.codec]:
+            self._comp_settings.container = DEFAULT_CONTAINERS[self._comp_settings.codec]
         if self._comp_settings.speed not in SPEEDS:
             self._comp_settings.speed = "balanced"
         self.compression.apply_settings(self._comp_settings)
+        self.compression.finishedAll.connect(self._on_comp_finished)
 
         # ------------------------------------------------------ atualizações
         self._update_info: dict = {}
@@ -467,6 +484,52 @@ class Bridge(QObject):
         self.compression.apply_settings(self._comp_settings)
         self.compressionConfigChanged.emit()
 
+    @Property(list, constant=True)
+    def compressionCodecs(self) -> list:
+        return [{"key": key, "name": CODEC_NAMES[key]} for key in COMPRESSION_CODECS]
+
+    @Property(str, notify=compressionConfigChanged)
+    def compressionCodec(self) -> str:
+        return self._comp_settings.codec
+
+    @Slot(str)
+    def setCompressionCodec(self, codec: str) -> None:
+        codec = codec if codec in COMPRESSION_CODECS else "hevc"
+        if codec == self._comp_settings.codec:
+            return
+        self._comp_settings.codec = codec
+        if self._comp_settings.container not in CONTAINERS[codec]:
+            self._comp_settings.container = DEFAULT_CONTAINERS[codec]
+            self._save("compress/container", self._comp_settings.container)
+        self._save("compress/codec", codec)
+        self.compression.apply_settings(self._comp_settings)
+        self.compressionConfigChanged.emit()
+        self.compressionEncodersChanged.emit()
+
+    @Property(list, notify=compressionConfigChanged)
+    def compressionContainers(self) -> list:
+        return list(CONTAINERS[self._comp_settings.codec])
+
+    @Property(str, notify=compressionConfigChanged)
+    def compressionContainer(self) -> str:
+        return self._comp_settings.container
+
+    @Slot(str)
+    def setCompressionContainer(self, container: str) -> None:
+        allowed = CONTAINERS[self._comp_settings.codec]
+        container = container if container in allowed else allowed[0]
+        if container == self._comp_settings.container:
+            return
+        self._comp_settings.container = container
+        self._save("compress/container", container)
+        self.compression.apply_settings(self._comp_settings)
+        self.compressionConfigChanged.emit()
+
+    @Property(int, notify=compressionConfigChanged)
+    def compressionEstimate(self) -> int:
+        return estimate_saving(self._comp_settings.codec,
+                               self._comp_settings.quality)
+
     @Property(int, notify=compressionConfigChanged)
     def compressionQuality(self) -> int:
         return self._comp_settings.quality
@@ -566,12 +629,15 @@ class Bridge(QObject):
 
     @Property(list, notify=compressionEncodersChanged)
     def compressionEncoders(self) -> list:
+        availability = available_vendors(
+            self._comp_settings.codec, self.compression.available
+        )
         items = [{"key": "auto", "name": "Auto", "available": True}]
         for key in ENCODER_ORDER:
             items.append({
                 "key": key,
                 "name": ENCODER_NAMES[key],
-                "available": bool(self.compression.available.get(key)),
+                "available": bool(availability.get(key)),
             })
         return items
 
@@ -616,6 +682,16 @@ class Bridge(QObject):
         self._comp_active = active
         self._comp_paused = paused
         self.compressionStateChanged.emit(active, paused)
+
+    def _on_comp_finished(self, done: int, errors: int, skipped: int) -> None:
+        message = self._tr(
+            "compress_finished", done=done, errors=errors, skipped=skipped
+        )
+        self.notifyText.emit(message)
+        if errors:
+            QMessageBox.warning(
+                None, self._tr("compress_finished_title"), message
+            )
 
     @Slot()
     def addCompressionFiles(self) -> None:

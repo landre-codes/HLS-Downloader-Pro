@@ -1,7 +1,8 @@
-"""Compressão local de vídeos para HEVC (Intel QSV / NVENC / AMF / x265).
+"""Compressão local de vídeos (HEVC/H.264/AV1) com fila e paralelismo.
 
-Fila própria (independente dos downloads), com paralelismo, progresso por
-arquivo, validação de saída e substituição atômica. Usa as mesmas proteções de
+Suporta Intel QSV, NVIDIA NVENC, AMD AMF e software (x264/x265/AV1), com
+seleção de formato/contêiner, estimativa de economia por codec, progresso por
+arquivo, validação da saída e substituição atômica. Usa as mesmas proteções de
 subprocesso do motor de download (console oculto e kill da árvore).
 """
 
@@ -41,18 +42,48 @@ log = logging.getLogger("hlsdl")
 VIDEO_EXTS = {".mp4", ".mkv", ".mov", ".avi", ".webm", ".m4v", ".ts"}
 SAFE_AUDIO = {"aac", "ac3", "eac3", "mp3", "alac"}
 TEXT_SUBS = {"subrip", "srt", "ass", "ssa", "mov_text", "webvtt", "text"}
-IMAGE_SUBS = {"hdmv_pgs_subtitle", "dvd_subtitle", "dvb_subtitle", "xsub"}
-ENCODER_ORDER = ("qsv", "nvenc", "amf", "x265")
-# Preferência do "Auto": GPUs dedicadas (NVIDIA/AMD) antes do QSV (que pode
-# estar na iGPU). Em máquinas só Intel, o QSV usa o dispositivo dedicado (Arc).
-AUTO_ORDER = ("nvenc", "amf", "qsv", "x265")
+
+# Fornecedores de encoder (a escolha do encoder real depende do codec).
+ENCODER_ORDER = ("qsv", "nvenc", "amf", "software")
+AUTO_ORDER = ("nvenc", "amf", "qsv", "software")
 ENCODER_NAMES = {
-    "qsv": "Intel QSV (HEVC)",
-    "nvenc": "NVIDIA NVENC (HEVC)",
-    "amf": "AMD AMF (HEVC)",
-    "x265": "Software x265",
+    "qsv": "Intel QSV",
+    "nvenc": "NVIDIA NVENC",
+    "amf": "AMD AMF",
+    "software": "Software",
 }
-SPEEDS = ("fast", "balanced", "slow")
+SPEEDS = ("fast", "balanced", "slow", "slower")
+SPEED_NAMES = {
+    "fast": "Fast",
+    "balanced": "Balanced",
+    "slow": "Slow",
+    "slower": "Slower (max quality)",
+}
+
+CODECS = ("hevc", "h264", "av1")
+CODEC_NAMES = {"hevc": "HEVC (H.265)", "h264": "H.264 (AVC)", "av1": "AV1"}
+CONTAINERS = {
+    "hevc": ("mp4", "mkv", "mov"),
+    "h264": ("mp4", "mkv", "mov", "avi"),
+    "av1": ("mp4", "mkv", "webm"),
+}
+DEFAULT_CONTAINERS = {"hevc": "mp4", "h264": "mp4", "av1": "mkv"}
+
+ENCODER_MAP = {
+    ("qsv", "hevc"): "hevc_qsv",
+    ("qsv", "h264"): "h264_qsv",
+    ("qsv", "av1"): "av1_qsv",
+    ("nvenc", "hevc"): "hevc_nvenc",
+    ("nvenc", "h264"): "h264_nvenc",
+    ("nvenc", "av1"): "av1_nvenc",
+    ("amf", "hevc"): "hevc_amf",
+    ("amf", "h264"): "h264_amf",
+    ("amf", "av1"): "av1_amf",
+}
+
+# Estimativa heurística de redução de tamanho em relação ao original
+# (mesma qualidade percebida). É apenas uma referência para a UI.
+ESTIMATE_BASE = {"av1": 58, "hevc": 48, "h264": 26}
 
 
 class CompressStatus(str, Enum):
@@ -77,16 +108,18 @@ ACTIVE = {CompressStatus.ANALYZING, CompressStatus.ENCODING}
 
 @dataclass
 class CompressionSettings:
-    encoder: str = "auto"
-    quality: int = 24
-    speed: str = "balanced"
+    encoder: str = "auto"       # auto | qsv | nvenc | amf | software
+    codec: str = "hevc"         # hevc | h264 | av1
+    container: str = "mp4"      # mp4 | mkv | webm | mov | avi
+    quality: int = 24           # 1..51
+    speed: str = "balanced"     # fast | balanced | slow | slower
     parallel: int = 1
     min_size_mb: int = 0
     only_if_smaller: bool = True
     replace_original: bool = False
     reencode_hevc: bool = False
     skip_hdr: bool = True
-    qsv_device: int = -1  # -1 = automático (prefere a GPU dedicada)
+    qsv_device: int = -1        # -1 = automático (prefere a GPU dedicada)
 
 
 def make_item(item_id: int, path: str) -> dict:
@@ -111,14 +144,14 @@ def make_item(item_id: int, path: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Detecção / argumentos
+# Detecção / seleção de encoder
 # ---------------------------------------------------------------------------
-def detect_encoders() -> dict[str, bool]:
-    """Detecta encoders HEVC disponíveis no ffmpeg instalado."""
-    result = {key: False for key in ENCODER_ORDER}
+def detect_encoders() -> set[str]:
+    """Nomes de encoders disponíveis no ffmpeg (ex.: ``hevc_qsv``)."""
     ffmpeg = which("ffmpeg")
+    names: set[str] = set()
     if not ffmpeg:
-        return result
+        return names
     try:
         out = subprocess.run(
             [ffmpeg, "-hide_banner", "-encoders"],
@@ -127,26 +160,56 @@ def detect_encoders() -> dict[str, bool]:
         )
         text = out.stdout or ""
     except Exception:
-        return result
-    result["qsv"] = "hevc_qsv" in text
-    result["nvenc"] = "hevc_nvenc" in text
-    result["amf"] = "hevc_amf" in text
-    result["x265"] = "libx265" in text
-    return result
+        return names
+    for line in text.splitlines():
+        parts = line.split()
+        if len(parts) >= 2 and parts[0][:1] in ("V", "A", "S"):
+            names.add(parts[1])
+    return names
 
 
-def resolve_encoder(settings: CompressionSettings,
-                    available: dict[str, bool]) -> str:
-    if settings.encoder in ENCODER_ORDER and available.get(settings.encoder):
-        return settings.encoder
-    for key in AUTO_ORDER:
-        if available.get(key):
-            return key
-    return "x265"
+def pick_encoder(vendor: str, codec: str, names: set[str]) -> str:
+    """Retorna o encoder concreto do fornecedor/codec (ou "")."""
+    if codec not in CODECS:
+        return ""
+    if vendor == "software":
+        if codec == "av1":
+            for candidate in ("libsvtav1", "libaom-av1"):
+                if candidate in names:
+                    return candidate
+            return ""
+        candidate = {"hevc": "libx265", "h264": "libx264"}[codec]
+        return candidate if candidate in names else ""
+    candidate = ENCODER_MAP.get((vendor, codec), "")
+    return candidate if candidate in names else ""
+
+
+def resolve_encoder(settings: CompressionSettings, names: set[str],
+                    codec: str | None = None) -> str:
+    codec = codec or settings.codec
+    if settings.encoder in ("qsv", "nvenc", "amf", "software"):
+        candidates = (settings.encoder, "software")
+    else:
+        candidates = AUTO_ORDER
+    for vendor in candidates:
+        encoder = pick_encoder(vendor, codec, names)
+        if encoder:
+            return encoder
+    return ""
+
+
+def available_vendors(codec: str, names: set[str]) -> dict[str, bool]:
+    return {vendor: bool(pick_encoder(vendor, codec, names))
+            for vendor in ENCODER_ORDER}
+
+
+def estimate_saving(codec: str, quality: int) -> int:
+    """Estimativa grosseira de redução (%) em relação ao original."""
+    base = ESTIMATE_BASE.get(codec, 35)
+    return max(5, min(85, round(base - (int(quality) - 24) * 1.1)))
 
 
 def is_integrated_gpu(name: str) -> bool:
-    """Heurística: Intel UHD/HD/Iris = integrada; Arc/NVIDIA/AMD = dedicada."""
     value = (name or "").lower()
     if "arc" in value:
         return False
@@ -159,7 +222,7 @@ def is_integrated_gpu(name: str) -> bool:
 
 
 def detect_gpus() -> list[dict]:
-    """Lista as GPUs do sistema (melhor esforço, sem dependências)."""
+    """Lista as GPUs do sistema (melhor esforço)."""
     names: list[str] = []
     try:
         if os.name == "nt":
@@ -199,11 +262,7 @@ def detect_gpus() -> list[dict]:
 
 
 def detect_qsv_devices(max_devices: int = 4) -> list[dict]:
-    """Mapeia índices ``-qsv_device`` para o nome real da GPU.
-
-    O ffmpeg imprime ``Using device 8086:e20b (Intel(R) Arc(TM) B580)`` em
-    loglevel verbose; isso permite escolher a GPU dedicada.
-    """
+    """Mapeia índices ``-qsv_device`` para o nome real da GPU."""
     ffmpeg = which("ffmpeg")
     if not ffmpeg:
         return []
@@ -246,7 +305,6 @@ def detect_qsv_devices(max_devices: int = 4) -> list[dict]:
 
 
 def resolve_qsv_device(preferred: int, devices: list[dict]) -> int:
-    """Escolhe o índice QSV (prefere GPU dedicada/Arc quando automático)."""
     if preferred is not None and preferred >= 0:
         if not devices or any(d["index"] == preferred for d in devices):
             return preferred
@@ -261,24 +319,40 @@ def resolve_qsv_device(preferred: int, devices: list[dict]) -> int:
     return 0
 
 
-def video_args(encoder: str, quality: int, speed: str) -> list[str]:
+# ---------------------------------------------------------------------------
+# Argumentos ffmpeg
+# ---------------------------------------------------------------------------
+def video_args(encoder: str, codec: str, quality: int, speed: str) -> list[str]:
     q = max(1, min(51, int(quality)))
     speed = speed if speed in SPEEDS else "balanced"
-    if encoder == "qsv":
-        preset = {"fast": "fast", "balanced": "medium", "slow": "slow"}[speed]
-        return ["-c:v", "hevc_qsv", "-preset", preset,
-                "-global_quality", str(q), "-tag:v", "hvc1"]
-    if encoder == "nvenc":
-        preset = {"fast": "p3", "balanced": "p5", "slow": "p7"}[speed]
-        return ["-c:v", "hevc_nvenc", "-gpu", "0", "-preset", preset, "-tune", "hq",
-                "-rc", "vbr", "-cq", str(q), "-b:v", "0", "-tag:v", "hvc1"]
-    if encoder == "amf":
-        preset = {"fast": "speed", "balanced": "balanced", "slow": "quality"}[speed]
-        return ["-c:v", "hevc_amf", "-quality", preset, "-rc", "cqp",
-                "-qp_i", str(q), "-qp_p", str(q), "-tag:v", "hvc1"]
-    preset = {"fast": "fast", "balanced": "medium", "slow": "slow"}[speed]
-    return ["-c:v", "libx265", "-preset", preset, "-crf", str(q),
-            "-tag:v", "hvc1", "-x265-params", "log-level=error"]
+    tag = ["-tag:v", "hvc1"] if codec == "hevc" else []
+    preset_x26x = {"fast": "fast", "balanced": "medium",
+                   "slow": "slow", "slower": "slower"}[speed]
+    if encoder.endswith("_qsv"):
+        preset = {"fast": "fast", "balanced": "medium",
+                  "slow": "slow", "slower": "slower"}[speed]
+        return ["-c:v", encoder, "-preset", preset,
+                "-global_quality", str(q)] + tag
+    if encoder.endswith("_nvenc"):
+        preset = {"fast": "p3", "balanced": "p5",
+                  "slow": "p6", "slower": "p7"}[speed]
+        return ["-c:v", encoder, "-gpu", "0", "-preset", preset, "-tune", "hq",
+                "-rc", "vbr", "-cq", str(q), "-b:v", "0"] + tag
+    if encoder.endswith("_amf"):
+        preset = {"fast": "speed", "balanced": "balanced",
+                  "slow": "quality", "slower": "quality"}[speed]
+        return ["-c:v", encoder, "-quality", preset, "-rc", "cqp",
+                "-qp_i", str(q), "-qp_p", str(q)] + tag
+    if codec == "av1":
+        preset = {"fast": "8", "balanced": "6", "slow": "4", "slower": "2"}[speed]
+        if encoder == "libaom-av1":
+            return ["-c:v", encoder, "-crf", str(q), "-b:v", "0",
+                    "-cpu-used", preset, "-row-mt", "1"]
+        return ["-c:v", encoder, "-crf", str(q), "-preset", preset]
+    if encoder == "libx264":
+        return ["-c:v", encoder, "-preset", preset_x26x, "-crf", str(q)]
+    return ["-c:v", encoder, "-preset", preset_x26x, "-crf", str(q),
+            "-x265-params", "log-level=error"] + tag
 
 
 def probe_media(path: str) -> dict | None:
@@ -318,20 +392,21 @@ def skip_reason(settings: CompressionSettings, probe: dict) -> str:
     if not videos:
         return "no_video"
     video = videos[0]
-    if (video.get("codec_name") or "").lower() == "hevc" and not settings.reencode_hevc:
-        return "already_hevc"
+    source_codec = (video.get("codec_name") or "").lower()
+    if source_codec == settings.codec and not settings.reencode_hevc:
+        return "already_codec"
     transfer = (video.get("color_transfer") or "").lower()
     if settings.skip_hdr and transfer in ("smpte2084", "arib-std-b67"):
         return "hdr"
     return ""
 
 
-def output_path(src: str) -> str:
+def output_path(src: str, codec: str, container: str) -> str:
     base, _ = os.path.splitext(src)
-    candidate = f"{base}_hevc.mp4"
+    candidate = f"{base}_{codec}.{container}"
     n = 2
     while os.path.exists(candidate):
-        candidate = f"{base}_hevc-{n}.mp4"
+        candidate = f"{base}_{codec}-{n}.{container}"
         n += 1
     return candidate
 
@@ -341,14 +416,18 @@ def build_args(src: str, tmp: str, settings: CompressionSettings,
     _videos, audios, subs, _duration = analyze(probe)
     ffmpeg = which("ffmpeg")
     cmd = [ffmpeg, "-hide_banner", "-nostdin", "-y"]
-    if encoder == "qsv":
+    if encoder.endswith("_qsv"):
         cmd += ["-qsv_device", str(qsv_device)]
     cmd += ["-progress", "pipe:1", "-nostats", "-i", src,
             "-map", "0:V:0", "-map", "0:a?"]
 
     for i, audio in enumerate(audios):
         codec = (audio.get("codec_name") or "").lower()
-        if codec in SAFE_AUDIO:
+        if settings.container == "webm":
+            cmd += [f"-c:a:{i}", "libopus", f"-b:a:{i}", "128k"]
+        elif settings.container == "avi":
+            cmd += [f"-c:a:{i}", "libmp3lame", f"-b:a:{i}", "192k"]
+        elif codec in SAFE_AUDIO:
             cmd += [f"-c:a:{i}", "copy"]
         else:
             cmd += [f"-c:a:{i}", "aac", f"-b:a:{i}", "192k"]
@@ -357,16 +436,23 @@ def build_args(src: str, tmp: str, settings: CompressionSettings,
         i for i, sub in enumerate(subs)
         if (sub.get("codec_name") or "").lower() in TEXT_SUBS
     ]
-    if text_subs:
+    if text_subs and settings.container in ("mp4", "mov"):
         for i in text_subs:
             cmd += ["-map", f"0:s:{i}"]
         cmd += ["-c:s", "mov_text"]
+    elif text_subs and settings.container == "mkv":
+        for i in text_subs:
+            cmd += ["-map", f"0:s:{i}"]
+        cmd += ["-c:s", "copy"]
     else:
         cmd += ["-sn"]
 
-    cmd += video_args(encoder, settings.quality, settings.speed)
+    cmd += video_args(encoder, settings.codec, settings.quality, settings.speed)
     cmd += ["-map_chapters", "0", "-map_metadata", "0",
-            "-movflags", "+faststart", "-max_muxing_queue_size", "4096", tmp]
+            "-max_muxing_queue_size", "4096"]
+    if settings.container in ("mp4", "mov"):
+        cmd += ["-movflags", "+faststart"]
+    cmd.append(tmp)
     return cmd
 
 
@@ -500,13 +586,21 @@ class CompressionWorker(QObject):
                 return
             reason = skip_reason(self.settings, probe)
             if reason:
-                self.skipped.emit(self._t("compress_skip_" + reason))
+                if reason == "already_codec":
+                    message = self._t(
+                        "compress_skip_already_codec",
+                        codec=self.settings.codec.upper(),
+                    )
+                else:
+                    message = self._t("compress_skip_" + reason)
+                self.skipped.emit(message)
                 return
             _videos, _audios, _subs, duration = analyze(probe)
-            final = output_path(self.src)
-            tmp = final + ".part.mp4"
-            cmd = build_args(self.src, tmp, self.settings, self.encoder, probe,
-                             self.qsv_device)
+            final = output_path(self.src, self.settings.codec,
+                                self.settings.container)
+            tmp = final + ".part." + self.settings.container
+            cmd = build_args(self.src, tmp, self.settings, self.encoder,
+                             probe, self.qsv_device)
             if not cmd[0]:
                 self.failed.emit(self._t("err_ffmpeg_missing"))
                 return
@@ -585,6 +679,7 @@ class CompressionManager(QObject):
     statsChanged = Signal(int, int, int, int, int)  # waiting, encoding, done, err, skip
     stateChanged = Signal(bool, bool)              # active, paused
     qsvDevicesChanged = Signal()
+    finishedAll = Signal(int, int, int)            # done, errors, skipped
 
     def __init__(self, model: CompressionModel, parent: QObject | None = None):
         super().__init__(parent)
@@ -599,7 +694,7 @@ class CompressionManager(QObject):
         self._running = 0
         self._threads: dict[int, tuple[QThread, CompressionWorker, dict]] = {}
         self._counter = 0
-        self._encoder = "x265"
+        self._encoder = ""
         self._t = translator("pt")
         self._emit_stats()
 
@@ -617,11 +712,15 @@ class CompressionManager(QObject):
         settings.quality = max(1, min(51, int(settings.quality)))
         settings.parallel = max(1, min(8, int(settings.parallel)))
         settings.speed = settings.speed if settings.speed in SPEEDS else "balanced"
+        if settings.codec not in CODECS:
+            settings.codec = "hevc"
+        if settings.container not in CONTAINERS[settings.codec]:
+            settings.container = DEFAULT_CONTAINERS[settings.codec]
         self.settings = settings
 
-    def refresh_encoders(self) -> dict[str, bool]:
+    def refresh_encoders(self) -> set[str]:
         self.available = detect_encoders()
-        if self.available.get("qsv"):
+        if any(name.endswith("_qsv") for name in self.available):
             threading.Thread(target=self._detect_qsv_devices, daemon=True).start()
         return self.available
 
@@ -653,7 +752,13 @@ class CompressionManager(QObject):
     @Slot()
     def start(self) -> None:
         self._encoder = resolve_encoder(self.settings, self.available)
-        if self._encoder == "qsv":
+        if not self._encoder:
+            for item in self.items:
+                if item["status"] == CompressStatus.WAITING:
+                    item["error"] = self._t("err_ffmpeg_missing")
+                    self._set_status(item, CompressStatus.ERROR)
+            return
+        if self._encoder.endswith("_qsv"):
             if not self.qsv_devices:
                 self.qsv_devices = detect_qsv_devices()
                 if self.qsv_devices:
@@ -661,7 +766,9 @@ class CompressionManager(QObject):
             self._qsv_device = resolve_qsv_device(
                 self.settings.qsv_device, self.qsv_devices
             )
-        log.info("compressão: encoder=%s qsv_device=%s", self._encoder, self._qsv_device)
+        log.info("compressão: encoder=%s codec=%s container=%s qsv_device=%s",
+                 self._encoder, self.settings.codec, self.settings.container,
+                 self._qsv_device)
         threshold = self.settings.min_size_mb * 1024 * 1024
         if threshold:
             for item in self.items:
@@ -870,6 +977,7 @@ class CompressionManager(QObject):
         ):
             self._active = False
             self._emit_state()
+            self.finishedAll.emit(done, errors, skipped)
 
     def _emit_state(self) -> None:
         self.stateChanged.emit(self._active, self._paused)

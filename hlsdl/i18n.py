@@ -539,6 +539,52 @@ COMPRESS_MESSAGES: dict[str, dict[str, str]] = {
 for _lang, _messages in COMPRESS_MESSAGES.items():
     BACKEND.setdefault(_lang, {}).update(_messages)
 
+COMPRESS_EXTRA: dict[str, dict[str, str]] = {
+    "pt": {
+        "compress_skip_already_codec": "Já está em {codec}.",
+        "compress_finished": "Compressão concluída: {done} ok, {errors} erro(s), {skipped} ignorado(s).",
+        "compress_finished_title": "Compressão concluída",
+    },
+    "en": {
+        "compress_skip_already_codec": "Already {codec}.",
+        "compress_finished": "Compression finished: {done} ok, {errors} error(s), {skipped} skipped.",
+        "compress_finished_title": "Compression finished",
+    },
+    "es": {
+        "compress_skip_already_codec": "Ya está en {codec}.",
+        "compress_finished": "Compresión completada: {done} ok, {errors} error(es), {skipped} omitido(s).",
+        "compress_finished_title": "Compresión completada",
+    },
+    "it": {
+        "compress_skip_already_codec": "Già in {codec}.",
+        "compress_finished": "Compressione completata: {done} ok, {errors} errore/i, {skipped} saltati.",
+        "compress_finished_title": "Compressione completata",
+    },
+    "fr": {
+        "compress_skip_already_codec": "Déjà en {codec}.",
+        "compress_finished": "Compression terminée : {done} ok, {errors} erreur(s), {skipped} ignoré(s).",
+        "compress_finished_title": "Compression terminée",
+    },
+    "ru": {
+        "compress_skip_already_codec": "Уже в {codec}.",
+        "compress_finished": "Сжатие завершено: {done} ок, {errors} ошибок, {skipped} пропущено.",
+        "compress_finished_title": "Сжатие завершено",
+    },
+    "ja": {
+        "compress_skip_already_codec": "既に {codec} です。",
+        "compress_finished": "圧縮完了: {done} 件成功、{errors} 件エラー、{skipped} 件スキップ。",
+        "compress_finished_title": "圧縮完了",
+    },
+    "zh": {
+        "compress_skip_already_codec": "已经是 {codec}。",
+        "compress_finished": "压缩完成：{done} 成功，{errors} 错误，{skipped} 跳过。",
+        "compress_finished_title": "压缩完成",
+    },
+}
+
+for _lang, _messages in COMPRESS_EXTRA.items():
+    BACKEND.setdefault(_lang, {}).update(_messages)
+
 UPDATE_MESSAGES: dict[str, dict[str, str]] = {
     "pt": {
         "update_checking": "Verificando atualizações…",

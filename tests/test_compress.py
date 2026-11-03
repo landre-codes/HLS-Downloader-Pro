@@ -18,6 +18,7 @@ from hlsdl.compress import (
     build_args,
     detect_encoders,
     detect_qsv_devices,
+    estimate_saving,
     is_integrated_gpu,
     output_path,
     resolve_encoder,
@@ -32,24 +33,36 @@ from hlsdl.services.procutils import popen_kwargs, which
 
 
 def test_video_args_per_encoder():
-    qsv = " ".join(video_args("qsv", 24, "balanced"))
-    nvenc = " ".join(video_args("nvenc", 24, "fast"))
-    amf = " ".join(video_args("amf", 23, "slow"))
-    x265 = " ".join(video_args("x265", 26, "balanced"))
+    qsv = " ".join(video_args("hevc_qsv", "hevc", 24, "balanced"))
+    nvenc = " ".join(video_args("hevc_nvenc", "hevc", 24, "fast"))
+    amf = " ".join(video_args("hevc_amf", "hevc", 23, "slow"))
+    x265 = " ".join(video_args("libx265", "hevc", 26, "balanced"))
+    x264 = " ".join(video_args("libx264", "h264", 22, "slower"))
+    av1 = " ".join(video_args("libsvtav1", "av1", 30, "fast"))
     assert "hevc_qsv" in qsv and "global_quality 24" in qsv
     assert "hevc_nvenc" in nvenc and "-cq 24" in nvenc and "-gpu 0" in nvenc
     assert "hevc_amf" in amf and "qp_i 23" in amf
     assert "libx265" in x265 and "-crf 26" in x265
+    assert "libx264" in x264 and "-preset slower" in x264
+    assert "libsvtav1" in av1 and "-crf 30" in av1
 
 
 def test_auto_prefers_discrete_gpu_encoders():
     settings = CompressionSettings(encoder="auto")
-    assert resolve_encoder(settings, {"qsv": True, "nvenc": True,
-                                      "amf": True, "x265": True}) == "nvenc"
-    assert resolve_encoder(settings, {"qsv": True, "nvenc": False,
-                                      "amf": True, "x265": True}) == "amf"
-    assert resolve_encoder(settings, {"qsv": True, "nvenc": False,
-                                      "amf": False, "x265": True}) == "qsv"
+    all_names = {"hevc_qsv", "hevc_nvenc", "hevc_amf", "libx265"}
+    assert resolve_encoder(settings, all_names) == "hevc_nvenc"
+    no_nvenc = {"hevc_qsv", "hevc_amf", "libx265"}
+    assert resolve_encoder(settings, no_nvenc) == "hevc_amf"
+    only_qsv = {"hevc_qsv", "libx265"}
+    assert resolve_encoder(settings, only_qsv) == "hevc_qsv"
+    # Codec sem encoder de hardware cai para software.
+    assert resolve_encoder(settings, {"libx264"}, codec="h264") == "libx264"
+
+
+def test_estimate_saving_order():
+    assert estimate_saving("av1", 24) > estimate_saving("hevc", 24)
+    assert estimate_saving("hevc", 24) > estimate_saving("h264", 24)
+    assert estimate_saving("hevc", 40) < estimate_saving("hevc", 20)
 
 
 def test_resolve_qsv_device_prefers_arc():
@@ -71,7 +84,7 @@ def test_build_args_includes_qsv_device():
         "format": {"duration": "1"},
     }
     cmd = build_args("in.mp4", "out.mp4", CompressionSettings(),
-                     "qsv", probe, qsv_device=1)
+                     "hevc_qsv", probe, qsv_device=1)
     assert "-qsv_device" in cmd
     assert cmd[cmd.index("-qsv_device") + 1] == "1"
 
@@ -90,7 +103,7 @@ def test_analyze_and_skip_rules():
 
     hevc = {"streams": [{"codec_type": "video", "codec_name": "hevc"}],
             "format": {"duration": "1"}}
-    assert skip_reason(CompressionSettings(), hevc) == "already_hevc"
+    assert skip_reason(CompressionSettings(), hevc) == "already_codec"
     assert skip_reason(CompressionSettings(reencode_hevc=True), hevc) == ""
 
     hdr = {"streams": [{"codec_type": "video", "codec_name": "h264",
@@ -103,16 +116,16 @@ def test_analyze_and_skip_rules():
 def test_output_path_unique(tmp_path):
     src = tmp_path / "video.mkv"
     src.write_bytes(b"x")
-    first = output_path(str(src))
+    first = output_path(str(src), "hevc", "mp4")
     assert first.endswith("video_hevc.mp4")
     open(first, "wb").close()
-    second = output_path(str(src))
+    second = output_path(str(src), "hevc", "mp4")
     assert second.endswith("video_hevc-2.mp4")
 
 
-def test_detect_encoders_returns_known_keys():
+def test_detect_encoders_returns_set():
     found = detect_encoders()
-    assert set(found) == {"qsv", "nvenc", "amf", "x265"}
+    assert isinstance(found, set)
 
 
 def test_manager_add_paths_filters_videos(qapp, tmp_path):
@@ -130,25 +143,30 @@ def test_bridge_persists_compression_settings(qapp, tmp_path, fake_deps):
     settings = str(tmp_path / "s.ini")
     b = Bridge(QueueManager(DownloadModel([]), outdir="out"), "out",
                settings_path=settings, deps=fake_deps)
-    b.setCompressionEncoder("x265")
+    b.setCompressionEncoder("software")
+    b.setCompressionCodec("h264")
+    b.setCompressionContainer("mkv")
     b.setCompressionQuality(26)
     b.setCompressionParallel(2)
-    b.setCompressionSpeed("fast")
+    b.setCompressionSpeed("slower")
     b.setCompressionOnlyIfSmaller(False)
     b.setCompressionQsvDevice(1)
     b2 = Bridge(QueueManager(DownloadModel([]), outdir="out"), "out",
                 settings_path=settings, deps=fake_deps)
-    assert b2.compressionEncoder == "x265"
+    assert b2.compressionEncoder == "software"
+    assert b2.compressionCodec == "h264"
+    assert b2.compressionContainer == "mkv"
     assert b2.compressionQuality == 26
     assert b2.compressionParallel == 2
-    assert b2.compressionSpeed == "fast"
+    assert b2.compressionSpeed == "slower"
     assert b2.compressionOnlyIfSmaller is False
     assert b2.compressionQsvDevice == 1
+    assert isinstance(b2.compressionEstimate, int)
 
 
 @pytest.mark.skipif(
     which("ffmpeg") is None or which("ffprobe") is None
-    or not detect_encoders().get("x265"),
+    or "libx265" not in detect_encoders(),
     reason="ffmpeg/ffprobe/libx265 indisponíveis",
 )
 def test_real_x265_encode(qapp, tmp_path):
@@ -161,10 +179,10 @@ def test_real_x265_encode(qapp, tmp_path):
         check=True, **popen_kwargs(),
     )
     settings = CompressionSettings(
-        encoder="x265", quality=30, speed="fast",
+        encoder="software", quality=30, speed="fast",
         only_if_smaller=False, replace_original=False,
     )
-    worker = CompressionWorker(str(src), settings, "x265")
+    worker = CompressionWorker(str(src), settings, "libx265")
     events: list = []
     worker.succeeded.connect(
         lambda tmp, final, before, after: events.append((tmp, final, before, after))
@@ -180,7 +198,7 @@ def test_real_x265_encode(qapp, tmp_path):
 
 
 @pytest.mark.skipif(
-    which("ffmpeg") is None or not detect_encoders().get("qsv"),
+    which("ffmpeg") is None or "hevc_qsv" not in detect_encoders(),
     reason="ffmpeg/QSV indisponível",
 )
 def test_real_qsv_encode_prefers_dedicated(qapp, tmp_path):
@@ -204,7 +222,7 @@ def test_real_qsv_encode_prefers_dedicated(qapp, tmp_path):
         encoder="qsv", quality=30, speed="fast", qsv_device=-1,
         only_if_smaller=False, replace_original=False,
     )
-    worker = CompressionWorker(str(src), settings, "qsv", qsv_device=index)
+    worker = CompressionWorker(str(src), settings, "hevc_qsv", qsv_device=index)
     events: list = []
     worker.succeeded.connect(
         lambda tmp, final, before, after: events.append((tmp, final, before, after))
@@ -219,7 +237,7 @@ def test_real_qsv_encode_prefers_dedicated(qapp, tmp_path):
 
 @pytest.mark.skipif(
     which("ffmpeg") is None or which("ffprobe") is None
-    or not detect_encoders().get("x265"),
+    or "libx265" not in detect_encoders(),
     reason="ffmpeg/ffprobe/libx265 indisponíveis",
 )
 def test_manager_queue_real_encode(qapp, tmp_path):
@@ -237,7 +255,7 @@ def test_manager_queue_real_encode(qapp, tmp_path):
     model = CompressionModel([])
     manager = CompressionManager(model)
     manager.settings = CompressionSettings(
-        encoder="x265", quality=32, speed="fast", parallel=1,
+        encoder="software", quality=32, speed="fast", parallel=1,
         only_if_smaller=False, replace_original=False,
     )
     manager.add_paths([str(src)])
