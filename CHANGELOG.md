@@ -11,6 +11,8 @@ e o versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 - **Aba de Playlists** (YouTube e sites em geral): carregar itens, selecionar e enfileirar/baixar.
 - **Aba de Compressão local**: HEVC com QSV/NVENC/AMF/x265, qualidade 1–51, paralelismo, validação e substituição segura.
 - **Codecs e contêineres na compressão**: HEVC/H.264/AV1, MP4/MKV/WebM/MOV/AVI, sugestões e estimativa de economia por formato; preset **muito lenta** (máxima qualidade).
+- **Kvazaar (`libkvazaar`)** como opção de HEVC software rápido, além de **10-bit** (`yuv420p10le`) e **ajuste fino do x265** (`aq-mode`, `psy-rd`, `psy-rdoq`, `deblock`).
+- **Metadados HDR preservados** na compressão (primárias, transferência, espaço de cor e faixa) e **encoder real** exibido por arquivo (ex.: `QSV HEVC · Intel Arc B580`).
 - **Notificação de conclusão** da compressão (toast + diálogo quando há erros).
 - **Filtro na fila de lote** (título/URL) e mais tooltips/ícones (tema claro/escuro, ações).
 - **Atualizador**: verifica a release, baixa o instalador e valida o SHA-256 antes de executar.
@@ -49,6 +51,10 @@ e o versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
   floating label) onde o rótulo não agrega.
 - **Modo áudio** no download individual agora recolhe também a linha de
   codec/compressão, sem deixar espaço vazio.
+- **Aba Lote** usa apenas placeholder no campo de links (sem floating label),
+  e o espaço entre “formato” e o botão foi normalizado no modo somente áudio.
+- **Tabela de comprimidos**: o rótulo de conclusão foi centralizado/elidido
+  dentro do badge e o motivo de itens ignorados não aparece mais em vermelho.
 
 ## [1.2.3] — anterior
 - Controle de rede: limite de velocidade e conexões por download.

@@ -208,6 +208,29 @@ ApplicationWindow {
         }
     }
 
+    // Área de texto com placeholder simples (sem floating label).
+    component HintArea: TextArea {
+        id: hintArea
+        property string hint: ""
+        placeholderText: ""
+        Accessible.name: hint
+        topPadding: 8
+        bottomPadding: 8
+        leftPadding: 12
+        rightPadding: 12
+        Text {
+            x: hintArea.leftPadding
+            y: hintArea.topPadding
+            width: hintArea.width - hintArea.leftPadding - hintArea.rightPadding
+            text: hintArea.hint
+            visible: hintArea.text.length === 0
+            color: Material.hintTextColor
+            wrapMode: Text.WordWrap
+            font: hintArea.font
+            z: 1
+        }
+    }
+
     // Seletor de qualidade (144p–4K).
     component QualityCombo: ComboBox {
         property var items: [
@@ -567,26 +590,23 @@ ApplicationWindow {
                             }
                             FormatSelector { Layout.alignment: Qt.AlignVCenter }
                             Item { Layout.fillWidth: true }
-                        }
-
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 12
-                            Label {
-                                visible: bridge.formatMode !== "audio_only"
-                                text: strings.quality_label; font.pixelSize: 13
-                                color: Material.secondaryTextColor; Layout.alignment: Qt.AlignVCenter
-                            }
-                            QualityCombo {
-                                visible: bridge.formatMode !== "audio_only"
-                                Layout.alignment: Qt.AlignVCenter
-                            }
-                            Item { Layout.fillWidth: true }
                             Label {
                                 text: strings.container_label; font.pixelSize: 13
                                 color: Material.secondaryTextColor; Layout.alignment: Qt.AlignVCenter
                             }
                             ContainerCombo { Layout.alignment: Qt.AlignVCenter }
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 12
+                            visible: bridge.formatMode !== "audio_only"
+                            Label {
+                                text: strings.quality_label; font.pixelSize: 13
+                                color: Material.secondaryTextColor; Layout.alignment: Qt.AlignVCenter
+                            }
+                            QualityCombo { Layout.alignment: Qt.AlignVCenter }
+                            Item { Layout.fillWidth: true }
                         }
 
                         RowLayout {
@@ -680,9 +700,15 @@ ApplicationWindow {
                                     width: 120; height: 24; radius: 12
                                     color: root.badgeColor(bridge.lastItem.status)
                                     Label {
-                                        anchors.centerIn: parent
+                                        anchors.fill: parent
+                                        anchors.margins: 4
                                         text: root.statusText(bridge.lastItem.status)
-                                        color: "white"; font.pixelSize: 11; font.bold: true
+                                        color: "white"
+                                        font.pixelSize: 11
+                                        font.bold: true
+                                        horizontalAlignment: Text.AlignHCenter
+                                        verticalAlignment: Text.AlignVCenter
+                                        elide: Text.ElideRight
                                     }
                                 }
                                 Label {
@@ -750,11 +776,11 @@ ApplicationWindow {
 
                         Label { text: strings.entry_title; font.pixelSize: 15; font.weight: Font.DemiBold }
 
-                        TextArea {
+                        HintArea {
                             id: inputArea
                             Layout.fillWidth: true
                             Layout.preferredHeight: 66
-                            placeholderText: strings.entry_placeholder
+                            hint: strings.entry_placeholder
                             wrapMode: TextEdit.Wrap
                             selectByMouse: true
                         }
@@ -1508,6 +1534,30 @@ ApplicationWindow {
                                 ToolTip.delay: 500
                                 onToggled: bridge.setCompressionSkipHdr(checked)
                             }
+                            CheckBox {
+                                text: strings.compress_ten_bit
+                                visible: bridge.compressionCodec === "hevc"
+                                         && (bridge.compressionEncoder === "auto"
+                                             || bridge.compressionEncoder === "software"
+                                             || bridge.compressionEncoder === "kvazaar")
+                                checked: bridge.compressionTenBit
+                                ToolTip.text: strings.compress_ten_bit_tip
+                                ToolTip.visible: hovered
+                                ToolTip.delay: 500
+                                onToggled: bridge.setCompressionTenBit(checked)
+                            }
+                            CheckBox {
+                                text: strings.compress_x265_tuning
+                                visible: bridge.compressionCodec === "hevc"
+                                         && (bridge.compressionEncoder === "auto"
+                                             || bridge.compressionEncoder === "software"
+                                             || bridge.compressionEncoder === "kvazaar")
+                                checked: bridge.compressionX265Tuning
+                                ToolTip.text: strings.compress_x265_tuning_tip
+                                ToolTip.visible: hovered
+                                ToolTip.delay: 500
+                                onToggled: bridge.setCompressionX265Tuning(checked)
+                            }
                         }
 
                         Label {
@@ -1575,13 +1625,25 @@ ApplicationWindow {
                                     anchors.leftMargin: 8
                                     anchors.rightMargin: 8
                                     spacing: 10
-                                    Label {
+                                    ColumnLayout {
                                         Layout.fillWidth: true
                                         Layout.minimumWidth: 160
-                                        text: model.name
-                                        elide: Text.ElideMiddle
-                                        font.pixelSize: 12
-                                        font.weight: Font.DemiBold
+                                        spacing: 0
+                                        Label {
+                                            Layout.fillWidth: true
+                                            text: model.name
+                                            elide: Text.ElideMiddle
+                                            font.pixelSize: 12
+                                            font.weight: Font.DemiBold
+                                        }
+                                        Label {
+                                            Layout.fillWidth: true
+                                            text: model.encoder
+                                            visible: model.encoder.length > 0
+                                            elide: Text.ElideRight
+                                            font.pixelSize: 9
+                                            color: Material.secondaryTextColor
+                                        }
                                     }
                                     Item {
                                         Layout.preferredWidth: 110
@@ -1590,9 +1652,15 @@ ApplicationWindow {
                                             anchors.centerIn: parent
                                             color: root.badgeColor(root.st)
                                             Label {
-                                                anchors.centerIn: parent
+                                                anchors.fill: parent
+                                                anchors.margins: 4
                                                 text: root.statusText(root.st)
-                                                color: "white"; font.pixelSize: 11; font.bold: true
+                                                color: "white"
+                                                font.pixelSize: 11
+                                                font.bold: true
+                                                horizontalAlignment: Text.AlignHCenter
+                                                verticalAlignment: Text.AlignVCenter
+                                                elide: Text.ElideRight
                                             }
                                         }
                                     }
@@ -1628,7 +1696,7 @@ ApplicationWindow {
                                                   ? (model.saving + "% " + strings.compress_saving)
                                                   : (model.error.length > 0 ? model.error : model.speed)
                                             font.pixelSize: 10
-                                            color: model.error.length > 0
+                                            color: root.st === "error"
                                                    ? (root.dark ? "#ff8a80" : "#c62828")
                                                    : Material.secondaryTextColor
                                             elide: Text.ElideRight
@@ -2382,11 +2450,15 @@ ApplicationWindow {
                         width: 104; height: 24; radius: 12
                         color: root.badgeColor(rowItem.st)
                         Label {
-                            anchors.centerIn: parent
+                            anchors.fill: parent
+                            anchors.margins: 4
                             text: root.statusText(rowItem.st)
                             font.pixelSize: 11
                             font.bold: true
                             color: "white"
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                            elide: Text.ElideRight
                         }
                         MouseArea {
                             anchors.fill: parent
