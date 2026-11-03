@@ -178,6 +178,8 @@ class Bridge(QObject):
             qsv_device=self._clamp(
                 int(self._settings.value("compress/qsv_device", -1)), -1, 15
             ),
+            ten_bit=self._settings.value("compress/ten_bit", False, type=bool),
+            x265_tuning=self._settings.value("compress/x265_tuning", False, type=bool),
         )
         if self._comp_settings.encoder == "x265":
             self._comp_settings.encoder = "software"
@@ -627,6 +629,22 @@ class Bridge(QObject):
     def setCompressionSkipHdr(self, value: bool) -> None:
         self._set_comp_bool("skip_hdr", value, "skip_hdr")
 
+    @Property(bool, notify=compressionConfigChanged)
+    def compressionTenBit(self) -> bool:
+        return self._comp_settings.ten_bit
+
+    @Slot(bool)
+    def setCompressionTenBit(self, value: bool) -> None:
+        self._set_comp_bool("ten_bit", value, "ten_bit")
+
+    @Property(bool, notify=compressionConfigChanged)
+    def compressionX265Tuning(self) -> bool:
+        return self._comp_settings.x265_tuning
+
+    @Slot(bool)
+    def setCompressionX265Tuning(self, value: bool) -> None:
+        self._set_comp_bool("x265_tuning", value, "x265_tuning")
+
     @Property(list, notify=compressionEncodersChanged)
     def compressionEncoders(self) -> list:
         availability = available_vendors(
@@ -634,9 +652,12 @@ class Bridge(QObject):
         )
         items = [{"key": "auto", "name": "Auto", "available": True}]
         for key in ENCODER_ORDER:
+            name = ENCODER_NAMES[key]
+            if not availability.get(key):
+                name += " (n/d)"
             items.append({
                 "key": key,
-                "name": ENCODER_NAMES[key],
+                "name": name,
                 "available": bool(availability.get(key)),
             })
         return items

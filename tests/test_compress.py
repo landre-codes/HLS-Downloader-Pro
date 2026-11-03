@@ -21,6 +21,7 @@ from hlsdl.compress import (
     estimate_saving,
     is_integrated_gpu,
     output_path,
+    pick_encoder,
     resolve_encoder,
     resolve_qsv_device,
     skip_reason,
@@ -65,6 +66,23 @@ def test_estimate_saving_order():
     assert estimate_saving("hevc", 40) < estimate_saving("hevc", 20)
 
 
+def test_x265_10bit_and_tuning():
+    args = " ".join(video_args(
+        "libx265", "hevc", 24, "slower",
+        ten_bit=True, x265_tuning=True,
+    ))
+    assert "yuv420p10le" in args
+    assert "aq-mode=3" in args
+    assert "psy-rd=2.0" in args
+
+
+def test_kvazaar_encoder_detection():
+    assert pick_encoder("kvazaar", "hevc", {"libkvazaar"}) == "libkvazaar"
+    assert pick_encoder("kvazaar", "h264", {"libkvazaar"}) == ""
+    args = " ".join(video_args("libkvazaar", "hevc", 24, "fast"))
+    assert "libkvazaar" in args and "-crf 24" in args
+
+
 def test_resolve_qsv_device_prefers_arc():
     devices = [
         {"index": 0, "name": "Intel(R) UHD Graphics 770", "integrated": True},
@@ -87,6 +105,27 @@ def test_build_args_includes_qsv_device():
                      "hevc_qsv", probe, qsv_device=1)
     assert "-qsv_device" in cmd
     assert cmd[cmd.index("-qsv_device") + 1] == "1"
+
+
+def test_build_args_preserves_hdr_metadata():
+    probe = {
+        "streams": [{
+            "codec_type": "video", "codec_name": "h264",
+            "color_primaries": "bt2020", "color_transfer": "smpte2084",
+            "color_space": "bt2020nc", "color_range": "tv",
+        }],
+        "format": {"duration": "1"},
+    }
+    settings = CompressionSettings(skip_hdr=False)
+    cmd = build_args("in.mp4", "out.mp4", settings, "libx265", probe)
+    for option, value in (
+        ("-color_primaries", "bt2020"),
+        ("-color_trc", "smpte2084"),
+        ("-colorspace", "bt2020nc"),
+        ("-color_range", "tv"),
+    ):
+        assert option in cmd
+        assert cmd[cmd.index(option) + 1] == value
 
 
 def test_analyze_and_skip_rules():
@@ -151,6 +190,8 @@ def test_bridge_persists_compression_settings(qapp, tmp_path, fake_deps):
     b.setCompressionSpeed("slower")
     b.setCompressionOnlyIfSmaller(False)
     b.setCompressionQsvDevice(1)
+    b.setCompressionTenBit(True)
+    b.setCompressionX265Tuning(True)
     b2 = Bridge(QueueManager(DownloadModel([]), outdir="out"), "out",
                 settings_path=settings, deps=fake_deps)
     assert b2.compressionEncoder == "software"
@@ -161,6 +202,8 @@ def test_bridge_persists_compression_settings(qapp, tmp_path, fake_deps):
     assert b2.compressionSpeed == "slower"
     assert b2.compressionOnlyIfSmaller is False
     assert b2.compressionQsvDevice == 1
+    assert b2.compressionTenBit is True
+    assert b2.compressionX265Tuning is True
     assert isinstance(b2.compressionEstimate, int)
 
 

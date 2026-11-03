@@ -115,6 +115,7 @@ for name in (
     "setCompressionParallel", "setCompressionMinSizeMB",
     "setCompressionOnlyIfSmaller", "setCompressionReplaceOriginal",
     "setCompressionReencodeHevc", "setCompressionSkipHdr",
+    "setCompressionTenBit", "setCompressionX265Tuning",
     "setCompressionQsvDevice", "refreshCompressionEncoders",
     "checkForUpdates", "downloadUpdate", "openReleasePage",
 ):

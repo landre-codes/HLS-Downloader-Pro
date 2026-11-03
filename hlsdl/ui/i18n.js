@@ -1997,6 +1997,58 @@ var extraTips = {
     }
 }
 
+// Opções de 10-bit/x265 (mescladas por getAll).
+var extraEncoder = {
+    "pt": {
+        compress_ten_bit: "10-bit (HDR/mais qualidade)",
+        compress_ten_bit_tip: "Codifica em 10 bits (x265/Kvazaar); útil para HDR e gradientes.",
+        compress_x265_tuning: "Ajuste fino x265 (aq/psy)",
+        compress_x265_tuning_tip: "Ativa aq-mode=3 e psy-rd/psy-rdoq para máxima qualidade (mais lento)."
+    },
+    "en": {
+        compress_ten_bit: "10-bit (HDR/better quality)",
+        compress_ten_bit_tip: "Encode in 10-bit (x265/Kvazaar); useful for HDR and gradients.",
+        compress_x265_tuning: "x265 fine tuning (aq/psy)",
+        compress_x265_tuning_tip: "Enables aq-mode=3 and psy-rd/psy-rdoq for max quality (slower)."
+    },
+    "es": {
+        compress_ten_bit: "10-bit (HDR/más calidad)",
+        compress_ten_bit_tip: "Codifica en 10 bits (x265/Kvazaar); útil para HDR y degradados.",
+        compress_x265_tuning: "Ajuste fino x265 (aq/psy)",
+        compress_x265_tuning_tip: "Activa aq-mode=3 y psy-rd/psy-rdoq para máxima calidad (más lento)."
+    },
+    "it": {
+        compress_ten_bit: "10-bit (HDR/più qualità)",
+        compress_ten_bit_tip: "Codifica a 10 bit (x265/Kvazaar); utile per HDR e sfumature.",
+        compress_x265_tuning: "Fine tuning x265 (aq/psy)",
+        compress_x265_tuning_tip: "Attiva aq-mode=3 e psy-rd/psy-rdoq per la massima qualità (più lento)."
+    },
+    "fr": {
+        compress_ten_bit: "10 bits (HDR/meilleure qualité)",
+        compress_ten_bit_tip: "Encode en 10 bits (x265/Kvazaar) ; utile pour HDR et dégradés.",
+        compress_x265_tuning: "Réglage fin x265 (aq/psy)",
+        compress_x265_tuning_tip: "Active aq-mode=3 et psy-rd/psy-rdoq pour une qualité maximale (plus lent)."
+    },
+    "ru": {
+        compress_ten_bit: "10-бит (HDR/лучше качество)",
+        compress_ten_bit_tip: "Кодирование 10-бит (x265/Kvazaar); полезно для HDR и градиентов.",
+        compress_x265_tuning: "Тонкая настройка x265 (aq/psy)",
+        compress_x265_tuning_tip: "Включает aq-mode=3 и psy-rd/psy-rdoq для максимального качества (медленнее)."
+    },
+    "ja": {
+        compress_ten_bit: "10-bit（HDR/高画質）",
+        compress_ten_bit_tip: "10-bit でエンコード（x265/Kvazaar）。HDR やグラデーションに有効。",
+        compress_x265_tuning: "x265 微調整 (aq/psy)",
+        compress_x265_tuning_tip: "aq-mode=3 と psy-rd/psy-rdoq を有効化（最高画質・低速）。"
+    },
+    "zh": {
+        compress_ten_bit: "10-bit（HDR/更高画质）",
+        compress_ten_bit_tip: "以 10-bit 编码（x265/Kvazaar）；适合 HDR 和渐变。",
+        compress_x265_tuning: "x265 精细调优 (aq/psy)",
+        compress_x265_tuning_tip: "启用 aq-mode=3 和 psy-rd/psy-rdoq，获得最高画质（更慢）。"
+    }
+}
+
 function getAll() {
     var out = {}
     var base = dict["pt"]
@@ -2020,6 +2072,9 @@ function getAll() {
     var t = extraTips[lang] || {}
     for (var k7 in t)
         out[k7] = t[k7]
+    var n = extraEncoder[lang] || {}
+    for (var k8 in n)
+        out[k8] = n[k8]
     return out
 }
 

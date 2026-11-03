@@ -44,13 +44,30 @@ SAFE_AUDIO = {"aac", "ac3", "eac3", "mp3", "alac"}
 TEXT_SUBS = {"subrip", "srt", "ass", "ssa", "mov_text", "webvtt", "text"}
 
 # Fornecedores de encoder (a escolha do encoder real depende do codec).
-ENCODER_ORDER = ("qsv", "nvenc", "amf", "software")
+ENCODER_ORDER = ("qsv", "nvenc", "amf", "software", "kvazaar")
 AUTO_ORDER = ("nvenc", "amf", "qsv", "software")
 ENCODER_NAMES = {
     "qsv": "Intel QSV",
     "nvenc": "NVIDIA NVENC",
     "amf": "AMD AMF",
     "software": "Software",
+    "kvazaar": "Kvazaar (HEVC rápido)",
+}
+ENCODER_LABELS = {
+    "hevc_qsv": "QSV HEVC",
+    "h264_qsv": "QSV H.264",
+    "av1_qsv": "QSV AV1",
+    "hevc_nvenc": "NVENC HEVC",
+    "h264_nvenc": "NVENC H.264",
+    "av1_nvenc": "NVENC AV1",
+    "hevc_amf": "AMF HEVC",
+    "h264_amf": "AMF H.264",
+    "av1_amf": "AMF AV1",
+    "libx265": "x265",
+    "libx264": "x264",
+    "libsvtav1": "SVT-AV1",
+    "libaom-av1": "libaom AV1",
+    "libkvazaar": "Kvazaar",
 }
 SPEEDS = ("fast", "balanced", "slow", "slower")
 SPEED_NAMES = {
@@ -79,6 +96,7 @@ ENCODER_MAP = {
     ("amf", "hevc"): "hevc_amf",
     ("amf", "h264"): "h264_amf",
     ("amf", "av1"): "av1_amf",
+    ("kvazaar", "hevc"): "libkvazaar",
 }
 
 # Estimativa heurística de redução de tamanho em relação ao original
@@ -120,6 +138,8 @@ class CompressionSettings:
     reencode_hevc: bool = False
     skip_hdr: bool = True
     qsv_device: int = -1        # -1 = automático (prefere a GPU dedicada)
+    ten_bit: bool = False       # x265/Kvazaar 10-bit
+    x265_tuning: bool = False   # aq-mode/psy para máxima qualidade
 
 
 def make_item(item_id: int, path: str) -> dict:
@@ -187,7 +207,7 @@ def pick_encoder(vendor: str, codec: str, names: set[str]) -> str:
 def resolve_encoder(settings: CompressionSettings, names: set[str],
                     codec: str | None = None) -> str:
     codec = codec or settings.codec
-    if settings.encoder in ("qsv", "nvenc", "amf", "software"):
+    if settings.encoder in ("qsv", "nvenc", "amf", "software", "kvazaar"):
         candidates = (settings.encoder, "software")
     else:
         candidates = AUTO_ORDER
@@ -322,12 +342,17 @@ def resolve_qsv_device(preferred: int, devices: list[dict]) -> int:
 # ---------------------------------------------------------------------------
 # Argumentos ffmpeg
 # ---------------------------------------------------------------------------
-def video_args(encoder: str, codec: str, quality: int, speed: str) -> list[str]:
+def video_args(encoder: str, codec: str, quality: int, speed: str,
+               ten_bit: bool = False, x265_tuning: bool = False) -> list[str]:
     q = max(1, min(51, int(quality)))
     speed = speed if speed in SPEEDS else "balanced"
     tag = ["-tag:v", "hvc1"] if codec == "hevc" else []
     preset_x26x = {"fast": "fast", "balanced": "medium",
                    "slow": "slow", "slower": "slower"}[speed]
+    pix = ["-pix_fmt", "yuv420p10le"] if ten_bit else []
+    if encoder == "libkvazaar":
+        return ["-c:v", encoder, "-preset", preset_x26x,
+                "-crf", str(q)] + pix + tag
     if encoder.endswith("_qsv"):
         preset = {"fast": "fast", "balanced": "medium",
                   "slow": "slow", "slower": "slower"}[speed]
@@ -351,8 +376,11 @@ def video_args(encoder: str, codec: str, quality: int, speed: str) -> list[str]:
         return ["-c:v", encoder, "-crf", str(q), "-preset", preset]
     if encoder == "libx264":
         return ["-c:v", encoder, "-preset", preset_x26x, "-crf", str(q)]
-    return ["-c:v", encoder, "-preset", preset_x26x, "-crf", str(q),
-            "-x265-params", "log-level=error"] + tag
+    params = ["log-level=error"]
+    if x265_tuning:
+        params += ["aq-mode=3", "psy-rd=2.0", "psy-rdoq=1.0", "deblock=-1,-1"]
+    return (["-c:v", encoder, "-preset", preset_x26x, "-crf", str(q),
+             "-x265-params", ":".join(params)] + pix + tag)
 
 
 def probe_media(path: str) -> dict | None:
@@ -413,7 +441,7 @@ def output_path(src: str, codec: str, container: str) -> str:
 
 def build_args(src: str, tmp: str, settings: CompressionSettings,
                encoder: str, probe: dict, qsv_device: int = 0) -> list[str]:
-    _videos, audios, subs, _duration = analyze(probe)
+    videos, audios, subs, _duration = analyze(probe)
     ffmpeg = which("ffmpeg")
     cmd = [ffmpeg, "-hide_banner", "-nostdin", "-y"]
     if encoder.endswith("_qsv"):
@@ -447,7 +475,19 @@ def build_args(src: str, tmp: str, settings: CompressionSettings,
     else:
         cmd += ["-sn"]
 
-    cmd += video_args(encoder, settings.codec, settings.quality, settings.speed)
+    if videos:
+        for source_key, option in (
+            ("color_primaries", "-color_primaries"),
+            ("color_transfer", "-color_trc"),
+            ("color_space", "-colorspace"),
+            ("color_range", "-color_range"),
+        ):
+            value = str(videos[0].get(source_key) or "").lower()
+            if value and value != "unknown":
+                cmd += [option, value]
+
+    cmd += video_args(encoder, settings.codec, settings.quality, settings.speed,
+                      ten_bit=settings.ten_bit, x265_tuning=settings.x265_tuning)
     cmd += ["-map_chapters", "0", "-map_metadata", "0",
             "-max_muxing_queue_size", "4096"]
     if settings.container in ("mp4", "mov"):
@@ -866,9 +906,20 @@ class CompressionManager(QObject):
                 break
             self._launch(item)
 
+    def _encoder_label(self) -> str:
+        label = ENCODER_LABELS.get(self._encoder, self._encoder)
+        if self._encoder.endswith("_qsv") and self.qsv_devices:
+            device = next(
+                (d for d in self.qsv_devices if d["index"] == self._qsv_device),
+                None,
+            )
+            if device:
+                label = f"{label} · {device['name']}"
+        return label
+
     def _launch(self, item: dict) -> None:
         item["status"] = CompressStatus.ANALYZING
-        item["encoder"] = self._encoder
+        item["encoder"] = self._encoder_label()
         self._touch(item)
         thread = QThread(self)
         worker = CompressionWorker(

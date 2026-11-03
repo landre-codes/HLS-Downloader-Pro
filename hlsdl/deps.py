@@ -49,7 +49,7 @@ YTDLP_CHANNELS = {
     "master": "https://github.com/yt-dlp/yt-dlp-master-builds/releases/latest/download/",
 }
 YTDLP_VARIANTS = tuple(YTDLP_CHANNELS)
-FFMPEG_WIN_ZIP = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
+FFMPEG_WIN_ZIP = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-full.zip"
 FFMPEG_LINUX_TAR = "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
 FFMPEG_MAC = "https://evermeet.cx/ffmpeg/getrelease/{name}/zip"
 
