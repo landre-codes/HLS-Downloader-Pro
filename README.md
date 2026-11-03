@@ -7,7 +7,7 @@ Downloader de vídeos (HLS / m3u8) com interface **Qt Quick (QML) + Material Des
 - **Duas abas de download**: **Download Individual** (um link, com progresso dedicado) e **Lote** (fila com dezenas/centenas de links)
 - **Aba de Playlists**: carrega os itens de uma playlist (**YouTube** ou sites em geral), permite selecionar os desejados e enviá-los à fila
 - **Aba de Compressão local**: fila de arquivos/pastas, codecs **HEVC, H.264 e AV1**, contêineres **MP4/MKV/WebM/MOV/AVI**, aceleração por **Intel QSV, NVIDIA NVENC, AMD AMF, Kvazaar ou software** (`libx265`/`libx264`/`libsvtav1`), qualidade 1–51, presets de velocidade (**rápida → muito lenta**), paralelismo, **sugestões/estimativa de economia por formato**, validação da saída e substituição atômica (original preservado por padrão). O modo **Auto** prioriza a **GPU dedicada** (Arc/NVIDIA/AMD) e o dispositivo QSV pode ser escolhido na interface. Inclui **10-bit** e **ajuste fino do x265** (`aq-mode`/`psy`), além de **preservar metadados HDR** (primárias, transferência, espaço de cor e faixa) e mostrar o **encoder real** usado em cada arquivo (ex.: `QSV HEVC · Intel Arc B580`).
-- **Interface**: busca na fila com ícone de pesquisa, cabeçalhos de tabela maiores/destacados, **console de instalação estilo terminal** (com copiar saída), cursor de mão em ações e **tooltips com exemplos**. A escala da interface acompanha o tamanho da tela (até 128%) sem desalinhar as tabelas.
+- **Interface**: busca na fila com ícone de pesquisa, cabeçalhos de tabela maiores/destacados, **console de instalação estilo terminal** (somente em Configurações → Dependências, com copiar saída), cursor de mão em ações e **tooltips com exemplos**. A escala da interface acompanha o tamanho da tela (até 128%) sem desalinhar as tabelas.
 - **Atualizações**: verifica a última release, baixa o instalador e **valida o SHA-256** antes de executar (Windows; no portátil abre a página da release)
 - **Modo de extração** (Individual e Lote): **Vídeo + áudio**, **Apenas vídeo** ou **Somente áudio**
 - **Qualidade de 144p a 4K** (2160p) e **escolha do arquivo** de saída: **mp4, mkv, webm, avi, mov** (ou **mp3, m4a, wav, flac, opus** no modo áudio)
@@ -179,6 +179,9 @@ HLS-Downloader-Pro.exe --ui-scale 1.25
 ```
 
 A escala automática pode ser desativada com `--ui-scale 1`.
+
+A geometria salva é limitada à área disponível da tela, então mudar a escala
+não deixa a janela maior que o monitor.
 
 ## Testes
 

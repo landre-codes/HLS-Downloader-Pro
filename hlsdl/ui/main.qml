@@ -1,6 +1,5 @@
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Controls as C
 import QtQuick.Controls.Material
 import QtQuick.Layouts
 import QtQml.Models
@@ -133,25 +132,26 @@ ApplicationWindow {
 
     // ------------------------------------------------- Controles clicáveis
     // Cursor de mão (indicador) em tudo que responde a clique, como links.
-    component Button: C.Button {
+    // Derivam dos tipos originais (Material), sem substituir o estilo.
+    component HandButton: Button {
         HoverHandler { cursorShape: Qt.PointingHandCursor }
     }
-    component ToolButton: C.ToolButton {
+    component HandToolButton: ToolButton {
         HoverHandler { cursorShape: Qt.PointingHandCursor }
     }
-    component TabButton: C.TabButton {
+    component HandTabButton: TabButton {
         HoverHandler { cursorShape: Qt.PointingHandCursor }
     }
-    component CheckBox: C.CheckBox {
+    component HandCheckBox: CheckBox {
         HoverHandler { cursorShape: Qt.PointingHandCursor }
     }
-    component RadioButton: C.RadioButton {
+    component HandRadioButton: RadioButton {
         HoverHandler { cursorShape: Qt.PointingHandCursor }
     }
-    component ComboBox: C.ComboBox {
+    component HandComboBox: ComboBox {
         HoverHandler { cursorShape: Qt.PointingHandCursor }
     }
-    component Switch: C.Switch {
+    component HandSwitch: Switch {
         HoverHandler { cursorShape: Qt.PointingHandCursor }
     }
 
@@ -187,15 +187,14 @@ ApplicationWindow {
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 6
-                Repeater {
-                    model: ["#ff5f56", "#ffbd2e", "#27c93f"]
-                    delegate: Rectangle {
-                        width: 9; height: 9; radius: 4.5
-                        color: modelData
-                    }
+                Label {
+                    text: ">_"
+                    color: "#27c93f"
+                    font.family: "monospace"
+                    font.pixelSize: 12
+                    font.bold: true
                 }
                 Label {
-                    Layout.leftMargin: 6
                     Layout.fillWidth: true
                     text: term.title
                     color: "#8b949e"
@@ -203,7 +202,7 @@ ApplicationWindow {
                     font.pixelSize: 11
                     elide: Text.ElideRight
                 }
-                ToolButton {
+                HandToolButton {
                     display: AbstractButton.IconOnly
                     icon.source: "icons/copy_dark.svg"
                     icon.width: 14; icon.height: 14
@@ -297,7 +296,7 @@ ApplicationWindow {
                 { value: "video_only", label: root.strings.fmt_video_only },
                 { value: "audio_only", label: root.strings.fmt_audio_only }
             ]
-            delegate: RadioButton {
+            delegate: HandRadioButton {
                 text: modelData.label
                 checked: bridge.formatMode === modelData.value
                 Binding on checked { value: bridge.formatMode === modelData.value }
@@ -362,7 +361,7 @@ ApplicationWindow {
     }
 
     // Seletor de qualidade (144p–4K).
-    component QualityCombo: ComboBox {
+    component QualityCombo: HandComboBox {
         property var items: [
             { text: root.strings.q_best, value: "best" },
             { text: "2160p (4K)", value: "2160" },
@@ -388,7 +387,7 @@ ApplicationWindow {
     }
 
     // Seletor de arquivo/contêiner (depende do modo de formato).
-    component ContainerCombo: ComboBox {
+    component ContainerCombo: HandComboBox {
         property var items: bridge.formatMode === "audio_only"
             ? ["mp3", "m4a", "wav", "flac", "opus"]
             : ["mp4", "mkv", "webm", "avi", "mov"]
@@ -399,7 +398,7 @@ ApplicationWindow {
     }
 
     // Compressão: original (sem reencode), H.264 ou H.265 (HEVC).
-    component CodecCombo: ComboBox {
+    component CodecCombo: HandComboBox {
         property var items: [
             { text: root.strings.codec_copy, value: "copy" },
             { text: root.strings.codec_h264, value: "h264" },
@@ -415,11 +414,11 @@ ApplicationWindow {
             return 0
         }
         onActivated: bridge.setCodec(currentValue)
-        Layout.preferredWidth: 180
+        Layout.preferredWidth: 210
     }
 
     // Nível de compressão (quanto menor a CRF, maior a qualidade/tamanho).
-    component CompressCombo: ComboBox {
+    component CompressCombo: HandComboBox {
         property var items: [
             { text: root.strings.compress_light, value: "light" },
             { text: root.strings.compress_medium, value: "medium" },
@@ -471,8 +470,11 @@ ApplicationWindow {
     )
 
     onVisibilityChanged: {
-        if (root.visibility === Window.Maximized && root.screen)
-            root.setGeometry(root.screen.availableGeometry)
+        if (root.visibility === Window.Maximized && root.screen) {
+            var geo = root.screen.availableGeometry
+            if (geo)
+                root.setGeometry(geo.x, geo.y, geo.width, geo.height)
+        }
     }
 
     // ====================================================== Atalhos
@@ -651,23 +653,23 @@ ApplicationWindow {
         anchors.right: parent.right
         contentHeight: 42
         background: Rectangle { color: root.dark ? "#181d22" : "#eef0f3" }
-        TabButton {
+        HandTabButton {
             text: strings.tab_single; font.pixelSize: 13; implicitWidth: 170
             ToolTip.text: strings.tab_single_tip; ToolTip.visible: hovered; ToolTip.delay: 500
         }
-        TabButton {
+        HandTabButton {
             text: strings.tab_downloads; font.pixelSize: 13; implicitWidth: 130
             ToolTip.text: strings.tab_downloads_tip; ToolTip.visible: hovered; ToolTip.delay: 500
         }
-        TabButton {
+        HandTabButton {
             text: strings.tab_playlist; font.pixelSize: 13; implicitWidth: 130
             ToolTip.text: strings.tab_playlist_tip; ToolTip.visible: hovered; ToolTip.delay: 500
         }
-        TabButton {
+        HandTabButton {
             text: strings.tab_compress; font.pixelSize: 13; implicitWidth: 130
             ToolTip.text: strings.tab_compress_tip; ToolTip.visible: hovered; ToolTip.delay: 500
         }
-        TabButton {
+        HandTabButton {
             text: strings.tab_settings; font.pixelSize: 13; implicitWidth: 150
             ToolTip.text: strings.tab_settings_tip; ToolTip.visible: hovered; ToolTip.delay: 500
         }
@@ -767,7 +769,7 @@ ApplicationWindow {
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: 12
-                            Button {
+                            HandButton {
                                 text: strings.btn_download_now; highlighted: true
                                 icon.source: root.iconPath("play")
                                 icon.width: 16; icon.height: 16
@@ -817,7 +819,7 @@ ApplicationWindow {
 
                             Label {
                                 Layout.fillWidth: true
-                                text: bridge.lastItem.title
+                                text: bridge.lastItem.title || ""
                                 elide: Text.ElideMiddle
                                 font.weight: Font.DemiBold
                                 font.pixelSize: 14
@@ -832,7 +834,7 @@ ApplicationWindow {
                                     Label {
                                         anchors.fill: parent
                                         anchors.margins: 4
-                                        text: root.statusText(bridge.lastItem.status)
+                                        text: root.statusText(bridge.lastItem.status || "")
                                         color: "white"
                                         font.pixelSize: 11
                                         font.bold: true
@@ -843,7 +845,7 @@ ApplicationWindow {
                                 }
                                 Label {
                                     Layout.fillWidth: true
-                                    text: bridge.lastItem.speed + "   " + bridge.lastItem.size
+                                    text: (bridge.lastItem.speed || "") + "   " + (bridge.lastItem.size || "")
                                     color: Material.secondaryTextColor
                                     font.pixelSize: 12
                                     elide: Text.ElideRight
@@ -859,8 +861,8 @@ ApplicationWindow {
 
                             Label {
                                 Layout.fillWidth: true
-                                visible: bridge.lastItem.status === "error" && bridge.lastItem.error.length > 0
-                                text: bridge.lastItem.error
+                                visible: bridge.lastItem.status === "error" && (bridge.lastItem.error || "").length > 0
+                                text: bridge.lastItem.error || ""
                                 color: root.dark ? "#ff8a80" : "#c62828"
                                 wrapMode: Text.Wrap
                                 font.pixelSize: 12
@@ -868,7 +870,7 @@ ApplicationWindow {
 
                             RowLayout {
                                 spacing: 10
-                                Button {
+                                HandButton {
                                     visible: bridge.lastItem.status === "done"
                                     text: strings.btn_open
                                     onClicked: bridge.openDownloadPath(bridge.lastItem.path)
@@ -918,7 +920,7 @@ ApplicationWindow {
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: 8
-                            Button {
+                            HandButton {
                                 text: strings.btn_add; highlighted: true
                                 icon.source: root.iconPath("add")
                                 icon.width: 16; icon.height: 16
@@ -926,7 +928,7 @@ ApplicationWindow {
                                 ToolTip.text: strings.btn_add_tip; ToolTip.visible: hovered; ToolTip.delay: 500
                                 onClicked: { bridge.addLinks(inputArea.text); inputArea.clear() }
                             }
-                            Button {
+                            HandButton {
                                 text: strings.btn_paste
                                 icon.source: root.iconPath("copy")
                                 icon.width: 16; icon.height: 16
@@ -934,7 +936,7 @@ ApplicationWindow {
                                 ToolTip.text: strings.btn_paste_tip; ToolTip.visible: hovered; ToolTip.delay: 500
                                 onClicked: { bridge.pasteFromClipboard(); inputArea.clear() }
                             }
-                            Button {
+                            HandButton {
                                 text: strings.btn_import
                                 icon.source: root.iconPath("file")
                                 icon.width: 16; icon.height: 16
@@ -943,7 +945,7 @@ ApplicationWindow {
                                 onClicked: bridge.importTxt()
                             }
                             Item { Layout.fillWidth: true }
-                            Button {
+                            HandButton {
                                 text: strings.btn_clear; flat: true
                                 icon.source: root.iconPath("trash")
                                 icon.width: 16; icon.height: 16
@@ -970,7 +972,7 @@ ApplicationWindow {
                                 Layout.maximumWidth: 260
                                 Layout.alignment: Qt.AlignVCenter
                             }
-                            Button {
+                            HandButton {
                                 text: strings.batch_options
                                 onClicked: batchOptionsDialog.open()
                             }
@@ -1012,7 +1014,7 @@ ApplicationWindow {
                             verticalAlignment: Text.AlignVCenter
                             wrapMode: Text.Wrap
                         }
-                        Button {
+                        HandButton {
                             text: strings.dlg_deps_settings
                             Layout.alignment: Qt.AlignVCenter
                             onClicked: tabBar.currentIndex = 4
@@ -1050,7 +1052,7 @@ ApplicationWindow {
                                 ToolTip.visible: hovered
                                 ToolTip.delay: 500
                             }
-                            ToolButton {
+                            HandToolButton {
                                 display: AbstractButton.IconOnly
                                 icon.source: root.iconPath("cancel")
                                 icon.width: 14
@@ -1149,7 +1151,7 @@ ApplicationWindow {
                         to: 1
                     }
 
-                    Button {
+                    HandButton {
                         text: strings.btn_start; highlighted: true
                         icon.source: root.iconPath("play")
                         icon.width: 16; icon.height: 16
@@ -1158,7 +1160,7 @@ ApplicationWindow {
                         ToolTip.text: strings.btn_start_tip; ToolTip.visible: hovered; ToolTip.delay: 500
                         onClicked: bridge.startQueue()
                     }
-                    Button {
+                    HandButton {
                         text: strings.btn_pause
                         icon.source: root.iconPath("pause")
                         icon.width: 16; icon.height: 16
@@ -1167,7 +1169,7 @@ ApplicationWindow {
                         ToolTip.text: strings.btn_pause_tip; ToolTip.visible: hovered; ToolTip.delay: 500
                         onClicked: bridge.pauseQueue()
                     }
-                    Button {
+                    HandButton {
                         text: strings.btn_resume
                         icon.source: root.iconPath("play")
                         icon.width: 16; icon.height: 16
@@ -1177,7 +1179,7 @@ ApplicationWindow {
                         ToolTip.text: strings.btn_resume_tip; ToolTip.visible: hovered; ToolTip.delay: 500
                         onClicked: bridge.resumeQueue()
                     }
-                    Button {
+                    HandButton {
                         text: strings.btn_cancel_all
                         icon.source: root.iconPath("stop")
                         icon.width: 16; icon.height: 16
@@ -1185,7 +1187,7 @@ ApplicationWindow {
                         ToolTip.text: strings.btn_cancel_all_tip; ToolTip.visible: hovered; ToolTip.delay: 500
                         onClicked: confirmCancel.open()
                     }
-                    Button {
+                    HandButton {
                         text: strings.btn_clear_finished
                         icon.source: root.iconPath("trash")
                         icon.width: 16; icon.height: 16
@@ -1229,7 +1231,7 @@ ApplicationWindow {
                                 selectByMouse: true
                                 onAccepted: root.loadPlaylist()
                             }
-                            Button {
+                            HandButton {
                                 text: bridge.playlistLoading ? strings.playlist_loading : strings.btn_load_playlist
                                 icon.source: root.iconPath("retry")
                                 icon.width: 16; icon.height: 16
@@ -1286,12 +1288,12 @@ ApplicationWindow {
                                 font.pixelSize: 13
                                 color: Material.secondaryTextColor
                             }
-                            Button {
+                            HandButton {
                                 text: strings.btn_select_all
                                 enabled: playlistModel.count > 0
                                 onClicked: root.selectAllPlaylist(true)
                             }
-                            Button {
+                            HandButton {
                                 text: strings.btn_select_none
                                 enabled: playlistModel.count > 0
                                 onClicked: root.selectAllPlaylist(false)
@@ -1330,7 +1332,7 @@ ApplicationWindow {
                                     anchors.leftMargin: 6
                                     anchors.rightMargin: 6
                                     spacing: 8
-                                    CheckBox {
+                                    HandCheckBox {
                                         id: selBox
                                         Binding on checked { value: model.selected }
                                         onClicked: {
@@ -1383,7 +1385,7 @@ ApplicationWindow {
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: 8
-                            Button {
+                            HandButton {
                                 text: strings.btn_add_selected
                                 icon.source: root.iconPath("add")
                                 icon.width: 16; icon.height: 16
@@ -1391,7 +1393,7 @@ ApplicationWindow {
                                 enabled: root.playlistSelCount > 0
                                 onClicked: root.addSelectedPlaylist(false)
                             }
-                            Button {
+                            HandButton {
                                 text: strings.btn_download_selected
                                 icon.source: root.iconPath("play")
                                 icon.width: 16; icon.height: 16
@@ -1436,14 +1438,14 @@ ApplicationWindow {
                                 font.weight: Font.DemiBold
                                 Layout.fillWidth: true
                             }
-                            Button {
+                            HandButton {
                                 text: strings.compress_add_files
                                 icon.source: root.iconPath("file")
                                 icon.width: 16; icon.height: 16
                                 display: AbstractButton.TextBesideIcon
                                 onClicked: bridge.addCompressionFiles()
                             }
-                            Button {
+                            HandButton {
                                 text: strings.compress_add_folder
                                 icon.source: root.iconPath("open")
                                 icon.width: 16; icon.height: 16
@@ -1456,7 +1458,7 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             spacing: 10
                             Label { text: strings.compress_encoder; font.pixelSize: 13; color: Material.secondaryTextColor }
-                            ComboBox {
+                            HandComboBox {
                                 id: compEncoder
                                 model: bridge.compressionEncoders
                                 textRole: "name"
@@ -1480,7 +1482,7 @@ ApplicationWindow {
                                 font.pixelSize: 13
                                 color: Material.secondaryTextColor
                             }
-                            ComboBox {
+                            HandComboBox {
                                 id: compGpu
                                 visible: bridge.compressionEncoder === "auto"
                                          || bridge.compressionEncoder === "qsv"
@@ -1499,7 +1501,7 @@ ApplicationWindow {
                                 ToolTip.delay: 500
                                 onActivated: bridge.setCompressionQsvDevice(currentValue)
                             }
-                            ToolButton {
+                            HandToolButton {
                                 visible: bridge.compressionEncoder === "auto"
                                          || bridge.compressionEncoder === "qsv"
                                 display: AbstractButton.IconOnly
@@ -1522,13 +1524,11 @@ ApplicationWindow {
                                 ToolTip.visible: hovered; ToolTip.delay: 500
                                 onValueChanged: if (value !== bridge.compressionQuality) bridge.setCompressionQuality(value)
                             }
-                            Label {
+                            TipLabel {
                                 text: strings.compress_estimate + " ~" + bridge.compressionEstimate + "%"
+                                tip: strings.compress_estimate_tip
                                 font.pixelSize: 11
                                 color: Material.secondaryTextColor
-                                ToolTip.text: strings.compress_estimate_tip
-                                ToolTip.visible: hovered
-                                ToolTip.delay: 500
                             }
                             Item { Layout.fillWidth: true }
                         }
@@ -1540,7 +1540,7 @@ ApplicationWindow {
                             RowLayout {
                                 spacing: 6
                                 Label { text: strings.compress_codec; font.pixelSize: 13; color: Material.secondaryTextColor }
-                                ComboBox {
+                                HandComboBox {
                                     id: compCodec
                                     model: bridge.compressionCodecs
                                     textRole: "name"
@@ -1562,7 +1562,7 @@ ApplicationWindow {
                             RowLayout {
                                 spacing: 6
                                 Label { text: strings.compress_container; font.pixelSize: 13; color: Material.secondaryTextColor }
-                                ComboBox {
+                                HandComboBox {
                                     id: compContainer
                                     model: bridge.compressionContainers
                                     currentIndex: Math.max(0, model.indexOf(bridge.compressionContainer))
@@ -1577,7 +1577,7 @@ ApplicationWindow {
                             RowLayout {
                                 spacing: 6
                                 Label { text: strings.compress_speed; font.pixelSize: 13; color: Material.secondaryTextColor }
-                                ComboBox {
+                                HandComboBox {
                                     id: compSpeed
                                     model: [
                                         { text: strings.compress_speed_fast, value: "fast" },
@@ -1632,7 +1632,7 @@ ApplicationWindow {
                                 }
                             }
 
-                            Button {
+                            HandButton {
                                 text: strings.compress_suggestions
                                 ToolTip.text: strings.compress_suggestions_tip
                                 ToolTip.visible: hovered
@@ -1644,7 +1644,7 @@ ApplicationWindow {
                         Flow {
                             Layout.fillWidth: true
                             spacing: 12
-                            CheckBox {
+                            HandCheckBox {
                                 text: strings.compress_only_smaller
                                 checked: bridge.compressionOnlyIfSmaller
                                 ToolTip.text: strings.compress_only_smaller_tip
@@ -1652,7 +1652,7 @@ ApplicationWindow {
                                 ToolTip.delay: 500
                                 onToggled: bridge.setCompressionOnlyIfSmaller(checked)
                             }
-                            CheckBox {
+                            HandCheckBox {
                                 text: strings.compress_replace_original
                                 checked: bridge.compressionReplaceOriginal
                                 ToolTip.text: strings.compress_replace_original_tip
@@ -1660,7 +1660,7 @@ ApplicationWindow {
                                 ToolTip.delay: 500
                                 onToggled: bridge.setCompressionReplaceOriginal(checked)
                             }
-                            CheckBox {
+                            HandCheckBox {
                                 text: strings.compress_reencode_hevc
                                 checked: bridge.compressionReencodeHevc
                                 ToolTip.text: strings.compress_reencode_hevc_tip
@@ -1668,7 +1668,7 @@ ApplicationWindow {
                                 ToolTip.delay: 500
                                 onToggled: bridge.setCompressionReencodeHevc(checked)
                             }
-                            CheckBox {
+                            HandCheckBox {
                                 text: strings.compress_skip_hdr
                                 checked: bridge.compressionSkipHdr
                                 ToolTip.text: strings.compress_skip_hdr_tip
@@ -1676,7 +1676,7 @@ ApplicationWindow {
                                 ToolTip.delay: 500
                                 onToggled: bridge.setCompressionSkipHdr(checked)
                             }
-                            CheckBox {
+                            HandCheckBox {
                                 text: strings.compress_ten_bit
                                 visible: bridge.compressionCodec === "hevc"
                                          && (bridge.compressionEncoder === "auto"
@@ -1688,7 +1688,7 @@ ApplicationWindow {
                                 ToolTip.delay: 500
                                 onToggled: bridge.setCompressionTenBit(checked)
                             }
-                            CheckBox {
+                            HandCheckBox {
                                 text: strings.compress_x265_tuning
                                 visible: bridge.compressionCodec === "hevc"
                                          && (bridge.compressionEncoder === "auto"
@@ -1856,7 +1856,7 @@ ApplicationWindow {
                                     Row {
                                         Layout.preferredWidth: 76
                                         spacing: 4
-                                        ToolButton {
+                                        HandToolButton {
                                             width: 32; height: 28
                                             display: AbstractButton.IconOnly
                                             icon.source: root.iconPath("cancel")
@@ -1865,7 +1865,7 @@ ApplicationWindow {
                                             Accessible.name: strings.tip_cancel
                                             onClicked: bridge.cancelCompressionItem(index)
                                         }
-                                        ToolButton {
+                                        HandToolButton {
                                             width: 32; height: 28
                                             display: AbstractButton.IconOnly
                                             icon.source: root.iconPath("open")
@@ -1874,7 +1874,7 @@ ApplicationWindow {
                                             Accessible.name: strings.tip_open
                                             onClicked: bridge.openCompressionOutput(model.output)
                                         }
-                                        ToolButton {
+                                        HandToolButton {
                                             width: 32; height: 28
                                             display: AbstractButton.IconOnly
                                             icon.source: root.iconPath("cancel")
@@ -1910,7 +1910,7 @@ ApplicationWindow {
                         color: Material.secondaryTextColor
                         elide: Text.ElideRight
                     }
-                    Button {
+                    HandButton {
                         text: strings.btn_start; highlighted: true
                         icon.source: root.iconPath("play")
                         icon.width: 16; icon.height: 16
@@ -1918,7 +1918,7 @@ ApplicationWindow {
                         visible: !bridge.compressionActive
                         onClicked: bridge.startCompression()
                     }
-                    Button {
+                    HandButton {
                         text: strings.btn_pause
                         icon.source: root.iconPath("pause")
                         icon.width: 16; icon.height: 16
@@ -1926,7 +1926,7 @@ ApplicationWindow {
                         visible: bridge.compressionActive && !bridge.compressionPaused
                         onClicked: bridge.pauseCompression()
                     }
-                    Button {
+                    HandButton {
                         text: strings.btn_resume
                         icon.source: root.iconPath("play")
                         icon.width: 16; icon.height: 16
@@ -1935,14 +1935,14 @@ ApplicationWindow {
                         highlighted: true
                         onClicked: bridge.resumeCompression()
                     }
-                    Button {
+                    HandButton {
                         text: strings.btn_cancel_all
                         icon.source: root.iconPath("stop")
                         icon.width: 16; icon.height: 16
                         display: AbstractButton.TextBesideIcon
                         onClicked: bridge.cancelCompression()
                     }
-                    Button {
+                    HandButton {
                         text: strings.btn_clear_finished
                         icon.source: root.iconPath("trash")
                         icon.width: 16; icon.height: 16
@@ -1984,7 +1984,7 @@ ApplicationWindow {
                                 Layout.fillWidth: true
                                 spacing: 12
                                 Label { text: strings.cfg_dark; Layout.fillWidth: true; font.pixelSize: 13; wrapMode: Text.WordWrap }
-                                ToolButton {
+                                HandToolButton {
                                     display: AbstractButton.IconOnly
                                     icon.source: root.dark
                                                  ? root.iconPath("sun")
@@ -2002,7 +2002,7 @@ ApplicationWindow {
                                 Layout.fillWidth: true
                                 spacing: 12
                                 Label { text: strings.cfg_language; Layout.fillWidth: true; font.pixelSize: 13; wrapMode: Text.WordWrap }
-                                ComboBox {
+                                HandComboBox {
                                     id: langCombo
                                     model: bridge.languages
                                     textRole: "name"
@@ -2057,7 +2057,7 @@ ApplicationWindow {
                                     font.pixelSize: 13
                                     wrapMode: Text.WordWrap
                                 }
-                                ComboBox {
+                                HandComboBox {
                                     id: namingCombo
                                     model: [
                                         { text: strings.naming_id, value: "id" },
@@ -2076,7 +2076,7 @@ ApplicationWindow {
                             RowLayout {
                                 Layout.fillWidth: true
                                 spacing: 12
-                                Button {
+                                HandButton {
                                     text: strings.cfg_outdir
                                     ToolTip.text: strings.cfg_outdir_tip; ToolTip.visible: hovered; ToolTip.delay: 500
                                     onClicked: bridge.chooseOutputFolder()
@@ -2158,7 +2158,7 @@ ApplicationWindow {
                                 Layout.fillWidth: true
                                 spacing: 12
                                 Label { text: strings.cfg_cookies_use; font.pixelSize: 13; Layout.fillWidth: true; wrapMode: Text.WordWrap }
-                                Switch {
+                                HandSwitch {
                                     checked: bridge.cookiesEnabled
                                     ToolTip.text: strings.cfg_cookies_use_tip; ToolTip.visible: hovered; ToolTip.delay: 500
                                     onToggled: bridge.setCookiesEnabled(checked)
@@ -2168,7 +2168,7 @@ ApplicationWindow {
                                 Layout.fillWidth: true
                                 spacing: 12
                                 Label { text: strings.cfg_browser; font.pixelSize: 13; color: Material.secondaryTextColor; Layout.fillWidth: true; wrapMode: Text.WordWrap }
-                                ComboBox {
+                                HandComboBox {
                                     id: browserCombo
                                     model: ["Chrome", "Chromium", "Edge", "Firefox", "Opera", "Vivaldi", "Brave"]
                                     currentIndex: bridge.cookiesBrowserIndex
@@ -2196,7 +2196,7 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     ToolTip.text: strings.cfg_cookies_file_tip; ToolTip.visible: hovered; ToolTip.delay: 500
                                 }
-                                Button {
+                                HandButton {
                                     text: strings.btn_choose
                                     enabled: bridge.cookiesEnabled
                                     ToolTip.text: strings.btn_choose_tip; ToolTip.visible: hovered; ToolTip.delay: 500
@@ -2242,12 +2242,12 @@ ApplicationWindow {
                                     Layout.rightMargin: 6
                                     Layout.alignment: Qt.AlignVCenter
                                 }
-                                Button {
+                                HandButton {
                                     text: strings.dep_update_all
                                     enabled: !bridge.depsBusy
                                     onClicked: bridge.updateDependencies()
                                 }
-                                Button {
+                                HandButton {
                                     text: strings.dep_recheck
                                     enabled: !bridge.depsBusy
                                     onClicked: bridge.refreshDependencies()
@@ -2270,7 +2270,7 @@ ApplicationWindow {
                                     color: Material.secondaryTextColor
                                     Layout.alignment: Qt.AlignVCenter
                                 }
-                                ComboBox {
+                                HandComboBox {
                                     id: ytdlpVariantCombo
                                     model: [
                                         { text: strings.variant_stable, value: "stable" },
@@ -2322,7 +2322,7 @@ ApplicationWindow {
                                         Layout.fillWidth: true
                                         elide: Text.ElideRight
                                     }
-                                    Button {
+                                    HandButton {
                                         visible: modelData.installable
                                         enabled: !bridge.depsBusy
                                         text: modelData.found ? strings.dep_update : strings.dep_install
@@ -2363,7 +2363,7 @@ ApplicationWindow {
                                     font.pixelSize: 13
                                     color: Material.secondaryTextColor
                                 }
-                                Button {
+                                HandButton {
                                     text: strings.update_check
                                     icon.source: root.iconPath("retry")
                                     icon.width: 16; icon.height: 16
@@ -2371,7 +2371,7 @@ ApplicationWindow {
                                     enabled: !bridge.updateBusy
                                     onClicked: bridge.checkForUpdates()
                                 }
-                                Button {
+                                HandButton {
                                     text: strings.update_download
                                     icon.source: root.iconPath("download")
                                     icon.width: 16; icon.height: 16
@@ -2381,7 +2381,7 @@ ApplicationWindow {
                                     highlighted: true
                                     onClicked: bridge.downloadUpdate()
                                 }
-                                Button {
+                                HandButton {
                                     text: strings.update_open_page
                                     icon.source: root.iconPath("open")
                                     icon.width: 16; icon.height: 16
@@ -2660,7 +2660,7 @@ ApplicationWindow {
                     Row {
                         anchors.centerIn: parent
                         spacing: 3
-                        ToolButton {
+                        HandToolButton {
                             width: 32; height: 28
                             display: AbstractButton.IconOnly
                             icon.source: root.iconPath("edit")
@@ -2670,7 +2670,7 @@ ApplicationWindow {
                             ToolTip.text: strings.tip_edit; ToolTip.visible: hovered; ToolTip.delay: 500
                             onClicked: rowItem.editing = true
                         }
-                        ToolButton {
+                        HandToolButton {
                             width: 32; height: 28
                             display: AbstractButton.IconOnly
                             icon.source: root.iconPath("copy")
@@ -2679,7 +2679,7 @@ ApplicationWindow {
                             ToolTip.text: strings.tip_copy; ToolTip.visible: hovered; ToolTip.delay: 500
                             onClicked: bridge.copyLink(model.url)
                         }
-                        ToolButton {
+                        HandToolButton {
                             width: 32; height: 28
                             display: AbstractButton.IconOnly
                             icon.source: root.iconPath("retry")
@@ -2689,7 +2689,7 @@ ApplicationWindow {
                             ToolTip.text: strings.tip_retry; ToolTip.visible: hovered; ToolTip.delay: 500
                             onClicked: bridge.retryItem(index)
                         }
-                        ToolButton {
+                        HandToolButton {
                             width: 32; height: 28
                             display: AbstractButton.IconOnly
                             icon.source: root.iconPath("cancel")
@@ -2699,7 +2699,7 @@ ApplicationWindow {
                             ToolTip.text: strings.tip_cancel; ToolTip.visible: hovered; ToolTip.delay: 500
                             onClicked: bridge.cancelItem(index)
                         }
-                        ToolButton {
+                        HandToolButton {
                             width: 32; height: 28
                             display: AbstractButton.IconOnly
                             icon.source: root.iconPath("open")
@@ -2726,7 +2726,7 @@ ApplicationWindow {
     // --------------------------------------------------------- erro detalhado
     Dialog {
         id: compressSuggestions
-        parent: root
+        parent: root.contentItem
         modal: true
         title: strings.compress_suggestions
         width: 540
@@ -2759,7 +2759,7 @@ ApplicationWindow {
             }
         }
         footer: DialogButtonBox {
-            Button {
+            HandButton {
                 text: strings.dlg_error_close
                 DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
                 onClicked: compressSuggestions.close()
@@ -2769,7 +2769,7 @@ ApplicationWindow {
 
     Dialog {
         id: errorDialog
-        parent: root
+        parent: root.contentItem
         modal: true
         title: strings.dlg_error
         standardButtons: Dialog.NoButton
@@ -2784,13 +2784,13 @@ ApplicationWindow {
                 font.pixelSize: 12
                 color: root.dark ? "#ff8a80" : "#c62828"
             }
-            Button {
+            HandButton {
                 text: strings.dlg_error_copy
                 onClicked: { bridge.copyLink(root.errorText); errorDialog.close() }
             }
         }
         footer: DialogButtonBox {
-            Button {
+            HandButton {
                 text: strings.dlg_error_close
                 DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
                 onClicked: errorDialog.close()
@@ -2801,7 +2801,7 @@ ApplicationWindow {
     // ------------------------------------------------------- confirmações
     Dialog {
         id: confirmCancel
-        parent: root
+        parent: root.contentItem
         modal: true
         title: strings.confirm_cancel_title
         standardButtons: Dialog.NoButton
@@ -2814,12 +2814,12 @@ ApplicationWindow {
             wrapMode: Text.Wrap
         }
         footer: DialogButtonBox {
-            Button {
+            HandButton {
                 text: strings.confirm_ok
                 DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
                 onClicked: { bridge.cancelAll(); confirmCancel.close() }
             }
-            Button {
+            HandButton {
                 text: strings.confirm_cancel
                 DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
                 onClicked: confirmCancel.close()
@@ -2829,7 +2829,7 @@ ApplicationWindow {
 
     Dialog {
         id: confirmClear
-        parent: root
+        parent: root.contentItem
         modal: true
         title: strings.confirm_clear_title
         standardButtons: Dialog.NoButton
@@ -2842,12 +2842,12 @@ ApplicationWindow {
             wrapMode: Text.Wrap
         }
         footer: DialogButtonBox {
-            Button {
+            HandButton {
                 text: strings.confirm_ok
                 DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
                 onClicked: { bridge.clearFinished(); confirmClear.close() }
             }
-            Button {
+            HandButton {
                 text: strings.confirm_cancel
                 DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
                 onClicked: confirmClear.close()
@@ -2858,7 +2858,7 @@ ApplicationWindow {
     // ------------------------------------------- opções avançadas do lote
     Dialog {
         id: batchOptionsDialog
-        parent: root
+        parent: root.contentItem
         modal: true
         title: strings.batch_options
         width: 520
@@ -2896,7 +2896,7 @@ ApplicationWindow {
             }
         }
         footer: DialogButtonBox {
-            Button {
+            HandButton {
                 text: strings.dlg_error_close
                 DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
                 onClicked: batchOptionsDialog.close()
@@ -2907,7 +2907,7 @@ ApplicationWindow {
     // ----------------------------------------------------- diálogo de dependências
     Dialog {
         id: depsDialog
-        parent: root
+        parent: root.contentItem
         modal: true
         title: strings.dlg_deps_title
         width: 560
@@ -2935,15 +2935,28 @@ ApplicationWindow {
                 color: root.dark ? "#ff8a80" : "#c62828"
                 font.pixelSize: 12
             }
-            TerminalPanel {
+            Label {
+                Layout.fillWidth: true
+                text: strings.dep_console
+                font.bold: true
                 visible: root.depsLog.length > 0
-                title: strings.dep_console
-                output: root.depsLog
-                panelHeight: 110
+            }
+            ScrollView {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 90
+                visible: root.depsLog.length > 0
+                clip: true
+                TextArea {
+                    readOnly: true
+                    text: root.depsLog
+                    font.family: "monospace"
+                    font.pixelSize: 11
+                    wrapMode: TextEdit.NoWrap
+                }
             }
         }
         footer: DialogButtonBox {
-            Button {
+            HandButton {
                 text: strings.dlg_deps_install
                 DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
                 onClicked: {
@@ -2953,7 +2966,7 @@ ApplicationWindow {
                     tabBar.currentIndex = 4
                 }
             }
-            Button {
+            HandButton {
                 text: strings.dlg_deps_later
                 DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
                 onClicked: {

@@ -181,6 +181,25 @@ def _single_instance() -> bool:
 # ===========================================================================
 # Geometria
 # ===========================================================================
+def _clamp_geometry(x: int, y: int, w: int, h: int) -> tuple[int, int, int, int] | None:
+    """Encaixa a geometria na tela disponível.
+
+    Protege contra geometrias salvas em outra escala/DPI (ex.: janela lógica
+    de 1920 px em uma tela que, com escala 110%, só oferece 1745 px).
+    """
+    center = QRect(x, y, w, h).center()
+    for screen in QGuiApplication.screens():
+        available = screen.availableGeometry()
+        if not available.contains(center):
+            continue
+        width = max(1, min(w, available.width()))
+        height = max(1, min(h, available.height()))
+        left = max(available.x(), min(x, available.x() + available.width() - width))
+        top = max(available.y(), min(y, available.y() + available.height() - height))
+        return left, top, width, height
+    return None
+
+
 def _restore_geometry(window, settings: QSettings) -> None:
     """Aplica a geometria salva (validando que ainda está em alguma tela)."""
     raw = settings.value("window/geometry", "", type=str)
@@ -193,13 +212,9 @@ def _restore_geometry(window, settings: QSettings) -> None:
             except ValueError:
                 x = y = w = h = 0
             if w >= MIN_W and h >= MIN_H:
-                center = QRect(x, y, w, h).center()
-                on_screen = any(
-                    screen.availableGeometry().contains(center)
-                    for screen in QGuiApplication.screens()
-                )
-                if on_screen:
-                    window.setGeometry(x, y, w, h)
+                geometry = _clamp_geometry(x, y, w, h)
+                if geometry:
+                    window.setGeometry(*geometry)
     if maximized:
         window.showMaximized()
     else:

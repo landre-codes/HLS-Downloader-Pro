@@ -15,7 +15,7 @@ e o versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 - **Metadados HDR preservados** na compressão (primárias, transferência, espaço de cor e faixa) e **encoder real** exibido por arquivo (ex.: `QSV HEVC · Intel Arc B580`).
 - **Notificação de conclusão** da compressão (toast + diálogo quando há erros).
 - **Filtro na fila de lote** (título/URL) com ícone de pesquisa, **cabeçalhos de tabela maiores/destacados** e mais tooltips/ícones (tema claro/escuro, ações).
-- **Console de instalação estilo terminal** (fundo escuro, fonte monoespaçada e botão de copiar saída).
+- **Console de instalação estilo terminal** em **Configurações → Dependências** (fundo escuro, fonte monoespaçada e botão de copiar saída).
 - **Escala automática da interface** conforme a tela (até 128%), com `--ui-scale`/`HLSDL_UI_SCALE` para ajuste manual; fonte, ícones e espaçamentos escalam juntos.
 - **Cursor de mão** (indicador) em botões, abas, combos, checkboxes e switches.
 - **Atualizador**: verifica a release, baixa o instalador e valida o SHA-256 antes de executar.
@@ -62,6 +62,13 @@ e o versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 - Tooltips em `Label` (ex.: “Rede”) agora aparecem de fato (via `HoverHandler`),
   com exemplos para **ID estável × título** e para o filtro.
 - Botões e controles clicáveis usam **cursor de mão**.
+- **Estilo Material restaurado**: os componentes de cursor não substituem mais
+  os tipos originais (`Button`, `ComboBox`, etc.), que voltaram a usar o tema
+  Material em vez do estilo Basic.
+- Diálogos agora usam `contentItem` como pai (sem avisos de `parent` inválido),
+  e bindings de `lastItem`/tooltips não geram mais `undefined`/`hovered`.
+- Janela restaurada é **limitada à área disponível da tela**, evitando ficar
+  maior que o monitor após mudança de escala/DPI.
 
 ## [1.2.3] — anterior
 - Controle de rede: limite de velocidade e conexões por download.

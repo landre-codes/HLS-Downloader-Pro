@@ -33,3 +33,22 @@ def test_apply_ui_scale_env(monkeypatch):
     argv = ["app.exe"]
     assert apply_ui_scale(argv) == 1.2
     assert os.environ["QT_SCALE_FACTOR"] == "1.20"
+
+
+def test_clamp_geometry_fits_screen(qapp):
+    from PySide6.QtGui import QGuiApplication
+
+    from hlsdl.app import _clamp_geometry
+
+    available = QGuiApplication.primaryScreen().availableGeometry()
+    clamped = _clamp_geometry(0, 0, available.width() + 400, available.height() + 200)
+    assert clamped is not None
+    x, y, w, h = clamped
+    assert w <= available.width()
+    assert h <= available.height()
+    assert x >= available.x()
+    assert y >= available.y()
+    assert x + w <= available.x() + available.width()
+    assert y + h <= available.y() + available.height()
+    # Centro fora de qualquer tela: não reposiciona.
+    assert _clamp_geometry(-99999, -99999, 1200, 800) is None
