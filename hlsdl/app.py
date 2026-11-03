@@ -216,6 +216,73 @@ def _raise_window(window) -> None:
 
 
 # ===========================================================================
+# Escala da interface
+# ===========================================================================
+UI_SCALE_BASE_WIDTH = 1600.0
+UI_SCALE_MIN = 1.0
+UI_SCALE_MAX = 1.28
+
+
+def compute_ui_scale(width: int) -> float:
+    """Escala global modesta a partir da largura lógica da tela.
+
+    A ideia é aumentar fonte, ícones e espaçamentos juntos (via
+    ``QT_SCALE_FACTOR``), em vez de só a fonte — o que desalinharia as
+    tabelas. Telas até ~1600 px ficam em 100%; 1080p ganha ~10%; 1440p
+    ~26%; acima disso o ganho é limitado a 128% para não estourar layouts.
+    """
+    if width <= 0:
+        return UI_SCALE_MIN
+    scale = (width / UI_SCALE_BASE_WIDTH) ** 0.5
+    return round(max(UI_SCALE_MIN, min(UI_SCALE_MAX, scale)), 2)
+
+
+def _system_screen_width() -> int:
+    """Largura lógica da tela no Windows (0 quando indisponível)."""
+    if os.name != "nt":
+        return 0
+    try:
+        import ctypes
+
+        return int(ctypes.windll.user32.GetSystemMetrics(0))
+    except Exception:
+        return 0
+
+
+def apply_ui_scale(argv: list[str] | None = None) -> float:
+    """Aplica a escala antes do ``QApplication`` (o Qt lê no startup).
+
+    Aceita ``--ui-scale 1.25`` / ``--ui-scale=1.25`` ou a variável
+    ``HLSDL_UI_SCALE`` para sobrescrever a detecção automática.
+    """
+    args = sys.argv if argv is None else argv
+    override = os.environ.get("HLSDL_UI_SCALE", "").strip()
+    explicit = bool(override)
+    for index, arg in enumerate(args):
+        if arg == "--ui-scale" and index + 1 < len(args):
+            override = args[index + 1]
+            explicit = True
+            del args[index:index + 2]
+            break
+        if arg.startswith("--ui-scale="):
+            override = arg.split("=", 1)[1]
+            explicit = True
+            del args[index]
+            break
+
+    scale = compute_ui_scale(_system_screen_width())
+    if explicit:
+        try:
+            scale = max(0.75, min(2.0, float(override.replace(",", "."))))
+        except ValueError:
+            pass
+
+    if (explicit or scale > UI_SCALE_MIN) and "QT_SCALE_FACTOR" not in os.environ:
+        os.environ["QT_SCALE_FACTOR"] = f"{scale:.2f}"
+    return scale
+
+
+# ===========================================================================
 # main
 # ===========================================================================
 def _ensure_std_streams() -> None:
@@ -234,6 +301,7 @@ def main() -> int:
     if "--portable" in sys.argv:
         os.environ["HLSDL_PORTABLE"] = "1"
         sys.argv = [arg for arg in sys.argv if arg != "--portable"]
+    apply_ui_scale()
     setup_logging("--verbose" in sys.argv)
 
     app = QApplication(sys.argv)

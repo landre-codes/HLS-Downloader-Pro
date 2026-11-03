@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Controls as C
 import QtQuick.Controls.Material
 import QtQuick.Layouts
 import QtQml.Models
@@ -130,6 +131,123 @@ ApplicationWindow {
         return "icons/" + name + (root.dark ? "_dark.svg" : "_light.svg")
     }
 
+    // ------------------------------------------------- Controles clicáveis
+    // Cursor de mão (indicador) em tudo que responde a clique, como links.
+    component Button: C.Button {
+        HoverHandler { cursorShape: Qt.PointingHandCursor }
+    }
+    component ToolButton: C.ToolButton {
+        HoverHandler { cursorShape: Qt.PointingHandCursor }
+    }
+    component TabButton: C.TabButton {
+        HoverHandler { cursorShape: Qt.PointingHandCursor }
+    }
+    component CheckBox: C.CheckBox {
+        HoverHandler { cursorShape: Qt.PointingHandCursor }
+    }
+    component RadioButton: C.RadioButton {
+        HoverHandler { cursorShape: Qt.PointingHandCursor }
+    }
+    component ComboBox: C.ComboBox {
+        HoverHandler { cursorShape: Qt.PointingHandCursor }
+    }
+    component Switch: C.Switch {
+        HoverHandler { cursorShape: Qt.PointingHandCursor }
+    }
+
+    // Rótulo com tooltip (Label não tem `hovered`; usa HoverHandler).
+    component TipLabel: Label {
+        id: tipLabel
+        property string tip: ""
+        ToolTip.text: tip
+        ToolTip.visible: tipHover.hovered
+        ToolTip.delay: 500
+        HoverHandler { id: tipHover }
+    }
+
+    // ------------------------------------------------ Painel estilo terminal
+    component TerminalPanel: Rectangle {
+        id: term
+        property string title: ""
+        property string output: ""
+        property int panelHeight: 150
+        Layout.fillWidth: true
+        Layout.preferredHeight: panelHeight
+        radius: 8
+        color: "#0d1117"
+        border.color: "#30363d"
+        border.width: 1
+        clip: true
+
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 10
+            spacing: 6
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 6
+                Repeater {
+                    model: ["#ff5f56", "#ffbd2e", "#27c93f"]
+                    delegate: Rectangle {
+                        width: 9; height: 9; radius: 4.5
+                        color: modelData
+                    }
+                }
+                Label {
+                    Layout.leftMargin: 6
+                    Layout.fillWidth: true
+                    text: term.title
+                    color: "#8b949e"
+                    font.family: "monospace"
+                    font.pixelSize: 11
+                    elide: Text.ElideRight
+                }
+                ToolButton {
+                    display: AbstractButton.IconOnly
+                    icon.source: "icons/copy_dark.svg"
+                    icon.width: 14; icon.height: 14
+                    Accessible.name: strings.terminal_copy
+                    ToolTip.text: strings.terminal_copy
+                    ToolTip.visible: hovered
+                    ToolTip.delay: 500
+                    onClicked: {
+                        termArea.selectAll()
+                        termArea.copy()
+                        termArea.deselect()
+                    }
+                }
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                height: 1
+                color: "#21262d"
+            }
+
+            ScrollView {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                ScrollBar.horizontal.policy: ScrollBar.AsNeeded
+                ScrollBar.vertical.policy: ScrollBar.AsNeeded
+                TextArea {
+                    id: termArea
+                    text: term.output
+                    readOnly: true
+                    wrapMode: TextEdit.NoWrap
+                    selectByMouse: true
+                    color: "#c9d1d9"
+                    selectionColor: "#264f78"
+                    selectedTextColor: "#ffffff"
+                    font.family: "monospace"
+                    font.pixelSize: 12
+                    background: null
+                }
+            }
+        }
+    }
+
     function formatBytes(value) {
         var n = Number(value) || 0
         if (n <= 0)
@@ -193,8 +311,20 @@ ApplicationWindow {
     component HintField: TextField {
         id: hintField
         property string hint: ""
+        property string leadingIcon: ""
         placeholderText: ""
         Accessible.name: hint
+        leftPadding: leadingIcon.length > 0 ? 38 : Material.textFieldHorizontalPadding
+        Image {
+            x: 12
+            anchors.verticalCenter: parent.verticalCenter
+            width: 16; height: 16
+            visible: hintField.leadingIcon.length > 0
+            source: hintField.leadingIcon
+            sourceSize.width: 16
+            sourceSize.height: 16
+            z: 2
+        }
         Text {
             x: hintField.leftPadding
             anchors.verticalCenter: parent.verticalCenter
@@ -902,19 +1032,21 @@ ApplicationWindow {
                     ColumnLayout {
                         anchors.fill: parent
                         anchors.margins: 12
-                        spacing: 6
+                        spacing: 8
 
                         RowLayout {
                             Layout.fillWidth: true
+                            Layout.bottomMargin: 8
                             spacing: 8
                             Label { text: strings.queue_title; font.pixelSize: 15; font.weight: Font.DemiBold }
                             Item { Layout.fillWidth: true }
                             HintField {
                                 id: queueFilter
-                                Layout.preferredWidth: 240
+                                Layout.preferredWidth: 280
                                 hint: strings.filter_placeholder
+                                leadingIcon: root.iconPath("search")
                                 selectByMouse: true
-                                ToolTip.text: strings.filter_placeholder
+                                ToolTip.text: strings.filter_tip
                                 ToolTip.visible: hovered
                                 ToolTip.delay: 500
                             }
@@ -923,7 +1055,8 @@ ApplicationWindow {
                                 icon.source: root.iconPath("cancel")
                                 icon.width: 14
                                 icon.height: 14
-                                visible: queueFilter.text.length > 0
+                                opacity: queueFilter.text.length > 0 ? 1 : 0
+                                enabled: queueFilter.text.length > 0
                                 Accessible.name: strings.btn_clear
                                 ToolTip.text: strings.btn_clear
                                 ToolTip.visible: hovered
@@ -932,14 +1065,23 @@ ApplicationWindow {
                             }
                         }
 
-                        RowLayout {
+                        Rectangle {
                             Layout.fillWidth: true
-                            spacing: 10
-                            Item { Layout.fillWidth: true; Layout.minimumWidth: 180 }
-                            Label { text: strings.h_status; Layout.preferredWidth: 104; font.pixelSize: 11; font.bold: true; color: Material.secondaryTextColor }
-                            Label { text: strings.h_progress; Layout.preferredWidth: 150; font.pixelSize: 11; font.bold: true; color: Material.secondaryTextColor; horizontalAlignment: Text.AlignHCenter }
-                            Label { text: strings.h_speed_size; Layout.preferredWidth: 130; font.pixelSize: 11; font.bold: true; color: Material.secondaryTextColor }
-                            Item { Layout.preferredWidth: 136 }
+                            Layout.preferredHeight: 36
+                            radius: 6
+                            color: root.dark ? "#232b33" : "#f2f5f7"
+
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: 12
+                                anchors.rightMargin: 12
+                                spacing: 10
+                                Item { Layout.fillWidth: true; Layout.minimumWidth: 180 }
+                                Label { text: strings.h_status; Layout.preferredWidth: 104; font.pixelSize: 13; font.bold: true; color: root.dark ? "#cfd8dc" : "#37474f" }
+                                Label { text: strings.h_progress; Layout.preferredWidth: 150; font.pixelSize: 13; font.bold: true; color: root.dark ? "#cfd8dc" : "#37474f"; horizontalAlignment: Text.AlignHCenter }
+                                Label { text: strings.h_speed_size; Layout.preferredWidth: 130; font.pixelSize: 13; font.bold: true; color: root.dark ? "#cfd8dc" : "#37474f" }
+                                Item { Layout.preferredWidth: 136 }
+                            }
                         }
 
                         Rectangle { Layout.fillWidth: true; height: 1; color: root.dark ? "#2a323a" : "#e0e0e0" }
@@ -1580,17 +1722,26 @@ ApplicationWindow {
                     ColumnLayout {
                         anchors.fill: parent
                         anchors.margins: 12
-                        spacing: 6
+                        spacing: 8
                         Label { text: strings.compress_queue; font.pixelSize: 15; font.weight: Font.DemiBold }
 
-                        RowLayout {
+                        Rectangle {
                             Layout.fillWidth: true
-                            spacing: 10
-                            Item { Layout.fillWidth: true; Layout.minimumWidth: 160 }
-                            Label { text: strings.h_status; Layout.preferredWidth: 110; font.pixelSize: 11; font.bold: true; color: Material.secondaryTextColor }
-                            Label { text: strings.h_progress; Layout.preferredWidth: 150; font.pixelSize: 11; font.bold: true; color: Material.secondaryTextColor; horizontalAlignment: Text.AlignHCenter }
-                            Label { text: strings.compress_col_result; Layout.preferredWidth: 190; font.pixelSize: 11; font.bold: true; color: Material.secondaryTextColor }
-                            Item { Layout.preferredWidth: 76 }
+                            Layout.preferredHeight: 36
+                            radius: 6
+                            color: root.dark ? "#232b33" : "#f2f5f7"
+
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: 8
+                                anchors.rightMargin: 8
+                                spacing: 10
+                                Item { Layout.fillWidth: true; Layout.minimumWidth: 160 }
+                                Label { text: strings.h_status; Layout.preferredWidth: 110; font.pixelSize: 13; font.bold: true; color: root.dark ? "#cfd8dc" : "#37474f" }
+                                Label { text: strings.h_progress; Layout.preferredWidth: 150; font.pixelSize: 13; font.bold: true; color: root.dark ? "#cfd8dc" : "#37474f"; horizontalAlignment: Text.AlignHCenter }
+                                Label { text: strings.compress_col_result; Layout.preferredWidth: 190; font.pixelSize: 13; font.bold: true; color: root.dark ? "#cfd8dc" : "#37474f" }
+                                Item { Layout.preferredWidth: 76 }
+                            }
                         }
                         Rectangle { Layout.fillWidth: true; height: 1; color: root.dark ? "#2a323a" : "#e0e0e0" }
 
@@ -1899,7 +2050,13 @@ ApplicationWindow {
                             RowLayout {
                                 Layout.fillWidth: true
                                 spacing: 12
-                                Label { text: strings.naming_label; Layout.fillWidth: true; font.pixelSize: 13; wrapMode: Text.WordWrap }
+                                TipLabel {
+                                    text: strings.naming_label
+                                    tip: strings.naming_tip
+                                    Layout.fillWidth: true
+                                    font.pixelSize: 13
+                                    wrapMode: Text.WordWrap
+                                }
                                 ComboBox {
                                     id: namingCombo
                                     model: [
@@ -1910,6 +2067,9 @@ ApplicationWindow {
                                     valueRole: "value"
                                     currentIndex: bridge.namingMode === "title" ? 1 : 0
                                     Layout.preferredWidth: 220
+                                    ToolTip.text: strings.naming_tip
+                                    ToolTip.visible: hovered
+                                    ToolTip.delay: 500
                                     onActivated: bridge.setNamingMode(currentValue)
                                 }
                             }
@@ -1948,7 +2108,8 @@ ApplicationWindow {
                             spacing: 12
                             Label {
                                 text: strings.cfg_network; font.pixelSize: 15; font.weight: Font.DemiBold
-                                ToolTip.text: strings.cfg_network_tip; ToolTip.visible: hovered; ToolTip.delay: 500
+                                ToolTip.text: strings.cfg_network_tip; ToolTip.visible: networkHover.hovered; ToolTip.delay: 500
+                                HoverHandler { id: networkHover }
                             }
                             RowLayout {
                                 Layout.fillWidth: true
@@ -2170,26 +2331,11 @@ ApplicationWindow {
                                 }
                             }
 
-                            Label {
-                                text: strings.dep_console
-                                font.pixelSize: 11
-                                font.bold: true
-                                color: Material.secondaryTextColor
+                            TerminalPanel {
                                 visible: root.depsLog.length > 0
-                            }
-                            ScrollView {
-                                Layout.fillWidth: true
-                                Layout.preferredHeight: 120
-                                visible: root.depsLog.length > 0
-                                clip: true
-                                TextArea {
-                                    id: depsConsole
-                                    readOnly: true
-                                    text: root.depsLog
-                                    font.family: "monospace"
-                                    font.pixelSize: 11
-                                    wrapMode: TextEdit.NoWrap
-                                }
+                                title: strings.dep_console
+                                output: root.depsLog
+                                panelHeight: 140
                             }
                         }
                     }
@@ -2789,24 +2935,11 @@ ApplicationWindow {
                 color: root.dark ? "#ff8a80" : "#c62828"
                 font.pixelSize: 12
             }
-            Label {
-                Layout.fillWidth: true
-                text: strings.dep_console
-                font.bold: true
+            TerminalPanel {
                 visible: root.depsLog.length > 0
-            }
-            ScrollView {
-                Layout.fillWidth: true
-                Layout.preferredHeight: 90
-                visible: root.depsLog.length > 0
-                clip: true
-                TextArea {
-                    readOnly: true
-                    text: root.depsLog
-                    font.family: "monospace"
-                    font.pixelSize: 11
-                    wrapMode: TextEdit.NoWrap
-                }
+                title: strings.dep_console
+                output: root.depsLog
+                panelHeight: 110
             }
         }
         footer: DialogButtonBox {

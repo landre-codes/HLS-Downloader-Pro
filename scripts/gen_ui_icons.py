@@ -41,6 +41,7 @@ PATHS = {
     ),
     "moon": '<path d="M21 12.8A8 8 0 1 1 11.2 3a6 6 0 0 0 9.8 9.8Z"/>',
     "download": '<path d="M12 3v12M7 10l5 5 5-5M5 21h14"/>',
+    "search": '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.6-3.6"/>',
 }
 
 TEMPLATE = (

@@ -14,7 +14,10 @@ e o versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 - **Kvazaar (`libkvazaar`)** como opção de HEVC software rápido, além de **10-bit** (`yuv420p10le`) e **ajuste fino do x265** (`aq-mode`, `psy-rd`, `psy-rdoq`, `deblock`).
 - **Metadados HDR preservados** na compressão (primárias, transferência, espaço de cor e faixa) e **encoder real** exibido por arquivo (ex.: `QSV HEVC · Intel Arc B580`).
 - **Notificação de conclusão** da compressão (toast + diálogo quando há erros).
-- **Filtro na fila de lote** (título/URL) e mais tooltips/ícones (tema claro/escuro, ações).
+- **Filtro na fila de lote** (título/URL) com ícone de pesquisa, **cabeçalhos de tabela maiores/destacados** e mais tooltips/ícones (tema claro/escuro, ações).
+- **Console de instalação estilo terminal** (fundo escuro, fonte monoespaçada e botão de copiar saída).
+- **Escala automática da interface** conforme a tela (até 128%), com `--ui-scale`/`HLSDL_UI_SCALE` para ajuste manual; fonte, ícones e espaçamentos escalam juntos.
+- **Cursor de mão** (indicador) em botões, abas, combos, checkboxes e switches.
 - **Atualizador**: verifica a release, baixa o instalador e valida o SHA-256 antes de executar.
 - **Modos de extração**: vídeo + áudio, apenas vídeo, somente áudio.
 - **Qualidade de 144p a 4K** e escolha de **arquivo** (mp4/mkv/webm/avi/mov; mp3/m4a/wav/flac/opus).
@@ -55,6 +58,10 @@ e o versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
   e o espaço entre “formato” e o botão foi normalizado no modo somente áudio.
 - **Tabela de comprimidos**: o rótulo de conclusão foi centralizado/elidido
   dentro do badge e o motivo de itens ignorados não aparece mais em vermelho.
+- **Filtro do lote** ganhou espaço em relação aos cabeçalhos e ícone de busca.
+- Tooltips em `Label` (ex.: “Rede”) agora aparecem de fato (via `HoverHandler`),
+  com exemplos para **ID estável × título** e para o filtro.
+- Botões e controles clicáveis usam **cursor de mão**.
 
 ## [1.2.3] — anterior
 - Controle de rede: limite de velocidade e conexões por download.
