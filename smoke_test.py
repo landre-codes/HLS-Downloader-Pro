@@ -91,6 +91,7 @@ print("dependências OK ->", [(d["key"], d["found"]) for d in deps])
 # 6) carrega a interface QML
 engine = QQmlApplicationEngine()
 engine.rootContext().setContextProperty("downloadModel", model)
+engine.rootContext().setContextProperty("compressionModel", bridge.compression.model)
 engine.rootContext().setContextProperty("bridge", bridge)
 engine.load(QUrl.fromLocalFile(qml_path()))
 assert engine.rootObjects(), "main.qml NAO carregou"
@@ -106,6 +107,14 @@ for name in (
     "installMissingDependencies", "downloadSingle", "setFormatMode", "setQuality",
     "setContainer", "setCodec", "setCompressLevel", "setNamingMode",
     "setYtdlpVariant", "loadPlaylist", "clearPlaylist", "addLinksAndStart",
+    "addCompressionFiles", "addCompressionFolder", "addCompressionPaths",
+    "startCompression", "pauseCompression", "resumeCompression", "cancelCompression",
+    "cancelCompressionItem", "removeCompressionItem", "clearCompressionFinished",
+    "setCompressionEncoder", "setCompressionQuality", "setCompressionSpeed",
+    "setCompressionParallel", "setCompressionMinSizeMB",
+    "setCompressionOnlyIfSmaller", "setCompressionReplaceOriginal",
+    "setCompressionReencodeHevc", "setCompressionSkipHdr",
+    "checkForUpdates", "downloadUpdate", "openReleasePage",
 ):
     assert getattr(bridge, name), name
 print("bridge slots OK")

@@ -41,6 +41,7 @@ def main() -> int:
 
     engine = QQmlApplicationEngine()
     engine.rootContext().setContextProperty("downloadModel", model)
+    engine.rootContext().setContextProperty("compressionModel", bridge.compression.model)
     engine.rootContext().setContextProperty("bridge", bridge)
     engine.load(QUrl.fromLocalFile(qml_path()))
     root = engine.rootObjects()[0]

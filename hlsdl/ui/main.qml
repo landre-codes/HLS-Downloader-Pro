@@ -47,6 +47,7 @@ ApplicationWindow {
         case "analyzing":   return "#b45309"
         case "encoding":    return "#6a1b9a"
         case "cancelled":   return "#546e7a"
+        case "skipped":     return "#546e7a"
         default:            return "#455a64"
         }
     }
@@ -127,6 +128,26 @@ ApplicationWindow {
     // Caminho do ícone SVG conforme o tema.
     function iconPath(name) {
         return "icons/" + name + (root.dark ? "_dark.svg" : "_light.svg")
+    }
+
+    function formatBytes(value) {
+        var n = Number(value) || 0
+        if (n <= 0)
+            return "—"
+        var units = ["B", "KB", "MB", "GB", "TB"]
+        var i = 0
+        while (n >= 1024 && i < units.length - 1) {
+            n /= 1024
+            i++
+        }
+        return (i === 0 ? n.toFixed(0) : n.toFixed(1)) + " " + units[i]
+    }
+
+    function isVideoPath(path) {
+        var p = String(path).toLowerCase()
+        return p.endsWith(".mp4") || p.endsWith(".mkv") || p.endsWith(".mov")
+            || p.endsWith(".avi") || p.endsWith(".webm") || p.endsWith(".m4v")
+            || p.endsWith(".ts")
     }
 
     // Resumo compacto do perfil de download (aba Lote).
@@ -260,6 +281,11 @@ ApplicationWindow {
     property int statDone: 0
     property int statError: 0
     property int statTotal: 0
+    property int compWait: 0
+    property int compWork: 0
+    property int compDone: 0
+    property int compErr: 0
+    property int compSkip: 0
 
     onClosing: bridge.saveGeometry(
         root.x, root.y, root.width, root.height,
@@ -289,16 +315,27 @@ ApplicationWindow {
     DropArea {
         anchors.fill: parent
         onDropped: function (drop) {
-            if (drop.hasText) {
-                bridge.addLinks(drop.text)
-            } else if (drop.hasUrls) {
+            var videos = []
+            if (drop.hasUrls) {
                 for (var i = 0; i < drop.urls.length; i++) {
-                    var u = drop.urls[i].toString()
-                    if (u.toLowerCase().endsWith(".txt"))
-                        bridge.importTxtPath(drop.urls[i].toLocalFile())
+                    var url = drop.urls[i]
+                    var local = url.toLocalFile()
+                    var lower = String(local).toLowerCase()
+                    if (local !== "" && lower.endsWith(".txt"))
+                        bridge.importTxtPath(local)
+                    else if (local !== "" && root.isVideoPath(local))
+                        videos.push(local)
+                    else if (local !== "")
+                        bridge.addLinks(String(url))
                     else
-                        bridge.addLinks(u)
+                        bridge.addLinks(String(url))
                 }
+            } else if (drop.hasText) {
+                bridge.addLinks(drop.text)
+            }
+            if (videos.length > 0) {
+                bridge.addCompressionPaths(videos)
+                tabBar.currentIndex = 3
             }
             drop.accept()
         }
@@ -324,6 +361,13 @@ ApplicationWindow {
                 root.depsLog = root.depsLog.substring(root.depsLog.length - 12000)
         }
         function onPlaylistChanged() { root.rebuildPlaylistModel() }
+        function onCompressionStatsChanged(waiting, working, done, errors, skipped) {
+            root.compWait = waiting
+            root.compWork = working
+            root.compDone = done
+            root.compErr = errors
+            root.compSkip = skipped
+        }
     }
 
     // ============================================================ BARRA DE TÍTULO
@@ -440,6 +484,10 @@ ApplicationWindow {
         TabButton {
             text: strings.tab_playlist; font.pixelSize: 13; implicitWidth: 130
             ToolTip.text: strings.tab_playlist_tip; ToolTip.visible: hovered; ToolTip.delay: 500
+        }
+        TabButton {
+            text: strings.tab_compress; font.pixelSize: 13; implicitWidth: 130
+            ToolTip.text: strings.tab_compress_tip; ToolTip.visible: hovered; ToolTip.delay: 500
         }
         TabButton {
             text: strings.tab_settings; font.pixelSize: 13; implicitWidth: 150
@@ -767,7 +815,7 @@ ApplicationWindow {
                         Button {
                             text: strings.dlg_deps_settings
                             Layout.alignment: Qt.AlignVCenter
-                            onClicked: tabBar.currentIndex = 3
+                            onClicked: tabBar.currentIndex = 4
                         }
                     }
                 }
@@ -1092,6 +1140,348 @@ ApplicationWindow {
                             }
                             Item { Layout.fillWidth: true }
                         }
+                    }
+                }
+            }
+        }
+
+        // ===================================================== ABA COMPRESSÃO
+        Item {
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: 16
+                spacing: 12
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: compOpts.implicitHeight + 32
+                    radius: 12
+                    color: root.dark ? "#1d2329" : "#ffffff"
+                    border.color: root.dark ? "#2a323a" : "#e0e0e0"
+                    border.width: 1
+                    ColumnLayout {
+                        id: compOpts
+                        anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
+                        anchors.margins: 16
+                        spacing: 10
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+                            Label {
+                                text: strings.compress_title
+                                font.pixelSize: 15
+                                font.weight: Font.DemiBold
+                                Layout.fillWidth: true
+                            }
+                            Button {
+                                text: strings.compress_add_files
+                                onClicked: bridge.addCompressionFiles()
+                            }
+                            Button {
+                                text: strings.compress_add_folder
+                                onClicked: bridge.addCompressionFolder()
+                            }
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 10
+                            Label { text: strings.compress_encoder; font.pixelSize: 13; color: Material.secondaryTextColor }
+                            ComboBox {
+                                id: compEncoder
+                                model: bridge.compressionEncoders
+                                textRole: "name"
+                                valueRole: "key"
+                                currentIndex: {
+                                    for (var i = 0; i < model.length; i++)
+                                        if (model[i].key === bridge.compressionEncoder)
+                                            return i
+                                    return 0
+                                }
+                                Layout.preferredWidth: 200
+                                onActivated: bridge.setCompressionEncoder(currentValue)
+                            }
+                            Label { text: strings.compress_quality; font.pixelSize: 13; color: Material.secondaryTextColor }
+                            SpinBox {
+                                id: compQuality
+                                from: 1; to: 51
+                                value: bridge.compressionQuality
+                                editable: true
+                                ToolTip.text: strings.compress_quality_tip
+                                ToolTip.visible: hovered; ToolTip.delay: 500
+                                onValueChanged: if (value !== bridge.compressionQuality) bridge.setCompressionQuality(value)
+                            }
+                            Item { Layout.fillWidth: true }
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 10
+                            Label { text: strings.compress_speed; font.pixelSize: 13; color: Material.secondaryTextColor }
+                            ComboBox {
+                                id: compSpeed
+                                model: [
+                                    { text: strings.compress_speed_fast, value: "fast" },
+                                    { text: strings.compress_speed_balanced, value: "balanced" },
+                                    { text: strings.compress_speed_slow, value: "slow" }
+                                ]
+                                textRole: "text"
+                                valueRole: "value"
+                                currentIndex: bridge.compressionSpeed === "fast" ? 0
+                                              : (bridge.compressionSpeed === "slow" ? 2 : 1)
+                                Layout.preferredWidth: 150
+                                onActivated: bridge.setCompressionSpeed(currentValue)
+                            }
+                            Label { text: strings.compress_parallel; font.pixelSize: 13; color: Material.secondaryTextColor }
+                            SpinBox {
+                                id: compParallel
+                                from: 1; to: 8
+                                value: bridge.compressionParallel
+                                editable: true
+                                onValueChanged: if (value !== bridge.compressionParallel) bridge.setCompressionParallel(value)
+                            }
+                            Label { text: strings.compress_min_size; font.pixelSize: 13; color: Material.secondaryTextColor }
+                            SpinBox {
+                                id: compMinSize
+                                from: 0; to: 100000
+                                stepSize: 100
+                                value: bridge.compressionMinSizeMB
+                                editable: true
+                                onValueChanged: if (value !== bridge.compressionMinSizeMB) bridge.setCompressionMinSizeMB(value)
+                            }
+                            Item { Layout.fillWidth: true }
+                        }
+
+                        Flow {
+                            Layout.fillWidth: true
+                            spacing: 12
+                            CheckBox {
+                                text: strings.compress_only_smaller
+                                checked: bridge.compressionOnlyIfSmaller
+                                onToggled: bridge.setCompressionOnlyIfSmaller(checked)
+                            }
+                            CheckBox {
+                                text: strings.compress_replace_original
+                                checked: bridge.compressionReplaceOriginal
+                                onToggled: bridge.setCompressionReplaceOriginal(checked)
+                            }
+                            CheckBox {
+                                text: strings.compress_reencode_hevc
+                                checked: bridge.compressionReencodeHevc
+                                onToggled: bridge.setCompressionReencodeHevc(checked)
+                            }
+                            CheckBox {
+                                text: strings.compress_skip_hdr
+                                checked: bridge.compressionSkipHdr
+                                onToggled: bridge.setCompressionSkipHdr(checked)
+                            }
+                        }
+
+                        Label {
+                            text: strings.compress_hint
+                            font.pixelSize: 11
+                            color: Material.secondaryTextColor
+                            wrapMode: Text.Wrap
+                            Layout.fillWidth: true
+                        }
+                    }
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    radius: 12
+                    color: root.dark ? "#1d2329" : "#ffffff"
+                    border.color: root.dark ? "#2a323a" : "#e0e0e0"
+                    border.width: 1
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: 12
+                        spacing: 6
+                        Label { text: strings.compress_queue; font.pixelSize: 15; font.weight: Font.DemiBold }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 10
+                            Item { Layout.fillWidth: true; Layout.minimumWidth: 160 }
+                            Label { text: strings.h_status; Layout.preferredWidth: 110; font.pixelSize: 11; font.bold: true; color: Material.secondaryTextColor }
+                            Label { text: strings.h_progress; Layout.preferredWidth: 150; font.pixelSize: 11; font.bold: true; color: Material.secondaryTextColor; horizontalAlignment: Text.AlignHCenter }
+                            Label { text: strings.compress_col_result; Layout.preferredWidth: 190; font.pixelSize: 11; font.bold: true; color: Material.secondaryTextColor }
+                            Item { Layout.preferredWidth: 76 }
+                        }
+                        Rectangle { Layout.fillWidth: true; height: 1; color: root.dark ? "#2a323a" : "#e0e0e0" }
+
+                        ListView {
+                            id: compList
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            clip: true
+                            model: compressionModel
+                            spacing: 0
+                            ScrollBar.vertical: ScrollBar {}
+                            boundsBehavior: Flickable.StopAtBounds
+
+                            Rectangle {
+                                anchors.fill: parent
+                                visible: compList.count === 0
+                                color: "transparent"
+                                Label {
+                                    anchors.centerIn: parent
+                                    text: strings.compress_empty
+                                    font.pixelSize: 13
+                                    color: Material.secondaryTextColor
+                                }
+                            }
+
+                            delegate: Item {
+                                width: compList.width
+                                height: 58
+                                property string st: model.status
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: 8
+                                    anchors.rightMargin: 8
+                                    spacing: 10
+                                    Label {
+                                        Layout.fillWidth: true
+                                        Layout.minimumWidth: 160
+                                        text: model.name
+                                        elide: Text.ElideMiddle
+                                        font.pixelSize: 12
+                                        font.weight: Font.DemiBold
+                                    }
+                                    Item {
+                                        Layout.preferredWidth: 110
+                                        Rectangle {
+                                            width: 104; height: 24; radius: 12
+                                            anchors.centerIn: parent
+                                            color: root.badgeColor(root.st)
+                                            Label {
+                                                anchors.centerIn: parent
+                                                text: root.statusText(root.st)
+                                                color: "white"; font.pixelSize: 11; font.bold: true
+                                            }
+                                        }
+                                    }
+                                    Column {
+                                        Layout.preferredWidth: 150
+                                        spacing: 2
+                                        ProgressBar {
+                                            width: 150; height: 6
+                                            from: 0; to: 100
+                                            value: model.progress
+                                            indeterminate: root.st === "analyzing"
+                                        }
+                                        Label {
+                                            anchors.right: parent.right
+                                            text: root.st === "done" ? "100%" : Math.round(model.progress) + "%"
+                                            font.pixelSize: 10
+                                            color: Material.secondaryTextColor
+                                        }
+                                    }
+                                    Column {
+                                        Layout.preferredWidth: 190
+                                        spacing: 2
+                                        Label {
+                                            width: parent.width
+                                            text: root.formatBytes(model.sizeBefore) + " → "
+                                                  + (model.sizeAfter > 0 ? root.formatBytes(model.sizeAfter) : "—")
+                                            font.pixelSize: 11
+                                            elide: Text.ElideRight
+                                        }
+                                        Label {
+                                            width: parent.width
+                                            text: model.saving > 0
+                                                  ? (model.saving + "% " + strings.compress_saving)
+                                                  : (model.error.length > 0 ? model.error : model.speed)
+                                            font.pixelSize: 10
+                                            color: model.error.length > 0
+                                                   ? (root.dark ? "#ff8a80" : "#c62828")
+                                                   : Material.secondaryTextColor
+                                            elide: Text.ElideRight
+                                        }
+                                    }
+                                    Row {
+                                        Layout.preferredWidth: 76
+                                        spacing: 4
+                                        ToolButton {
+                                            width: 32; height: 28
+                                            display: AbstractButton.IconOnly
+                                            icon.source: root.iconPath("cancel")
+                                            icon.width: 16; icon.height: 16
+                                            visible: root.st === "waiting" || root.st === "analyzing" || root.st === "encoding"
+                                            Accessible.name: strings.tip_cancel
+                                            onClicked: bridge.cancelCompressionItem(index)
+                                        }
+                                        ToolButton {
+                                            width: 32; height: 28
+                                            display: AbstractButton.IconOnly
+                                            icon.source: root.iconPath("open")
+                                            icon.width: 16; icon.height: 16
+                                            visible: root.st === "done" && model.output !== ""
+                                            Accessible.name: strings.tip_open
+                                            onClicked: bridge.openCompressionOutput(model.output)
+                                        }
+                                        ToolButton {
+                                            width: 32; height: 28
+                                            display: AbstractButton.IconOnly
+                                            icon.source: root.iconPath("cancel")
+                                            icon.width: 16; icon.height: 16
+                                            visible: root.st === "done" || root.st === "error"
+                                                     || root.st === "cancelled" || root.st === "skipped"
+                                            Accessible.name: strings.ctx_remove
+                                            onClicked: bridge.removeCompressionItem(index)
+                                        }
+                                    }
+                                }
+                                Rectangle {
+                                    anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom
+                                    height: 1
+                                    color: root.dark ? "#262e35" : "#ececec"
+                                }
+                            }
+                        }
+                    }
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 10
+                    Label {
+                        Layout.fillWidth: true
+                        text: root.compWait + " " + strings.compress_stat_waiting + " · "
+                              + root.compWork + " " + strings.compress_stat_working + " · "
+                              + root.compDone + " " + strings.compress_stat_done + " · "
+                              + root.compErr + " " + strings.compress_stat_errors + " · "
+                              + root.compSkip + " " + strings.compress_stat_skipped
+                        font.pixelSize: 12
+                        color: Material.secondaryTextColor
+                        elide: Text.ElideRight
+                    }
+                    Button {
+                        text: strings.btn_start; highlighted: true
+                        visible: !bridge.compressionActive
+                        onClicked: bridge.startCompression()
+                    }
+                    Button {
+                        text: strings.btn_pause
+                        visible: bridge.compressionActive && !bridge.compressionPaused
+                        onClicked: bridge.pauseCompression()
+                    }
+                    Button {
+                        text: strings.btn_resume
+                        visible: bridge.compressionActive && bridge.compressionPaused
+                        highlighted: true
+                        onClicked: bridge.resumeCompression()
+                    }
+                    Button {
+                        text: strings.btn_cancel_all
+                        onClicked: bridge.cancelCompression()
+                    }
+                    Button {
+                        text: strings.btn_clear_finished
+                        onClicked: bridge.clearCompressionFinished()
                     }
                 }
             }
@@ -1476,6 +1866,83 @@ ApplicationWindow {
                                     font.family: "monospace"
                                     font.pixelSize: 11
                                     wrapMode: TextEdit.NoWrap
+                                }
+                            }
+                        }
+                    }
+
+                    // -------------------------------------------- Sobre/atualizações
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: aboutCol.implicitHeight + 32
+                        radius: 12
+                        color: root.dark ? "#1d2329" : "#ffffff"
+                        border.color: root.dark ? "#2a323a" : "#e0e0e0"
+                        border.width: 1
+                        ColumnLayout {
+                            id: aboutCol
+                            anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
+                            anchors.margins: 16
+                            spacing: 10
+                            Label { text: strings.about_title; font.pixelSize: 15; font.weight: Font.DemiBold }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 10
+                                Label {
+                                    Layout.fillWidth: true
+                                    text: strings.update_current + " " + bridge.appVersion
+                                    font.pixelSize: 13
+                                    color: Material.secondaryTextColor
+                                }
+                                Button {
+                                    text: strings.update_check
+                                    enabled: !bridge.updateBusy
+                                    onClicked: bridge.checkForUpdates()
+                                }
+                                Button {
+                                    text: strings.update_download
+                                    visible: bridge.updateAvailable
+                                    enabled: !bridge.updateBusy
+                                    highlighted: true
+                                    onClicked: bridge.downloadUpdate()
+                                }
+                                Button {
+                                    text: strings.update_open_page
+                                    visible: bridge.updateHtmlUrl !== ""
+                                    onClicked: bridge.openReleasePage()
+                                }
+                            }
+                            Label {
+                                Layout.fillWidth: true
+                                text: bridge.updateStatus
+                                visible: bridge.updateStatus !== ""
+                                wrapMode: Text.Wrap
+                                font.pixelSize: 12
+                            }
+                            ProgressBar {
+                                Layout.fillWidth: true
+                                from: 0
+                                to: 100
+                                value: bridge.updateProgress
+                                visible: bridge.updateBusy && bridge.updateProgress > 0
+                            }
+                            Label {
+                                text: strings.update_notes
+                                font.pixelSize: 11
+                                font.bold: true
+                                color: Material.secondaryTextColor
+                                visible: bridge.updateNotes !== ""
+                            }
+                            ScrollView {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 110
+                                visible: bridge.updateNotes !== ""
+                                clip: true
+                                TextArea {
+                                    readOnly: true
+                                    text: bridge.updateNotes
+                                    font.pixelSize: 11
+                                    wrapMode: TextEdit.Wrap
                                 }
                             }
                         }
@@ -1966,7 +2433,7 @@ ApplicationWindow {
                     bridge.dismissDepsPrompt()
                     bridge.installMissingDependencies()
                     depsDialog.close()
-                    tabBar.currentIndex = 3
+                    tabBar.currentIndex = 4
                 }
             }
             Button {

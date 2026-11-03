@@ -6,6 +6,8 @@ Downloader de vídeos (HLS / m3u8) com interface **Qt Quick (QML) + Material Des
 
 - **Duas abas de download**: **Download Individual** (um link, com progresso dedicado) e **Lote** (fila com dezenas/centenas de links)
 - **Aba de Playlists**: carrega os itens de uma playlist (**YouTube** ou sites em geral), permite selecionar os desejados e enviá-los à fila
+- **Aba de Compressão local**: fila de arquivos/pastas, HEVC com **Intel QSV, NVIDIA NVENC, AMD AMF ou x265**, qualidade 1–51, paralelismo, validação da saída e substituição atômica (original preservado por padrão)
+- **Atualizações**: verifica a última release, baixa o instalador e **valida o SHA-256** antes de executar (Windows; no portátil abre a página da release)
 - **Modo de extração** (Individual e Lote): **Vídeo + áudio**, **Apenas vídeo** ou **Somente áudio**
 - **Qualidade de 144p a 4K** (2160p) e **escolha do arquivo** de saída: **mp4, mkv, webm, avi, mov** (ou **mp3, m4a, wav, flac, opus** no modo áudio)
 - **Compressão de vídeo**: mantenha o original (sem reencode) ou recomprima para **H.264** ou **H.265 (HEVC)**, com nível **Leve / Média / Forte**. O arquivo comprimido substitui o original; se a compressão falhar, o original é preservado
@@ -116,10 +118,12 @@ Se a janela der problema no Wayland: `QT_QPA_PLATFORM=xcb python3 main.py`.
 1. **Download Individual**: cole a URL, escolha o formato, a qualidade (144p–4K), o arquivo e a compressão (H.264/H.265), e clique em **Baixar agora**. O progresso aparece na mesma aba.
 2. **Lote**: cole vários links (um por linha) — ou importe/arraste um `.txt` —, ajuste formato/qualidade/arquivo/compressão e clique em **Adicionar à Fila**.
 3. **Playlists**: cole a URL de uma playlist (YouTube ou site), clique em **Carregar itens**, marque os desejados e use **Adicionar selecionados à fila** (ou **Baixar selecionados agora**).
-4. Em **Configurações → Downloads** você escolhe o **nome do arquivo** (ID estável ou título da página).
-5. Clique em **Iniciar Fila** e acompanhe status, percentual, velocidade e tamanho.
-6. Ao concluir, o botão **Abrir** mostra a pasta do arquivo; botões laterais permitem editar, copiar, tentar novamente e cancelar.
-7. Duplo clique em um link para editá-lo (campo de edição na própria linha); botão direito abre o menu de contexto.
+4. **Compressão**: adicione arquivos/pastas (ou arraste vídeos), escolha encoder/qualidade/paralelismo e clique em **Iniciar**. O original só é apagado se você marcar “Apagar original após sucesso”.
+5. Em **Configurações → Downloads** você escolhe o **nome do arquivo** (ID estável ou título da página).
+6. Em **Configurações → Sobre** você vê a versão e pode **Verificar atualizações**.
+7. Clique em **Iniciar Fila** e acompanhe status, percentual, velocidade e tamanho.
+8. Ao concluir, o botão **Abrir** mostra a pasta do arquivo; botões laterais permitem editar, copiar, tentar novamente e cancelar.
+9. Duplo clique em um link para editá-lo (campo de edição na própria linha); botão direito abre o menu de contexto.
 
 ### Cookies (sites protegidos)
 
@@ -187,6 +191,8 @@ python layout_debug.py       # dump da geometria do layout
 | `hlsdl/model.py` | `DownloadModel` — **dono único** da lista de itens |
 | `hlsdl/queue.py` | `QueueManager` — escalonador de threads/concorrência |
 | `hlsdl/downloader.py` | `DownloadWorker` — yt-dlp, ffmpeg e progresso |
+| `hlsdl/compress.py` | Fila/worker de compressão local (QSV/NVENC/AMF/x265) |
+| `hlsdl/updater.py` | Verificação/download de atualizações com SHA-256 |
 | `hlsdl/playlist.py` | Carregador de itens de playlist (YouTube/site) |
 | `hlsdl/formats.py` | Modos, qualidades e contêineres suportados |
 | `hlsdl/deps.py` | Detecção/instalação/atualização de dependências |

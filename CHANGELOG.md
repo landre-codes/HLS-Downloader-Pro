@@ -8,7 +8,9 @@ e o versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 
 ### Adicionado
 - Abas **Download Individual**, **Lote**, **Playlists** e **Configurações**.
-- **Playlists** (YouTube e sites em geral): carregar itens, selecionar e enfileirar/baixar.
+- **Aba de Playlists** (YouTube e sites em geral): carregar itens, selecionar e enfileirar/baixar.
+- **Aba de Compressão local**: HEVC com QSV/NVENC/AMF/x265, qualidade 1–51, paralelismo, validação e substituição segura.
+- **Atualizador**: verifica a release, baixa o instalador e valida o SHA-256 antes de executar.
 - **Modos de extração**: vídeo + áudio, apenas vídeo, somente áudio.
 - **Qualidade de 144p a 4K** e escolha de **arquivo** (mp4/mkv/webm/avi/mov; mp3/m4a/wav/flac/opus).
 - **Compressão H.264 / H.265 (HEVC)** com níveis Leve/Média/Forte.

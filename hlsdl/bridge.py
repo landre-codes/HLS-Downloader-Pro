@@ -9,12 +9,20 @@ from __future__ import annotations
 import os
 import subprocess
 
-from PySide6.QtCore import Property, QObject, QSettings, Signal, Slot
-from PySide6.QtGui import QGuiApplication
+from PySide6.QtCore import Property, QObject, QSettings, QUrl, Signal, Slot
+from PySide6.QtGui import QDesktopServices, QGuiApplication
 from PySide6.QtWidgets import QApplication, QFileDialog
 
 from . import __version__
-from .config import BROWSERS, user_config_dir
+from .compress import (
+    ENCODER_NAMES,
+    ENCODER_ORDER,
+    SPEEDS,
+    CompressionManager,
+    CompressionModel,
+    CompressionSettings,
+)
+from .config import BROWSERS, is_portable, user_config_dir
 from .config import settings_path as default_settings_path
 from .deps import YTDLP_VARIANTS, DependencyManager
 from .formats import (
@@ -31,6 +39,8 @@ from .formats import (
 from .i18n import LANGUAGE_NAMES, LANGUAGES, tr
 from .playlist import PlaylistLoader
 from .queue import QueueManager
+from .services.procutils import spawn_kwargs
+from .updater import Updater
 from .urlutils import normalize_url
 
 
@@ -60,6 +70,12 @@ class Bridge(QObject):
     lastItemChanged = Signal()
     playlistChanged = Signal()
     playlistLoadingChanged = Signal(bool)
+    compressionStatsChanged = Signal(int, int, int, int, int)
+    compressionStateChanged = Signal(bool, bool)
+    compressionConfigChanged = Signal()
+    compressionEncodersChanged = Signal()
+    updateChanged = Signal()
+    updateProgressChanged = Signal(int)
     depsChanged = Signal()
     depsOutput = Signal(str)
     depsInstallFinished = Signal(str, bool, str)
@@ -129,6 +145,42 @@ class Bridge(QObject):
         self._queue_paused = False
         self._playlist_items: list = []
         self._playlist_loading = False
+        self._comp_active = False
+        self._comp_paused = False
+
+        # ------------------------------------------------------ compressão
+        self.compression = CompressionManager(CompressionModel([]), self)
+        self.compression.set_translator(self._translator())
+        self.compression.statsChanged.connect(self.compressionStatsChanged.emit)
+        self.compression.stateChanged.connect(self._on_comp_state)
+        self._comp_settings = CompressionSettings(
+            encoder=str(self._settings.value("compress/encoder", "auto")),
+            quality=self._clamp(int(self._settings.value("compress/quality", 24)), 1, 51),
+            speed=str(self._settings.value("compress/speed", "balanced")),
+            parallel=self._clamp(int(self._settings.value("compress/parallel", 1)), 1, 8),
+            min_size_mb=self._clamp(int(self._settings.value("compress/min_size_mb", 0)), 0, 100000),
+            only_if_smaller=self._settings.value("compress/only_if_smaller", True, type=bool),
+            replace_original=self._settings.value("compress/replace_original", False, type=bool),
+            reencode_hevc=self._settings.value("compress/reencode_hevc", False, type=bool),
+            skip_hdr=self._settings.value("compress/skip_hdr", True, type=bool),
+        )
+        if self._comp_settings.encoder not in ("auto", *ENCODER_ORDER):
+            self._comp_settings.encoder = "auto"
+        if self._comp_settings.speed not in SPEEDS:
+            self._comp_settings.speed = "balanced"
+        self.compression.apply_settings(self._comp_settings)
+
+        # ------------------------------------------------------ atualizações
+        self._update_info: dict = {}
+        self._update_status = ""
+        self._update_busy = False
+        self._update_progress = 0
+        self.updater = Updater(self)
+        self.updater.checkingChanged.connect(self._on_update_checking)
+        self.updater.checked.connect(self._on_update_checked)
+        self.updater.downloadProgress.connect(self._on_update_progress)
+        self.updater.ready.connect(self._on_update_ready)
+        self.updater.failed.connect(self._on_update_failed)
 
         # -------------------------------------------------- dependências
         self.deps = deps or DependencyManager(self)
@@ -197,6 +249,7 @@ class Bridge(QObject):
         self._save("i18n/language", lang)
         self.manager.set_translator(self._translator())
         self._playlist.set_translator(self._translator())
+        self.compression.set_translator(self._translator())
         self.languageChanged.emit(lang)
 
     @Property(list, constant=True)
@@ -393,6 +446,328 @@ class Bridge(QObject):
         self._single_item_id = None
         self._last_item = {}
         self.lastItemChanged.emit()
+
+    # ----------------------------------------------------------- compressão
+    @Property(str, notify=compressionConfigChanged)
+    def compressionEncoder(self) -> str:
+        return self._comp_settings.encoder
+
+    @Slot(str)
+    def setCompressionEncoder(self, key: str) -> None:
+        key = key if key in ("auto", *ENCODER_ORDER) else "auto"
+        if key == self._comp_settings.encoder:
+            return
+        self._comp_settings.encoder = key
+        self._save("compress/encoder", key)
+        self.compression.apply_settings(self._comp_settings)
+        self.compressionConfigChanged.emit()
+
+    @Property(int, notify=compressionConfigChanged)
+    def compressionQuality(self) -> int:
+        return self._comp_settings.quality
+
+    @Slot(int)
+    def setCompressionQuality(self, value: int) -> None:
+        value = self._clamp(int(value), 1, 51)
+        if value == self._comp_settings.quality:
+            return
+        self._comp_settings.quality = value
+        self._save("compress/quality", value)
+        self.compression.apply_settings(self._comp_settings)
+        self.compressionConfigChanged.emit()
+
+    @Property(str, notify=compressionConfigChanged)
+    def compressionSpeed(self) -> str:
+        return self._comp_settings.speed
+
+    @Slot(str)
+    def setCompressionSpeed(self, speed: str) -> None:
+        speed = speed if speed in SPEEDS else "balanced"
+        if speed == self._comp_settings.speed:
+            return
+        self._comp_settings.speed = speed
+        self._save("compress/speed", speed)
+        self.compression.apply_settings(self._comp_settings)
+        self.compressionConfigChanged.emit()
+
+    @Property(int, notify=compressionConfigChanged)
+    def compressionParallel(self) -> int:
+        return self._comp_settings.parallel
+
+    @Slot(int)
+    def setCompressionParallel(self, value: int) -> None:
+        value = self._clamp(int(value), 1, 8)
+        if value == self._comp_settings.parallel:
+            return
+        self._comp_settings.parallel = value
+        self._save("compress/parallel", value)
+        self.compression.apply_settings(self._comp_settings)
+        self.compressionConfigChanged.emit()
+
+    @Property(int, notify=compressionConfigChanged)
+    def compressionMinSizeMB(self) -> int:
+        return self._comp_settings.min_size_mb
+
+    @Slot(int)
+    def setCompressionMinSizeMB(self, value: int) -> None:
+        value = self._clamp(int(value), 0, 100000)
+        if value == self._comp_settings.min_size_mb:
+            return
+        self._comp_settings.min_size_mb = value
+        self._save("compress/min_size_mb", value)
+        self.compression.apply_settings(self._comp_settings)
+        self.compressionConfigChanged.emit()
+
+    def _set_comp_bool(self, attr: str, value: bool, key: str) -> None:
+        value = bool(value)
+        if getattr(self._comp_settings, attr) == value:
+            return
+        setattr(self._comp_settings, attr, value)
+        self._save(f"compress/{key}", value)
+        self.compression.apply_settings(self._comp_settings)
+        self.compressionConfigChanged.emit()
+
+    @Property(bool, notify=compressionConfigChanged)
+    def compressionOnlyIfSmaller(self) -> bool:
+        return self._comp_settings.only_if_smaller
+
+    @Slot(bool)
+    def setCompressionOnlyIfSmaller(self, value: bool) -> None:
+        self._set_comp_bool("only_if_smaller", value, "only_if_smaller")
+
+    @Property(bool, notify=compressionConfigChanged)
+    def compressionReplaceOriginal(self) -> bool:
+        return self._comp_settings.replace_original
+
+    @Slot(bool)
+    def setCompressionReplaceOriginal(self, value: bool) -> None:
+        self._set_comp_bool("replace_original", value, "replace_original")
+
+    @Property(bool, notify=compressionConfigChanged)
+    def compressionReencodeHevc(self) -> bool:
+        return self._comp_settings.reencode_hevc
+
+    @Slot(bool)
+    def setCompressionReencodeHevc(self, value: bool) -> None:
+        self._set_comp_bool("reencode_hevc", value, "reencode_hevc")
+
+    @Property(bool, notify=compressionConfigChanged)
+    def compressionSkipHdr(self) -> bool:
+        return self._comp_settings.skip_hdr
+
+    @Slot(bool)
+    def setCompressionSkipHdr(self, value: bool) -> None:
+        self._set_comp_bool("skip_hdr", value, "skip_hdr")
+
+    @Property(list, notify=compressionEncodersChanged)
+    def compressionEncoders(self) -> list:
+        items = [{"key": "auto", "name": "Auto", "available": True}]
+        for key in ENCODER_ORDER:
+            items.append({
+                "key": key,
+                "name": ENCODER_NAMES[key],
+                "available": bool(self.compression.available.get(key)),
+            })
+        return items
+
+    @Slot()
+    def refreshCompressionEncoders(self) -> None:
+        self.compression.refresh_encoders()
+        self.compressionEncodersChanged.emit()
+
+    @Property(bool, notify=compressionStateChanged)
+    def compressionActive(self) -> bool:
+        return self._comp_active
+
+    @Property(bool, notify=compressionStateChanged)
+    def compressionPaused(self) -> bool:
+        return self._comp_paused
+
+    def _on_comp_state(self, active: bool, paused: bool) -> None:
+        self._comp_active = active
+        self._comp_paused = paused
+        self.compressionStateChanged.emit(active, paused)
+
+    @Slot()
+    def addCompressionFiles(self) -> None:
+        paths, _ = QFileDialog.getOpenFileNames(
+            None,
+            self._tr("compress_add_files"),
+            "",
+            "Vídeos (*.mp4 *.mkv *.mov *.avi *.webm *.m4v *.ts);;Todos os arquivos (*.*)",
+        )
+        if paths:
+            added = self.compression.add_paths(paths, recursive=False)
+            if added:
+                self.notifyText.emit(self._tr("compress_files_added", n=added))
+
+    @Slot()
+    def addCompressionFolder(self) -> None:
+        path = QFileDialog.getExistingDirectory(
+            None, self._tr("compress_add_folder"), ""
+        )
+        if path:
+            added = self.compression.add_paths([path], recursive=True)
+            if added:
+                self.notifyText.emit(self._tr("compress_files_added", n=added))
+
+    @Slot(list)
+    def addCompressionPaths(self, paths: list) -> None:
+        added = self.compression.add_paths([str(p) for p in paths], recursive=True)
+        if added:
+            self.notifyText.emit(self._tr("compress_files_added", n=added))
+
+    @Slot()
+    def startCompression(self) -> None:
+        if not self.compression.items:
+            self.notifyText.emit(self._tr("compress_no_items"))
+            return
+        self.compression.start()
+        self.notifyText.emit(self._tr("compress_started"))
+
+    @Slot()
+    def pauseCompression(self) -> None:
+        self.compression.pause()
+        self.notifyText.emit(self._tr("compress_paused"))
+
+    @Slot()
+    def resumeCompression(self) -> None:
+        self.compression.resume()
+        self.notifyText.emit(self._tr("compress_resumed"))
+
+    @Slot()
+    def cancelCompression(self) -> None:
+        self.compression.cancelAll()
+        self.notifyText.emit(self._tr("compress_cancelled"))
+
+    @Slot(int)
+    def cancelCompressionItem(self, row: int) -> None:
+        self.compression.cancelItem(row)
+
+    @Slot(int)
+    def removeCompressionItem(self, row: int) -> None:
+        self.compression.removeItem(row)
+        self.notifyText.emit(self._tr("item_removed"))
+
+    @Slot()
+    def clearCompressionFinished(self) -> None:
+        self.compression.clearFinished()
+
+    @Slot(str)
+    def openCompressionOutput(self, path: str) -> None:
+        self.openDownloadPath(path)
+
+    # ---------------------------------------------------------- atualizações
+    @Property(bool, notify=updateChanged)
+    def updateAvailable(self) -> bool:
+        return bool(self._update_info.get("available"))
+
+    @Property(str, notify=updateChanged)
+    def updateLatest(self) -> str:
+        return str(self._update_info.get("latest", ""))
+
+    @Property(str, notify=updateChanged)
+    def updateStatus(self) -> str:
+        return self._update_status
+
+    @Property(bool, notify=updateChanged)
+    def updateBusy(self) -> bool:
+        return self._update_busy
+
+    @Property(int, notify=updateProgressChanged)
+    def updateProgress(self) -> int:
+        return self._update_progress
+
+    @Property(str, notify=updateChanged)
+    def updateNotes(self) -> str:
+        return str(self._update_info.get("notes", ""))
+
+    @Property(str, notify=updateChanged)
+    def updateHtmlUrl(self) -> str:
+        return str(self._update_info.get("html_url", ""))
+
+    @Slot()
+    def checkForUpdates(self) -> None:
+        if self._update_busy:
+            return
+        self._update_busy = True
+        self._update_progress = 0
+        self._update_status = self._tr("update_checking")
+        self.updateChanged.emit()
+        self.updater.check()
+
+    @Slot()
+    def downloadUpdate(self) -> None:
+        if not self._update_info.get("available"):
+            return
+        if os.name != "nt" or is_portable():
+            self.openReleasePage()
+            return
+        if not self._update_info.get("installer_url") or not self._update_info.get("checksums_url"):
+            self.notifyText.emit(self._tr("update_no_assets"))
+            return
+        self._update_busy = True
+        self._update_progress = 0
+        self._update_status = self._tr("update_checking")
+        self.updateChanged.emit()
+        self.updater.download_and_verify(self._update_info)
+
+    @Slot()
+    def openReleasePage(self) -> None:
+        url = str(self._update_info.get("html_url") or "")
+        if url:
+            QDesktopServices.openUrl(QUrl(url))
+
+    def _on_update_checking(self, busy: bool) -> None:
+        self._update_busy = busy
+        self.updateChanged.emit()
+
+    def _on_update_checked(self, info: dict) -> None:
+        self._update_info = info
+        self._update_busy = False
+        if info.get("available"):
+            self._update_status = self._tr(
+                "update_available", version=info.get("latest", "")
+            )
+        else:
+            self._update_status = self._tr("update_latest")
+        self.updateChanged.emit()
+
+    def _on_update_progress(self, pct: int) -> None:
+        self._update_progress = int(pct)
+        self.updateProgressChanged.emit(self._update_progress)
+
+    def _on_update_failed(self, err: str) -> None:
+        self._update_busy = False
+        if err in ("missing_assets", "missing_checksum", "checksum_mismatch"):
+            message = (
+                self._tr("update_no_assets") if err == "missing_assets"
+                else self._tr("update_download_failed", err=err)
+            )
+        else:
+            message = self._tr("update_failed", err=err)
+        self._update_status = message
+        self.notifyText.emit(message)
+        self.updateChanged.emit()
+
+    def _on_update_ready(self, path: str) -> None:
+        self._update_busy = False
+        self._update_status = self._tr("update_ready")
+        self.updateChanged.emit()
+        self.notifyText.emit(self._update_status)
+        if os.name == "nt" and not is_portable():
+            try:
+                subprocess.Popen(
+                    [path, "/SILENT", "/CLOSEAPPLICATIONS", "/NORESTART"],
+                    **spawn_kwargs(),
+                )
+            except Exception as exc:
+                self._update_status = self._tr("update_failed", err=exc)
+                self.updateChanged.emit()
+                return
+            QApplication.quit()
+        else:
+            self.openReleasePage()
 
     # ------------------------------------------------------------ playlists
     @Property(list, notify=playlistChanged)
@@ -719,7 +1094,7 @@ class Bridge(QObject):
         self.lastItemChanged.emit()
 
     def shutdown(self) -> None:
-        """Encerra download/playlist/instalação em andamento ao fechar."""
+        """Encerra download/playlist/instalação/compressão ao fechar."""
         try:
             self._playlist.cancel()
         except Exception:
@@ -730,6 +1105,7 @@ class Bridge(QObject):
                 cancel()
             except Exception:
                 pass
+        self.compression.shutdown()
         self.manager.shutdown()
 
     @Slot(str)

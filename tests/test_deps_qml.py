@@ -38,6 +38,7 @@ def test_qml_loads(qapp, fake_deps):
     bridge = Bridge(manager, "out", deps=fake_deps)
     engine = QQmlApplicationEngine()
     engine.rootContext().setContextProperty("downloadModel", model)
+    engine.rootContext().setContextProperty("compressionModel", bridge.compression.model)
     engine.rootContext().setContextProperty("bridge", bridge)
     engine.load(QUrl.fromLocalFile(qml_path()))
     assert engine.rootObjects(), "main.qml não carregou"
