@@ -228,6 +228,9 @@ def _ensure_std_streams() -> None:
 
 def main() -> int:
     _ensure_std_streams()
+    if "--version" in sys.argv:
+        print(f"HLS Downloader Pro {__version__}")
+        return 0
     if "--portable" in sys.argv:
         os.environ["HLSDL_PORTABLE"] = "1"
         sys.argv = [arg for arg in sys.argv if arg != "--portable"]
