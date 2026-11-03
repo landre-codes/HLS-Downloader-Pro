@@ -167,7 +167,7 @@ def make_item(item_id: int, path: str) -> dict:
 # Detecção / seleção de encoder
 # ---------------------------------------------------------------------------
 def detect_encoders() -> set[str]:
-    """Nomes de encoders disponíveis no ffmpeg (ex.: ``hevc_qsv``)."""
+    """Nomes de encoders realmente disponíveis no ffmpeg (ex.: ``hevc_qsv``)."""
     ffmpeg = which("ffmpeg")
     names: set[str] = set()
     if not ffmpeg:
@@ -185,7 +185,81 @@ def detect_encoders() -> set[str]:
         parts = line.split()
         if len(parts) >= 2 and parts[0][:1] in ("V", "A", "S"):
             names.add(parts[1])
-    return names
+    return filter_hardware_encoders(names)
+
+
+def hardware_vendors() -> set[str]:
+    """Fornecedores de GPU presentes no sistema.
+
+    O ffmpeg lista NVENC/AMF/QSV mesmo sem o hardware correspondente; usar
+    essa lista sozinha fazia o modo Auto escolher ``hevc_nvenc`` em máquinas
+    só com Intel, falhando na hora de comprimir.
+    """
+    gpus = detect_gpus()
+    if not gpus:
+        # Sem detecção de GPU: não filtra (melhor tentar do que remover tudo).
+        return {"nvenc", "amf", "qsv"}
+    text = " ".join(str(gpu.get("name", "")) for gpu in gpus).lower()
+    vendors: set[str] = set()
+    if any(token in text for token in ("nvidia", "geforce", "rtx", "quadro")):
+        vendors.add("nvenc")
+    if any(token in text for token in ("amd", "radeon", "rx ")):
+        vendors.add("amf")
+    if "intel" in text:
+        vendors.add("qsv")
+    return vendors
+
+
+def filter_hardware_encoders(names: set[str]) -> set[str]:
+    """Remove encoders de hardware cujo fornecedor não está presente."""
+    allowed = hardware_vendors()
+    filtered: set[str] = set()
+    for name in names:
+        if name.endswith("_nvenc") and "nvenc" not in allowed:
+            continue
+        if name.endswith("_amf") and "amf" not in allowed:
+            continue
+        if name.endswith("_qsv") and "qsv" not in allowed:
+            continue
+        filtered.add(name)
+    return filtered
+
+
+_PROBE_CACHE: dict[tuple[str, int, bool], bool] = {}
+
+
+def probe_encoder(encoder: str, qsv_device: int = -1,
+                  ten_bit: bool = False) -> bool:
+    """Testa o encoder com 1 frame (cache por sessão).
+
+    Alguns encoders aparecem no ffmpeg mas falham por falta de driver/GPU.
+    Nesse caso o modo Auto cai para software em vez de abortar a fila.
+    """
+    if not encoder:
+        return False
+    key = (encoder, qsv_device if encoder.endswith("_qsv") else -1, bool(ten_bit))
+    if key in _PROBE_CACHE:
+        return _PROBE_CACHE[key]
+    ffmpeg = which("ffmpeg")
+    ok = False
+    if ffmpeg:
+        cmd = [ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin"]
+        if encoder.endswith("_qsv") and qsv_device >= 0:
+            cmd += ["-qsv_device", str(qsv_device)]
+        cmd += ["-f", "lavfi", "-i", "color=c=black:s=320x240:r=1:d=0.2"]
+        if ten_bit:
+            cmd += ["-pix_fmt", "yuv420p10le"]
+        cmd += ["-frames:v", "1", "-c:v", encoder, "-f", "null", "-"]
+        try:
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=20,
+                encoding="utf-8", errors="replace", **popen_kwargs(),
+            )
+            ok = result.returncode == 0
+        except Exception:
+            ok = False
+    _PROBE_CACHE[key] = ok
+    return ok
 
 
 def pick_encoder(vendor: str, codec: str, names: set[str]) -> str:
@@ -241,8 +315,14 @@ def is_integrated_gpu(name: str) -> bool:
     return False
 
 
-def detect_gpus() -> list[dict]:
-    """Lista as GPUs do sistema (melhor esforço)."""
+_GPU_CACHE: list[dict] | None = None
+
+
+def detect_gpus(force: bool = False) -> list[dict]:
+    """Lista as GPUs do sistema (melhor esforço, com cache)."""
+    global _GPU_CACHE
+    if _GPU_CACHE is not None and not force:
+        return _GPU_CACHE
     names: list[str] = []
     try:
         if os.name == "nt":
@@ -275,10 +355,11 @@ def detect_gpus() -> list[dict]:
                     names.append(line.split(":", 2)[-1].strip())
     except Exception:
         return []
-    return [
+    _GPU_CACHE = [
         {"index": i, "name": name, "integrated": is_integrated_gpu(name)}
         for i, name in enumerate(names)
     ]
+    return _GPU_CACHE
 
 
 def detect_qsv_devices(max_devices: int = 4) -> list[dict]:
@@ -687,7 +768,11 @@ class CompressionWorker(QObject):
                 self.cancelled.emit()
                 return
             if rc != 0:
-                message = stderr_lines[-1] if stderr_lines else f"ffmpeg rc={rc}"
+                detail = " | ".join(
+                    line.strip() for line in stderr_lines if line.strip()
+                )
+                log.error("compressão falhou rc=%s: %s", rc, detail[-2000:])
+                message = detail[-800:] if detail else f"ffmpeg rc={rc}"
                 self._safe_remove(tmp)
                 self.failed.emit(message)
                 return
@@ -792,12 +877,6 @@ class CompressionManager(QObject):
     @Slot()
     def start(self) -> None:
         self._encoder = resolve_encoder(self.settings, self.available)
-        if not self._encoder:
-            for item in self.items:
-                if item["status"] == CompressStatus.WAITING:
-                    item["error"] = self._t("err_ffmpeg_missing")
-                    self._set_status(item, CompressStatus.ERROR)
-            return
         if self._encoder.endswith("_qsv"):
             if not self.qsv_devices:
                 self.qsv_devices = detect_qsv_devices()
@@ -806,6 +885,23 @@ class CompressionManager(QObject):
             self._qsv_device = resolve_qsv_device(
                 self.settings.qsv_device, self.qsv_devices
             )
+        if self._encoder and not self._encoder.startswith("lib"):
+            device = self._qsv_device if self._encoder.endswith("_qsv") else -1
+            if not probe_encoder(self._encoder, device, self.settings.ten_bit):
+                fallback = pick_encoder(
+                    "software", self.settings.codec, self.available
+                )
+                log.warning(
+                    "encoder %s falhou no teste; usando %s",
+                    self._encoder, fallback or "nenhum",
+                )
+                self._encoder = fallback
+        if not self._encoder:
+            for item in self.items:
+                if item["status"] == CompressStatus.WAITING:
+                    item["error"] = self._t("err_ffmpeg_missing")
+                    self._set_status(item, CompressStatus.ERROR)
+            return
         log.info("compressão: encoder=%s codec=%s container=%s qsv_device=%s",
                  self._encoder, self.settings.codec, self.settings.container,
                  self._qsv_device)

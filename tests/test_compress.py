@@ -19,6 +19,7 @@ from hlsdl.compress import (
     detect_encoders,
     detect_qsv_devices,
     estimate_saving,
+    filter_hardware_encoders,
     is_integrated_gpu,
     output_path,
     pick_encoder,
@@ -64,6 +65,20 @@ def test_estimate_saving_order():
     assert estimate_saving("av1", 24) > estimate_saving("hevc", 24)
     assert estimate_saving("hevc", 24) > estimate_saving("h264", 24)
     assert estimate_saving("hevc", 40) < estimate_saving("hevc", 20)
+
+
+def test_hardware_encoders_follow_gpu_vendor(monkeypatch):
+    names = {"hevc_nvenc", "hevc_amf", "hevc_qsv", "libx265"}
+    monkeypatch.setattr(
+        "hlsdl.compress.detect_gpus",
+        lambda *args, **kwargs: [{"name": "Intel(R) Arc(TM) B580 Graphics"}],
+    )
+    assert filter_hardware_encoders(names) == {"hevc_qsv", "libx265"}
+    monkeypatch.setattr(
+        "hlsdl.compress.detect_gpus",
+        lambda *args, **kwargs: [{"name": "NVIDIA GeForce RTX 4070"}],
+    )
+    assert filter_hardware_encoders(names) == {"hevc_nvenc", "libx265"}
 
 
 def test_x265_10bit_and_tuning():

@@ -710,6 +710,20 @@ class Bridge(QObject):
         )
         self.notifyText.emit(message)
         if errors:
+            details: list[str] = []
+            for item in self.compression.items:
+                status = item.get("status")
+                if getattr(status, "value", status) != "error":
+                    continue
+                error = str(item.get("error") or "").strip()
+                if not error:
+                    continue
+                name = item.get("name") or item.get("input") or ""
+                details.append(f"• {name}: {error}")
+            if details:
+                message += "\n\n" + "\n".join(details[:3])
+                if len(details) > 3:
+                    message += f"\n… (+{len(details) - 3})"
             QMessageBox.warning(
                 None, self._tr("compress_finished_title"), message
             )

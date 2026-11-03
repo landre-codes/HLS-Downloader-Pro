@@ -15,7 +15,7 @@ e o versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 - **Metadados HDR preservados** na compressão (primárias, transferência, espaço de cor e faixa) e **encoder real** exibido por arquivo (ex.: `QSV HEVC · Intel Arc B580`).
 - **Notificação de conclusão** da compressão (toast + diálogo quando há erros).
 - **Filtro na fila de lote** (título/URL) com ícone de pesquisa, **cabeçalhos de tabela maiores/destacados** e mais tooltips/ícones (tema claro/escuro, ações).
-- **Console de instalação estilo terminal** em **Configurações → Dependências** (fundo escuro, fonte monoespaçada e botão de copiar saída).
+- **Console de instalação estilo terminal** no log de dependências (Configurações → Dependências e diálogo de instalação): fundo escuro, fonte monoespaçada e botão de copiar saída.
 - **Escala automática da interface** conforme a tela (até 128%), com `--ui-scale`/`HLSDL_UI_SCALE` para ajuste manual; fonte, ícones e espaçamentos escalam juntos.
 - **Cursor de mão** (indicador) em botões, abas, combos, checkboxes e switches.
 - **Atualizador**: verifica a release, baixa o instalador e valida o SHA-256 antes de executar.
@@ -65,6 +65,16 @@ e o versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 - **Estilo Material restaurado**: os componentes de cursor não substituem mais
   os tipos originais (`Button`, `ComboBox`, etc.), que voltaram a usar o tema
   Material em vez do estilo Basic.
+- **Compressão em modo Auto** agora filtra NVENC/AMF/QSV pela GPU realmente
+  presente e testa o encoder escolhido; se ele falhar, cai para software em vez
+  de abortar a fila (corrige o erro de `hevc_nvenc` em máquinas Intel).
+- **Erros da compressão** mostram as últimas linhas do ffmpeg no diálogo e no
+  tooltip da linha, em vez de apenas “ocorreu um erro”.
+- **Tabela de compressão**: o badge de status/progresso voltou a exibir o texto
+  (o delegate usava `root.st` em vez do próprio `st`) e os botões de ação
+  aparecem conforme o estado.
+- **Saída de atualizações** fica sempre visível em Configurações → Dependências,
+  com placeholder quando ainda não há log.
 - Diálogos agora usam `contentItem` como pai (sem avisos de `parent` inválido),
   e bindings de `lastItem`/tooltips não geram mais `undefined`/`hovered`.
 - Janela restaurada é **limitada à área disponível da tela**, evitando ficar

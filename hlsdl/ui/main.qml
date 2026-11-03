@@ -206,6 +206,8 @@ ApplicationWindow {
                     display: AbstractButton.IconOnly
                     icon.source: "icons/copy_dark.svg"
                     icon.width: 14; icon.height: 14
+                    enabled: term.output.length > 0
+                    opacity: enabled ? 1 : 0.4
                     Accessible.name: strings.terminal_copy
                     ToolTip.text: strings.terminal_copy
                     ToolTip.visible: hovered
@@ -244,6 +246,16 @@ ApplicationWindow {
                     background: null
                 }
             }
+        }
+
+        Label {
+            anchors.centerIn: parent
+            text: strings.terminal_empty
+            visible: term.output.length === 0
+            color: "#6e7681"
+            font.family: "monospace"
+            font.pixelSize: 11
+            z: 2
         }
     }
 
@@ -1768,6 +1780,7 @@ ApplicationWindow {
                             }
 
                             delegate: Item {
+                                id: compRow
                                 width: compList.width
                                 height: 58
                                 property string st: model.status
@@ -1801,11 +1814,11 @@ ApplicationWindow {
                                         Rectangle {
                                             width: 104; height: 24; radius: 12
                                             anchors.centerIn: parent
-                                            color: root.badgeColor(root.st)
+                                            color: root.badgeColor(compRow.st)
                                             Label {
                                                 anchors.fill: parent
                                                 anchors.margins: 4
-                                                text: root.statusText(root.st)
+                                                text: root.statusText(compRow.st)
                                                 color: "white"
                                                 font.pixelSize: 11
                                                 font.bold: true
@@ -1822,11 +1835,11 @@ ApplicationWindow {
                                             width: 150; height: 6
                                             from: 0; to: 100
                                             value: model.progress
-                                            indeterminate: root.st === "analyzing"
+                                            indeterminate: compRow.st === "analyzing"
                                         }
                                         Label {
                                             anchors.right: parent.right
-                                            text: root.st === "done" ? "100%" : Math.round(model.progress) + "%"
+                                            text: compRow.st === "done" ? "100%" : Math.round(model.progress) + "%"
                                             font.pixelSize: 10
                                             color: Material.secondaryTextColor
                                         }
@@ -1847,10 +1860,14 @@ ApplicationWindow {
                                                   ? (model.saving + "% " + strings.compress_saving)
                                                   : (model.error.length > 0 ? model.error : model.speed)
                                             font.pixelSize: 10
-                                            color: root.st === "error"
+                                            color: compRow.st === "error"
                                                    ? (root.dark ? "#ff8a80" : "#c62828")
                                                    : Material.secondaryTextColor
                                             elide: Text.ElideRight
+                                            HoverHandler { id: compErrHover }
+                                            ToolTip.text: model.error
+                                            ToolTip.visible: compErrHover.hovered && model.error.length > 0
+                                            ToolTip.delay: 400
                                         }
                                     }
                                     Row {
@@ -1861,7 +1878,7 @@ ApplicationWindow {
                                             display: AbstractButton.IconOnly
                                             icon.source: root.iconPath("cancel")
                                             icon.width: 16; icon.height: 16
-                                            visible: root.st === "waiting" || root.st === "analyzing" || root.st === "encoding"
+                                            visible: compRow.st === "waiting" || compRow.st === "analyzing" || compRow.st === "encoding"
                                             Accessible.name: strings.tip_cancel
                                             onClicked: bridge.cancelCompressionItem(index)
                                         }
@@ -1870,7 +1887,7 @@ ApplicationWindow {
                                             display: AbstractButton.IconOnly
                                             icon.source: root.iconPath("open")
                                             icon.width: 16; icon.height: 16
-                                            visible: root.st === "done" && model.output !== ""
+                                            visible: compRow.st === "done" && model.output !== ""
                                             Accessible.name: strings.tip_open
                                             onClicked: bridge.openCompressionOutput(model.output)
                                         }
@@ -1879,8 +1896,8 @@ ApplicationWindow {
                                             display: AbstractButton.IconOnly
                                             icon.source: root.iconPath("cancel")
                                             icon.width: 16; icon.height: 16
-                                            visible: root.st === "done" || root.st === "error"
-                                                     || root.st === "cancelled" || root.st === "skipped"
+                                            visible: compRow.st === "done" || compRow.st === "error"
+                                                     || compRow.st === "cancelled" || compRow.st === "skipped"
                                             Accessible.name: strings.ctx_remove
                                             onClicked: bridge.removeCompressionItem(index)
                                         }
@@ -2332,7 +2349,6 @@ ApplicationWindow {
                             }
 
                             TerminalPanel {
-                                visible: root.depsLog.length > 0
                                 title: strings.dep_console
                                 output: root.depsLog
                                 panelHeight: 140
@@ -2935,24 +2951,11 @@ ApplicationWindow {
                 color: root.dark ? "#ff8a80" : "#c62828"
                 font.pixelSize: 12
             }
-            Label {
-                Layout.fillWidth: true
-                text: strings.dep_console
-                font.bold: true
+            TerminalPanel {
                 visible: root.depsLog.length > 0
-            }
-            ScrollView {
-                Layout.fillWidth: true
-                Layout.preferredHeight: 90
-                visible: root.depsLog.length > 0
-                clip: true
-                TextArea {
-                    readOnly: true
-                    text: root.depsLog
-                    font.family: "monospace"
-                    font.pixelSize: 11
-                    wrapMode: TextEdit.NoWrap
-                }
+                title: strings.dep_console
+                output: root.depsLog
+                panelHeight: 110
             }
         }
         footer: DialogButtonBox {

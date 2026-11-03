@@ -1925,6 +1925,7 @@ var extraTips = {
         compress_skip_hdr_tip: "Evita HDR/HLG (exigem tone mapping).",
         compress_suggestions_tip: "Compara economia × compatibilidade × velocidade.",
         terminal_copy: "Copiar saída",
+        terminal_empty: "A saída das atualizações aparecerá aqui.",
         filter_tip: "Filtra por parte do título ou da URL. Ex.: “documentário” ou “youtu.be/abc”.",
         naming_tip: "ID estável: vid_9f3c2a81b7 (mesmo link = mesmo nome). Título da página: “Meu vídeo (4K)” (legível, mas pode mudar)."
     },
@@ -1938,6 +1939,7 @@ var extraTips = {
         compress_skip_hdr_tip: "Skip HDR/HLG (they need tone mapping).",
         compress_suggestions_tip: "Compares savings × compatibility × speed.",
         terminal_copy: "Copy output",
+        terminal_empty: "Update output will appear here.",
         filter_tip: "Filters by part of the title or URL. E.g. “documentary” or “youtu.be/abc”.",
         naming_tip: "Stable ID: vid_9f3c2a81b7 (same link = same name). Page title: “My video (4K)” (readable, but may change)."
     },
@@ -1951,6 +1953,7 @@ var extraTips = {
         compress_skip_hdr_tip: "Omite HDR/HLG (requieren tone mapping).",
         compress_suggestions_tip: "Compara ahorro × compatibilidad × velocidad.",
         terminal_copy: "Copiar salida",
+        terminal_empty: "La salida de las actualizaciones aparecerá aquí.",
         filter_tip: "Filtra por parte del título o de la URL. Ej.: “documental” o “youtu.be/abc”.",
         naming_tip: "ID estable: vid_9f3c2a81b7 (mismo enlace = mismo nombre). Título: “Mi vídeo (4K)” (legible, pero puede cambiar)."
     },
@@ -1964,6 +1967,7 @@ var extraTips = {
         compress_skip_hdr_tip: "Salta HDR/HLG (richiedono tone mapping).",
         compress_suggestions_tip: "Confronta risparmio × compatibilità × velocità.",
         terminal_copy: "Copiar output",
+        terminal_empty: "L'output degli aggiornamenti apparirà qui.",
         filter_tip: "Filtra per parte del titolo o dell'URL. Es.: “documentario” o “youtu.be/abc”.",
         naming_tip: "ID stabile: vid_9f3c2a81b7 (stesso link = stesso nome). Titolo: “Il mio video (4K)” (leggibile, ma può cambiare)."
     },
@@ -1977,6 +1981,7 @@ var extraTips = {
         compress_skip_hdr_tip: "Ignore HDR/HLG (nécessitent un tone mapping).",
         compress_suggestions_tip: "Compare économie × compatibilité × vitesse.",
         terminal_copy: "Copier la sortie",
+        terminal_empty: "La sortie des mises à jour apparaîtra ici.",
         filter_tip: "Filtre par partie du titre ou de l'URL. Ex. : « documentaire » ou « youtu.be/abc ».",
         naming_tip: "ID stable : vid_9f3c2a81b7 (même lien = même nom). Titre : « Ma vidéo (4K) » (lisible, mais peut changer)."
     },
@@ -1990,6 +1995,7 @@ var extraTips = {
         compress_skip_hdr_tip: "Пропускать HDR/HLG (нужен tone mapping).",
         compress_suggestions_tip: "Сравнивает экономию × совместимость × скорость.",
         terminal_copy: "Копировать вывод",
+        terminal_empty: "Вывод обновлений появится здесь.",
         filter_tip: "Фильтр по части названия или URL. Напр.: «документальный» или «youtu.be/abc».",
         naming_tip: "Стабильный ID: vid_9f3c2a81b7 (та же ссылка = то же имя). Название: «Моё видео (4K)» (читаемо, но может измениться)."
     },
@@ -2003,6 +2009,7 @@ var extraTips = {
         compress_skip_hdr_tip: "HDR/HLG をスキップ（トーンマッピングが必要）。",
         compress_suggestions_tip: "節約 × 互換性 × 速度を比較します。",
         terminal_copy: "出力をコピー",
+        terminal_empty: "更新の出力がここに表示されます。",
         filter_tip: "タイトルまたは URL の一部で絞り込み。例：「ドキュメンタリー」「youtu.be/abc」。",
         naming_tip: "固定 ID: vid_9f3c2a81b7（同じリンク＝同じ名前）。ページタイトル:「私の動画 (4K)」（読みやすいが変わる可能性あり）。"
     },
@@ -2016,6 +2023,7 @@ var extraTips = {
         compress_skip_hdr_tip: "跳过 HDR/HLG（需要色调映射）。",
         compress_suggestions_tip: "比较节省 × 兼容性 × 速度。",
         terminal_copy: "复制输出",
+        terminal_empty: "更新输出将显示在这里。",
         filter_tip: "按标题或 URL 的一部分筛选。例如：“纪录片”或“youtu.be/abc”。",
         naming_tip: "固定 ID：vid_9f3c2a81b7（同一链接＝同一名称）。页面标题：“我的视频 (4K)”（易读，但可能变化）。"
     }
