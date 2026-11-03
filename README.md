@@ -6,7 +6,7 @@ Downloader de vídeos (HLS / m3u8) com interface **Qt Quick (QML) + Material Des
 
 - **Duas abas de download**: **Download Individual** (um link, com progresso dedicado) e **Lote** (fila com dezenas/centenas de links)
 - **Aba de Playlists**: carrega os itens de uma playlist (**YouTube** ou sites em geral), permite selecionar os desejados e enviá-los à fila
-- **Aba de Compressão local**: fila de arquivos/pastas, HEVC com **Intel QSV, NVIDIA NVENC, AMD AMF ou x265**, qualidade 1–51, paralelismo, validação da saída e substituição atômica (original preservado por padrão)
+- **Aba de Compressão local**: fila de arquivos/pastas, HEVC com **Intel QSV, NVIDIA NVENC, AMD AMF ou x265**, qualidade 1–51, paralelismo, validação da saída e substituição atômica (original preservado por padrão). O modo **Auto** prioriza a **GPU dedicada** (Arc/NVIDIA/AMD) e o dispositivo QSV pode ser escolhido na interface.
 - **Atualizações**: verifica a última release, baixa o instalador e **valida o SHA-256** antes de executar (Windows; no portátil abre a página da release)
 - **Modo de extração** (Individual e Lote): **Vídeo + áudio**, **Apenas vídeo** ou **Somente áudio**
 - **Qualidade de 144p a 4K** (2160p) e **escolha do arquivo** de saída: **mp4, mkv, webm, avi, mov** (ou **mp3, m4a, wav, flac, opus** no modo áudio)

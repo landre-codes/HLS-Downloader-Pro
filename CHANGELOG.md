@@ -40,6 +40,10 @@ e o versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 - A aba **Download Individual** não exibe mais o progresso de itens do lote/playlist.
 - Botões de diálogo localizados (sem “OK/Cancel” fixos em inglês) e textos
   como “0 = sem limite” traduzidos.
+- **GPU dedicada no QSV**: o modo Auto detecta os dispositivos (`-qsv_device`)
+  e escolhe a Arc/dGPU; há seletor de GPU na aba Compressão.
+- Campos de URL e caminho de cookies usam **placeholder simples** (sem
+  floating label) onde o rótulo não agrega.
 
 ## [1.2.3] — anterior
 - Controle de rede: limite de velocidade e conexões por download.

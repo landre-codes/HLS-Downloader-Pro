@@ -74,6 +74,7 @@ class Bridge(QObject):
     compressionStateChanged = Signal(bool, bool)
     compressionConfigChanged = Signal()
     compressionEncodersChanged = Signal()
+    compressionQsvDevicesChanged = Signal()
     updateChanged = Signal()
     updateProgressChanged = Signal(int)
     depsChanged = Signal()
@@ -153,6 +154,7 @@ class Bridge(QObject):
         self.compression.set_translator(self._translator())
         self.compression.statsChanged.connect(self.compressionStatsChanged.emit)
         self.compression.stateChanged.connect(self._on_comp_state)
+        self.compression.qsvDevicesChanged.connect(self.compressionQsvDevicesChanged.emit)
         self._comp_settings = CompressionSettings(
             encoder=str(self._settings.value("compress/encoder", "auto")),
             quality=self._clamp(int(self._settings.value("compress/quality", 24)), 1, 51),
@@ -163,6 +165,9 @@ class Bridge(QObject):
             replace_original=self._settings.value("compress/replace_original", False, type=bool),
             reencode_hevc=self._settings.value("compress/reencode_hevc", False, type=bool),
             skip_hdr=self._settings.value("compress/skip_hdr", True, type=bool),
+            qsv_device=self._clamp(
+                int(self._settings.value("compress/qsv_device", -1)), -1, 15
+            ),
         )
         if self._comp_settings.encoder not in ("auto", *ENCODER_ORDER):
             self._comp_settings.encoder = "auto"
@@ -569,6 +574,30 @@ class Bridge(QObject):
                 "available": bool(self.compression.available.get(key)),
             })
         return items
+
+    @Property(list, notify=compressionQsvDevicesChanged)
+    def compressionQsvDevices(self) -> list:
+        items = [{"index": -1, "name": "Auto (dedicada)"}]
+        for device in self.compression.qsv_devices:
+            items.append({
+                "index": int(device["index"]),
+                "name": f"{device['name']} ({device['index']})",
+            })
+        return items
+
+    @Property(int, notify=compressionConfigChanged)
+    def compressionQsvDevice(self) -> int:
+        return self._comp_settings.qsv_device
+
+    @Slot(int)
+    def setCompressionQsvDevice(self, index: int) -> None:
+        index = self._clamp(int(index), -1, 15)
+        if index == self._comp_settings.qsv_device:
+            return
+        self._comp_settings.qsv_device = index
+        self._save("compress/qsv_device", index)
+        self.compression.apply_settings(self._comp_settings)
+        self.compressionConfigChanged.emit()
 
     @Slot()
     def refreshCompressionEncoders(self) -> None:

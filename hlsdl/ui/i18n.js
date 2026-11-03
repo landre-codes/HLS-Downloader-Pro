@@ -1777,6 +1777,18 @@ var extraUpdate = {
     }
 }
 
+// Textos de GPU (mesclados por getAll).
+var extraGpu = {
+    "pt": { compress_gpu: "GPU:", compress_gpu_tip: "Auto prefere a GPU dedicada." },
+    "en": { compress_gpu: "GPU:", compress_gpu_tip: "Auto prefers the dedicated GPU." },
+    "es": { compress_gpu: "GPU:", compress_gpu_tip: "Auto prefiere la GPU dedicada." },
+    "it": { compress_gpu: "GPU:", compress_gpu_tip: "Auto preferisce la GPU dedicata." },
+    "fr": { compress_gpu: "GPU :", compress_gpu_tip: "Auto privilégie le GPU dédié." },
+    "ru": { compress_gpu: "GPU:", compress_gpu_tip: "Auto предпочитает дискретную видеокарту." },
+    "ja": { compress_gpu: "GPU:", compress_gpu_tip: "Auto は専用 GPU を優先します。" },
+    "zh": { compress_gpu: "GPU：", compress_gpu_tip: "自动优先使用独立显卡。" }
+}
+
 function getAll() {
     var out = {}
     var base = dict["pt"]
@@ -1791,6 +1803,9 @@ function getAll() {
     var u = extraUpdate[lang] || {}
     for (var k4 in u)
         out[k4] = u[k4]
+    var g = extraGpu[lang] || {}
+    for (var k5 in g)
+        out[k5] = g[k5]
     return out
 }
 

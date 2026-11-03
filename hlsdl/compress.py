@@ -10,7 +10,9 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import subprocess
+import sys
 import threading
 import time
 from dataclasses import dataclass
@@ -41,6 +43,9 @@ SAFE_AUDIO = {"aac", "ac3", "eac3", "mp3", "alac"}
 TEXT_SUBS = {"subrip", "srt", "ass", "ssa", "mov_text", "webvtt", "text"}
 IMAGE_SUBS = {"hdmv_pgs_subtitle", "dvd_subtitle", "dvb_subtitle", "xsub"}
 ENCODER_ORDER = ("qsv", "nvenc", "amf", "x265")
+# Preferência do "Auto": GPUs dedicadas (NVIDIA/AMD) antes do QSV (que pode
+# estar na iGPU). Em máquinas só Intel, o QSV usa o dispositivo dedicado (Arc).
+AUTO_ORDER = ("nvenc", "amf", "qsv", "x265")
 ENCODER_NAMES = {
     "qsv": "Intel QSV (HEVC)",
     "nvenc": "NVIDIA NVENC (HEVC)",
@@ -81,6 +86,7 @@ class CompressionSettings:
     replace_original: bool = False
     reencode_hevc: bool = False
     skip_hdr: bool = True
+    qsv_device: int = -1  # -1 = automático (prefere a GPU dedicada)
 
 
 def make_item(item_id: int, path: str) -> dict:
@@ -133,10 +139,126 @@ def resolve_encoder(settings: CompressionSettings,
                     available: dict[str, bool]) -> str:
     if settings.encoder in ENCODER_ORDER and available.get(settings.encoder):
         return settings.encoder
-    for key in ENCODER_ORDER:
+    for key in AUTO_ORDER:
         if available.get(key):
             return key
     return "x265"
+
+
+def is_integrated_gpu(name: str) -> bool:
+    """Heurística: Intel UHD/HD/Iris = integrada; Arc/NVIDIA/AMD = dedicada."""
+    value = (name or "").lower()
+    if "arc" in value:
+        return False
+    if any(token in value for token in ("uhd", "hd graphics", "iris", "integrated")):
+        return True
+    if any(token in value for token in ("nvidia", "geforce", "rtx", "quadro",
+                                        "radeon", "rx ")):
+        return False
+    return False
+
+
+def detect_gpus() -> list[dict]:
+    """Lista as GPUs do sistema (melhor esforço, sem dependências)."""
+    names: list[str] = []
+    try:
+        if os.name == "nt":
+            cmd = [
+                "powershell", "-NoProfile", "-Command",
+                "Get-CimInstance Win32_VideoController | "
+                "Select-Object -ExpandProperty Name",
+            ]
+            out = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=20,
+                encoding="utf-8", errors="replace", **popen_kwargs(),
+            )
+            names = [line.strip() for line in (out.stdout or "").splitlines() if line.strip()]
+        elif sys.platform == "darwin":
+            out = subprocess.run(
+                ["system_profiler", "SPDisplaysDataType"],
+                capture_output=True, text=True, timeout=30,
+                encoding="utf-8", errors="replace", **popen_kwargs(),
+            )
+            for line in (out.stdout or "").splitlines():
+                if "Chipset Model:" in line:
+                    names.append(line.split(":", 1)[1].strip())
+        else:
+            out = subprocess.run(
+                ["lspci"], capture_output=True, text=True, timeout=20,
+                encoding="utf-8", errors="replace", **popen_kwargs(),
+            )
+            for line in (out.stdout or "").splitlines():
+                if re.search(r"(VGA|3D|Display)", line, re.IGNORECASE):
+                    names.append(line.split(":", 2)[-1].strip())
+    except Exception:
+        return []
+    return [
+        {"index": i, "name": name, "integrated": is_integrated_gpu(name)}
+        for i, name in enumerate(names)
+    ]
+
+
+def detect_qsv_devices(max_devices: int = 4) -> list[dict]:
+    """Mapeia índices ``-qsv_device`` para o nome real da GPU.
+
+    O ffmpeg imprime ``Using device 8086:e20b (Intel(R) Arc(TM) B580)`` em
+    loglevel verbose; isso permite escolher a GPU dedicada.
+    """
+    ffmpeg = which("ffmpeg")
+    if not ffmpeg:
+        return []
+    devices: list[dict] = []
+    misses = 0
+    for index in range(max_devices):
+        cmd = [
+            ffmpeg, "-hide_banner", "-loglevel", "verbose",
+            "-qsv_device", str(index),
+            "-f", "lavfi", "-i", "color=c=black:s=64x64:r=1",
+            "-frames:v", "1", "-c:v", "hevc_qsv",
+            "-global_quality", "30", "-an", "-f", "null", "-",
+        ]
+        try:
+            out = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=20,
+                encoding="utf-8", errors="replace", **popen_kwargs(),
+            )
+        except Exception:
+            break
+        text = (out.stderr or "") + (out.stdout or "")
+        match = re.search(
+            r"Using device\s+[0-9a-fA-F]+:[0-9a-fA-F]+\s+\((.+)\)", text
+        )
+        if match:
+            name = match.group(1).strip()
+            if "basic render" in name.lower():
+                continue
+            devices.append({
+                "index": index,
+                "name": name,
+                "integrated": is_integrated_gpu(name),
+            })
+            misses = 0
+        elif out.returncode != 0:
+            misses += 1
+            if misses >= 2:
+                break
+    return devices
+
+
+def resolve_qsv_device(preferred: int, devices: list[dict]) -> int:
+    """Escolhe o índice QSV (prefere GPU dedicada/Arc quando automático)."""
+    if preferred is not None and preferred >= 0:
+        if not devices or any(d["index"] == preferred for d in devices):
+            return preferred
+    if devices:
+        dedicated = [d for d in devices if not d["integrated"]]
+        for device in dedicated:
+            if "arc" in device["name"].lower():
+                return device["index"]
+        if dedicated:
+            return dedicated[0]["index"]
+        return devices[0]["index"]
+    return 0
 
 
 def video_args(encoder: str, quality: int, speed: str) -> list[str]:
@@ -148,7 +270,7 @@ def video_args(encoder: str, quality: int, speed: str) -> list[str]:
                 "-global_quality", str(q), "-tag:v", "hvc1"]
     if encoder == "nvenc":
         preset = {"fast": "p3", "balanced": "p5", "slow": "p7"}[speed]
-        return ["-c:v", "hevc_nvenc", "-preset", preset, "-tune", "hq",
+        return ["-c:v", "hevc_nvenc", "-gpu", "0", "-preset", preset, "-tune", "hq",
                 "-rc", "vbr", "-cq", str(q), "-b:v", "0", "-tag:v", "hvc1"]
     if encoder == "amf":
         preset = {"fast": "speed", "balanced": "balanced", "slow": "quality"}[speed]
@@ -215,12 +337,14 @@ def output_path(src: str) -> str:
 
 
 def build_args(src: str, tmp: str, settings: CompressionSettings,
-               encoder: str, probe: dict) -> list[str]:
+               encoder: str, probe: dict, qsv_device: int = 0) -> list[str]:
     _videos, audios, subs, _duration = analyze(probe)
     ffmpeg = which("ffmpeg")
-    cmd = [ffmpeg, "-hide_banner", "-nostdin", "-y",
-           "-progress", "pipe:1", "-nostats", "-i", src,
-           "-map", "0:V:0", "-map", "0:a?"]
+    cmd = [ffmpeg, "-hide_banner", "-nostdin", "-y"]
+    if encoder == "qsv":
+        cmd += ["-qsv_device", str(qsv_device)]
+    cmd += ["-progress", "pipe:1", "-nostats", "-i", src,
+            "-map", "0:V:0", "-map", "0:a?"]
 
     for i, audio in enumerate(audios):
         codec = (audio.get("codec_name") or "").lower()
@@ -352,11 +476,13 @@ class CompressionWorker(QObject):
     finished = Signal()
 
     def __init__(self, src: str, settings: CompressionSettings,
-                 encoder: str, translate=None, parent: QObject | None = None):
+                 encoder: str, translate=None, parent: QObject | None = None,
+                 qsv_device: int = 0):
         super().__init__(parent)
         self.src = src
         self.settings = settings
         self.encoder = encoder
+        self.qsv_device = qsv_device
         self._t = translate or translator("pt")
         self._cancel = False
         self._proc = None
@@ -379,7 +505,8 @@ class CompressionWorker(QObject):
             _videos, _audios, _subs, duration = analyze(probe)
             final = output_path(self.src)
             tmp = final + ".part.mp4"
-            cmd = build_args(self.src, tmp, self.settings, self.encoder, probe)
+            cmd = build_args(self.src, tmp, self.settings, self.encoder, probe,
+                             self.qsv_device)
             if not cmd[0]:
                 self.failed.emit(self._t("err_ffmpeg_missing"))
                 return
@@ -457,6 +584,7 @@ class CompressionWorker(QObject):
 class CompressionManager(QObject):
     statsChanged = Signal(int, int, int, int, int)  # waiting, encoding, done, err, skip
     stateChanged = Signal(bool, bool)              # active, paused
+    qsvDevicesChanged = Signal()
 
     def __init__(self, model: CompressionModel, parent: QObject | None = None):
         super().__init__(parent)
@@ -464,6 +592,8 @@ class CompressionManager(QObject):
         self.items: list[dict] = model.items()
         self.settings = CompressionSettings()
         self.available = detect_encoders()
+        self.qsv_devices: list[dict] = []
+        self._qsv_device = 0
         self._active = False
         self._paused = False
         self._running = 0
@@ -472,6 +602,12 @@ class CompressionManager(QObject):
         self._encoder = "x265"
         self._t = translator("pt")
         self._emit_stats()
+
+    def _detect_qsv_devices(self) -> None:
+        devices = detect_qsv_devices()
+        if devices:
+            self.qsv_devices = devices
+            self.qsvDevicesChanged.emit()
 
     def set_translator(self, fn) -> None:
         self._t = fn
@@ -485,6 +621,8 @@ class CompressionManager(QObject):
 
     def refresh_encoders(self) -> dict[str, bool]:
         self.available = detect_encoders()
+        if self.available.get("qsv"):
+            threading.Thread(target=self._detect_qsv_devices, daemon=True).start()
         return self.available
 
     # --------------------------------------------------------------- adding
@@ -515,6 +653,15 @@ class CompressionManager(QObject):
     @Slot()
     def start(self) -> None:
         self._encoder = resolve_encoder(self.settings, self.available)
+        if self._encoder == "qsv":
+            if not self.qsv_devices:
+                self.qsv_devices = detect_qsv_devices()
+                if self.qsv_devices:
+                    self.qsvDevicesChanged.emit()
+            self._qsv_device = resolve_qsv_device(
+                self.settings.qsv_device, self.qsv_devices
+            )
+        log.info("compressão: encoder=%s qsv_device=%s", self._encoder, self._qsv_device)
         threshold = self.settings.min_size_mb * 1024 * 1024
         if threshold:
             for item in self.items:
@@ -618,7 +765,8 @@ class CompressionManager(QObject):
         self._touch(item)
         thread = QThread(self)
         worker = CompressionWorker(
-            item["input"], self.settings, self._encoder, self._t
+            item["input"], self.settings, self._encoder, self._t,
+            qsv_device=self._qsv_device,
         )
         worker.moveToThread(thread)
         worker.statusChanged.connect(lambda st, it=item: self._on_status(it, st))

@@ -15,8 +15,13 @@ from hlsdl.compress import (
     CompressionWorker,
     CompressStatus,
     analyze,
+    build_args,
     detect_encoders,
+    detect_qsv_devices,
+    is_integrated_gpu,
     output_path,
+    resolve_encoder,
+    resolve_qsv_device,
     skip_reason,
     video_args,
 )
@@ -32,9 +37,43 @@ def test_video_args_per_encoder():
     amf = " ".join(video_args("amf", 23, "slow"))
     x265 = " ".join(video_args("x265", 26, "balanced"))
     assert "hevc_qsv" in qsv and "global_quality 24" in qsv
-    assert "hevc_nvenc" in nvenc and "-cq 24" in nvenc
+    assert "hevc_nvenc" in nvenc and "-cq 24" in nvenc and "-gpu 0" in nvenc
     assert "hevc_amf" in amf and "qp_i 23" in amf
     assert "libx265" in x265 and "-crf 26" in x265
+
+
+def test_auto_prefers_discrete_gpu_encoders():
+    settings = CompressionSettings(encoder="auto")
+    assert resolve_encoder(settings, {"qsv": True, "nvenc": True,
+                                      "amf": True, "x265": True}) == "nvenc"
+    assert resolve_encoder(settings, {"qsv": True, "nvenc": False,
+                                      "amf": True, "x265": True}) == "amf"
+    assert resolve_encoder(settings, {"qsv": True, "nvenc": False,
+                                      "amf": False, "x265": True}) == "qsv"
+
+
+def test_resolve_qsv_device_prefers_arc():
+    devices = [
+        {"index": 0, "name": "Intel(R) UHD Graphics 770", "integrated": True},
+        {"index": 1, "name": "Intel(R) Arc(TM) B580 Graphics", "integrated": False},
+    ]
+    assert resolve_qsv_device(-1, devices) == 1
+    assert resolve_qsv_device(0, devices) == 0
+    assert resolve_qsv_device(-1, []) == 0
+    assert is_integrated_gpu("Intel(R) UHD Graphics 770") is True
+    assert is_integrated_gpu("Intel(R) Arc(TM) B580 Graphics") is False
+    assert is_integrated_gpu("NVIDIA GeForce RTX 4060") is False
+
+
+def test_build_args_includes_qsv_device():
+    probe = {
+        "streams": [{"codec_type": "video", "codec_name": "h264"}],
+        "format": {"duration": "1"},
+    }
+    cmd = build_args("in.mp4", "out.mp4", CompressionSettings(),
+                     "qsv", probe, qsv_device=1)
+    assert "-qsv_device" in cmd
+    assert cmd[cmd.index("-qsv_device") + 1] == "1"
 
 
 def test_analyze_and_skip_rules():
@@ -96,6 +135,7 @@ def test_bridge_persists_compression_settings(qapp, tmp_path, fake_deps):
     b.setCompressionParallel(2)
     b.setCompressionSpeed("fast")
     b.setCompressionOnlyIfSmaller(False)
+    b.setCompressionQsvDevice(1)
     b2 = Bridge(QueueManager(DownloadModel([]), outdir="out"), "out",
                 settings_path=settings, deps=fake_deps)
     assert b2.compressionEncoder == "x265"
@@ -103,6 +143,7 @@ def test_bridge_persists_compression_settings(qapp, tmp_path, fake_deps):
     assert b2.compressionParallel == 2
     assert b2.compressionSpeed == "fast"
     assert b2.compressionOnlyIfSmaller is False
+    assert b2.compressionQsvDevice == 1
 
 
 @pytest.mark.skipif(
@@ -136,6 +177,44 @@ def test_real_x265_encode(qapp, tmp_path):
     assert os.path.exists(tmp) and after > 0 and before > 0
     os.replace(tmp, final)
     assert os.path.exists(final)
+
+
+@pytest.mark.skipif(
+    which("ffmpeg") is None or not detect_encoders().get("qsv"),
+    reason="ffmpeg/QSV indisponível",
+)
+def test_real_qsv_encode_prefers_dedicated(qapp, tmp_path):
+    devices = detect_qsv_devices()
+    if not devices:
+        pytest.skip("nenhum dispositivo QSV detectado")
+    index = resolve_qsv_device(-1, devices)
+    dedicated = [d for d in devices if not d["integrated"]]
+    if dedicated:
+        assert index == dedicated[0]["index"]
+
+    ffmpeg = which("ffmpeg")
+    src = tmp_path / "in.mp4"
+    subprocess.run(
+        [ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
+         "-f", "lavfi", "-i", "testsrc=duration=1:size=320x240:rate=15",
+         "-pix_fmt", "yuv420p", "-c:v", "libx264", str(src)],
+        check=True, **popen_kwargs(),
+    )
+    settings = CompressionSettings(
+        encoder="qsv", quality=30, speed="fast", qsv_device=-1,
+        only_if_smaller=False, replace_original=False,
+    )
+    worker = CompressionWorker(str(src), settings, "qsv", qsv_device=index)
+    events: list = []
+    worker.succeeded.connect(
+        lambda tmp, final, before, after: events.append((tmp, final, before, after))
+    )
+    worker.failed.connect(lambda err: events.append(("fail", err)))
+    worker.run()
+
+    assert events and events[0][0] != "fail", events
+    tmp, final, _before, after = events[0]
+    assert os.path.exists(tmp) and after > 0
 
 
 @pytest.mark.skipif(

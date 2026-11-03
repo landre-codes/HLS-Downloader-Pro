@@ -183,6 +183,25 @@ ApplicationWindow {
         }
     }
 
+    // Campo com placeholder "puro" (sem floating label do Material).
+    component HintField: TextField {
+        id: hintField
+        property string hint: ""
+        placeholderText: ""
+        Accessible.name: hint
+        Text {
+            x: hintField.leftPadding
+            anchors.verticalCenter: parent.verticalCenter
+            width: hintField.width - hintField.leftPadding - hintField.rightPadding
+            text: hintField.hint
+            visible: hintField.text.length === 0
+            color: Material.hintTextColor
+            elide: Text.ElideRight
+            font: hintField.font
+            z: 1
+        }
+    }
+
     // Seletor de qualidade (144p–4K).
     component QualityCombo: ComboBox {
         property var items: [
@@ -525,10 +544,10 @@ ApplicationWindow {
                         spacing: 12
                         Label { text: strings.single_title; font.pixelSize: 15; font.weight: Font.DemiBold }
 
-                        TextField {
+                        HintField {
                             id: singleUrl
                             Layout.fillWidth: true
-                            placeholderText: strings.single_url_placeholder
+                            hint: strings.single_url_placeholder
                             selectByMouse: true
                             onAccepted: root.startSingle()
                         }
@@ -969,10 +988,10 @@ ApplicationWindow {
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: 8
-                            TextField {
+                            HintField {
                                 id: playlistUrl
                                 Layout.fillWidth: true
-                                placeholderText: strings.playlist_url_placeholder
+                                hint: strings.playlist_url_placeholder
                                 selectByMouse: true
                                 onAccepted: root.loadPlaylist()
                             }
@@ -1199,8 +1218,47 @@ ApplicationWindow {
                                             return i
                                     return 0
                                 }
-                                Layout.preferredWidth: 200
+                                Layout.preferredWidth: 190
                                 onActivated: bridge.setCompressionEncoder(currentValue)
+                            }
+                            Label {
+                                visible: bridge.compressionEncoder === "auto"
+                                         || bridge.compressionEncoder === "qsv"
+                                text: strings.compress_gpu
+                                font.pixelSize: 13
+                                color: Material.secondaryTextColor
+                            }
+                            ComboBox {
+                                id: compGpu
+                                visible: bridge.compressionEncoder === "auto"
+                                         || bridge.compressionEncoder === "qsv"
+                                model: bridge.compressionQsvDevices
+                                textRole: "name"
+                                valueRole: "index"
+                                currentIndex: {
+                                    for (var i = 0; i < model.length; i++)
+                                        if (model[i].index === bridge.compressionQsvDevice)
+                                            return i
+                                    return 0
+                                }
+                                Layout.preferredWidth: 210
+                                ToolTip.text: strings.compress_gpu_tip
+                                ToolTip.visible: hovered
+                                ToolTip.delay: 500
+                                onActivated: bridge.setCompressionQsvDevice(currentValue)
+                            }
+                            ToolButton {
+                                visible: bridge.compressionEncoder === "auto"
+                                         || bridge.compressionEncoder === "qsv"
+                                display: AbstractButton.IconOnly
+                                icon.source: root.iconPath("retry")
+                                icon.width: 16
+                                icon.height: 16
+                                ToolTip.text: strings.compress_gpu_tip
+                                ToolTip.visible: hovered
+                                ToolTip.delay: 500
+                                Accessible.name: strings.compress_gpu
+                                onClicked: bridge.refreshCompressionEncoders()
                             }
                             Label { text: strings.compress_quality; font.pixelSize: 13; color: Material.secondaryTextColor }
                             SpinBox {
@@ -1704,10 +1762,10 @@ ApplicationWindow {
                                     Layout.preferredWidth: 220
                                     wrapMode: Text.WordWrap
                                 }
-                                TextField {
+                                HintField {
                                     text: bridge.cookiesFile
                                     onEditingFinished: bridge.setCookiesFile(text)
-                                    placeholderText: strings.cfg_cookies_placeholder
+                                    hint: strings.cfg_cookies_placeholder
                                     selectByMouse: true
                                     Layout.fillWidth: true
                                     ToolTip.text: strings.cfg_cookies_file_tip; ToolTip.visible: hovered; ToolTip.delay: 500
