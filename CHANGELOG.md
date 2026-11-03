@@ -10,6 +10,9 @@ e o versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 - Abas **Download Individual**, **Lote**, **Playlists** e **Configurações**.
 - **Aba de Playlists** (YouTube e sites em geral): carregar itens, selecionar e enfileirar/baixar.
 - **Aba de Compressão local**: HEVC com QSV/NVENC/AMF/x265, qualidade 1–51, paralelismo, validação e substituição segura.
+- **Codecs e contêineres na compressão**: HEVC/H.264/AV1, MP4/MKV/WebM/MOV/AVI, sugestões e estimativa de economia por formato; preset **muito lenta** (máxima qualidade).
+- **Notificação de conclusão** da compressão (toast + diálogo quando há erros).
+- **Filtro na fila de lote** (título/URL) e mais tooltips/ícones (tema claro/escuro, ações).
 - **Atualizador**: verifica a release, baixa o instalador e valida o SHA-256 antes de executar.
 - **Modos de extração**: vídeo + áudio, apenas vídeo, somente áudio.
 - **Qualidade de 144p a 4K** e escolha de **arquivo** (mp4/mkv/webm/avi/mov; mp3/m4a/wav/flac/opus).
@@ -44,6 +47,8 @@ e o versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
   e escolhe a Arc/dGPU; há seletor de GPU na aba Compressão.
 - Campos de URL e caminho de cookies usam **placeholder simples** (sem
   floating label) onde o rótulo não agrega.
+- **Modo áudio** no download individual agora recolhe também a linha de
+  codec/compressão, sem deixar espaço vazio.
 
 ## [1.2.3] — anterior
 - Controle de rede: limite de velocidade e conexões por download.

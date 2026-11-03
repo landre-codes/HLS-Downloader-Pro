@@ -110,10 +110,12 @@ for name in (
     "addCompressionFiles", "addCompressionFolder", "addCompressionPaths",
     "startCompression", "pauseCompression", "resumeCompression", "cancelCompression",
     "cancelCompressionItem", "removeCompressionItem", "clearCompressionFinished",
-    "setCompressionEncoder", "setCompressionQuality", "setCompressionSpeed",
+    "setCompressionEncoder", "setCompressionCodec", "setCompressionContainer",
+    "setCompressionQuality", "setCompressionSpeed",
     "setCompressionParallel", "setCompressionMinSizeMB",
     "setCompressionOnlyIfSmaller", "setCompressionReplaceOriginal",
     "setCompressionReencodeHevc", "setCompressionSkipHdr",
+    "setCompressionQsvDevice", "refreshCompressionEncoders",
     "checkForUpdates", "downloadUpdate", "openReleasePage",
 ):
     assert getattr(bridge, name), name

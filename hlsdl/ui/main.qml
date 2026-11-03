@@ -150,6 +150,12 @@ ApplicationWindow {
             || p.endsWith(".ts")
     }
 
+    function estimateSaving(codec) {
+        var base = codec === "av1" ? 58 : (codec === "hevc" ? 48 : 26)
+        return Math.max(5, Math.min(85,
+            Math.round(base - (bridge.compressionQuality - 24) * 1.1)))
+    }
+
     // Resumo compacto do perfil de download (aba Lote).
     function downloadSummary() {
         if (bridge.formatMode === "audio_only")
@@ -586,6 +592,7 @@ ApplicationWindow {
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: 12
+                            visible: bridge.formatMode !== "audio_only"
                             Label {
                                 visible: bridge.formatMode !== "audio_only"
                                 text: strings.codec_label; font.pixelSize: 13
@@ -612,6 +619,12 @@ ApplicationWindow {
                             spacing: 12
                             Button {
                                 text: strings.btn_download_now; highlighted: true
+                                icon.source: root.iconPath("play")
+                                icon.width: 16; icon.height: 16
+                                display: AbstractButton.TextBesideIcon
+                                ToolTip.text: strings.single_hint
+                                ToolTip.visible: hovered
+                                ToolTip.delay: 500
                                 onClicked: root.startSingle()
                             }
                             Item { Layout.fillWidth: true }
@@ -751,22 +764,34 @@ ApplicationWindow {
                             spacing: 8
                             Button {
                                 text: strings.btn_add; highlighted: true
+                                icon.source: root.iconPath("add")
+                                icon.width: 16; icon.height: 16
+                                display: AbstractButton.TextBesideIcon
                                 ToolTip.text: strings.btn_add_tip; ToolTip.visible: hovered; ToolTip.delay: 500
                                 onClicked: { bridge.addLinks(inputArea.text); inputArea.clear() }
                             }
                             Button {
                                 text: strings.btn_paste
+                                icon.source: root.iconPath("copy")
+                                icon.width: 16; icon.height: 16
+                                display: AbstractButton.TextBesideIcon
                                 ToolTip.text: strings.btn_paste_tip; ToolTip.visible: hovered; ToolTip.delay: 500
                                 onClicked: { bridge.pasteFromClipboard(); inputArea.clear() }
                             }
                             Button {
                                 text: strings.btn_import
+                                icon.source: root.iconPath("file")
+                                icon.width: 16; icon.height: 16
+                                display: AbstractButton.TextBesideIcon
                                 ToolTip.text: strings.btn_import_tip; ToolTip.visible: hovered; ToolTip.delay: 500
                                 onClicked: bridge.importTxt()
                             }
                             Item { Layout.fillWidth: true }
                             Button {
                                 text: strings.btn_clear; flat: true
+                                icon.source: root.iconPath("trash")
+                                icon.width: 16; icon.height: 16
+                                display: AbstractButton.TextBesideIcon
                                 ToolTip.text: strings.btn_clear_tip; ToolTip.visible: hovered; ToolTip.delay: 500
                                 onClicked: inputArea.clear()
                             }
@@ -853,7 +878,33 @@ ApplicationWindow {
                         anchors.margins: 12
                         spacing: 6
 
-                        Label { text: strings.queue_title; font.pixelSize: 15; font.weight: Font.DemiBold }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+                            Label { text: strings.queue_title; font.pixelSize: 15; font.weight: Font.DemiBold }
+                            Item { Layout.fillWidth: true }
+                            HintField {
+                                id: queueFilter
+                                Layout.preferredWidth: 240
+                                hint: strings.filter_placeholder
+                                selectByMouse: true
+                                ToolTip.text: strings.filter_placeholder
+                                ToolTip.visible: hovered
+                                ToolTip.delay: 500
+                            }
+                            ToolButton {
+                                display: AbstractButton.IconOnly
+                                icon.source: root.iconPath("cancel")
+                                icon.width: 14
+                                icon.height: 14
+                                visible: queueFilter.text.length > 0
+                                Accessible.name: strings.btn_clear
+                                ToolTip.text: strings.btn_clear
+                                ToolTip.visible: hovered
+                                ToolTip.delay: 500
+                                onClicked: queueFilter.clear()
+                            }
+                        }
 
                         RowLayout {
                             Layout.fillWidth: true
@@ -932,18 +983,27 @@ ApplicationWindow {
 
                     Button {
                         text: strings.btn_start; highlighted: true
+                        icon.source: root.iconPath("play")
+                        icon.width: 16; icon.height: 16
+                        display: AbstractButton.TextBesideIcon
                         visible: !bridge.queueActive
                         ToolTip.text: strings.btn_start_tip; ToolTip.visible: hovered; ToolTip.delay: 500
                         onClicked: bridge.startQueue()
                     }
                     Button {
                         text: strings.btn_pause
+                        icon.source: root.iconPath("pause")
+                        icon.width: 16; icon.height: 16
+                        display: AbstractButton.TextBesideIcon
                         visible: bridge.queueActive && !bridge.queuePaused
                         ToolTip.text: strings.btn_pause_tip; ToolTip.visible: hovered; ToolTip.delay: 500
                         onClicked: bridge.pauseQueue()
                     }
                     Button {
                         text: strings.btn_resume
+                        icon.source: root.iconPath("play")
+                        icon.width: 16; icon.height: 16
+                        display: AbstractButton.TextBesideIcon
                         visible: bridge.queueActive && bridge.queuePaused
                         highlighted: true
                         ToolTip.text: strings.btn_resume_tip; ToolTip.visible: hovered; ToolTip.delay: 500
@@ -951,11 +1011,17 @@ ApplicationWindow {
                     }
                     Button {
                         text: strings.btn_cancel_all
+                        icon.source: root.iconPath("stop")
+                        icon.width: 16; icon.height: 16
+                        display: AbstractButton.TextBesideIcon
                         ToolTip.text: strings.btn_cancel_all_tip; ToolTip.visible: hovered; ToolTip.delay: 500
                         onClicked: confirmCancel.open()
                     }
                     Button {
                         text: strings.btn_clear_finished
+                        icon.source: root.iconPath("trash")
+                        icon.width: 16; icon.height: 16
+                        display: AbstractButton.TextBesideIcon
                         ToolTip.text: strings.btn_clear_finished_tip; ToolTip.visible: hovered; ToolTip.delay: 500
                         onClicked: confirmClear.open()
                     }
@@ -997,6 +1063,9 @@ ApplicationWindow {
                             }
                             Button {
                                 text: bridge.playlistLoading ? strings.playlist_loading : strings.btn_load_playlist
+                                icon.source: root.iconPath("retry")
+                                icon.width: 16; icon.height: 16
+                                display: AbstractButton.TextBesideIcon
                                 enabled: !bridge.playlistLoading
                                 highlighted: true
                                 onClicked: root.loadPlaylist()
@@ -1148,11 +1217,17 @@ ApplicationWindow {
                             spacing: 8
                             Button {
                                 text: strings.btn_add_selected
+                                icon.source: root.iconPath("add")
+                                icon.width: 16; icon.height: 16
+                                display: AbstractButton.TextBesideIcon
                                 enabled: root.playlistSelCount > 0
                                 onClicked: root.addSelectedPlaylist(false)
                             }
                             Button {
                                 text: strings.btn_download_selected
+                                icon.source: root.iconPath("play")
+                                icon.width: 16; icon.height: 16
+                                display: AbstractButton.TextBesideIcon
                                 highlighted: true
                                 enabled: root.playlistSelCount > 0
                                 onClicked: root.addSelectedPlaylist(true)
@@ -1195,10 +1270,16 @@ ApplicationWindow {
                             }
                             Button {
                                 text: strings.compress_add_files
+                                icon.source: root.iconPath("file")
+                                icon.width: 16; icon.height: 16
+                                display: AbstractButton.TextBesideIcon
                                 onClicked: bridge.addCompressionFiles()
                             }
                             Button {
                                 text: strings.compress_add_folder
+                                icon.source: root.iconPath("open")
+                                icon.width: 16; icon.height: 16
+                                display: AbstractButton.TextBesideIcon
                                 onClicked: bridge.addCompressionFolder()
                             }
                         }
@@ -1218,7 +1299,10 @@ ApplicationWindow {
                                             return i
                                     return 0
                                 }
-                                Layout.preferredWidth: 190
+                                Layout.preferredWidth: 170
+                                ToolTip.text: strings.compress_encoder_tip
+                                ToolTip.visible: hovered
+                                ToolTip.delay: 500
                                 onActivated: bridge.setCompressionEncoder(currentValue)
                             }
                             Label {
@@ -1241,7 +1325,7 @@ ApplicationWindow {
                                             return i
                                     return 0
                                 }
-                                Layout.preferredWidth: 210
+                                Layout.preferredWidth: 200
                                 ToolTip.text: strings.compress_gpu_tip
                                 ToolTip.visible: hovered
                                 ToolTip.delay: 500
@@ -1270,45 +1354,123 @@ ApplicationWindow {
                                 ToolTip.visible: hovered; ToolTip.delay: 500
                                 onValueChanged: if (value !== bridge.compressionQuality) bridge.setCompressionQuality(value)
                             }
+                            Label {
+                                text: strings.compress_estimate + " ~" + bridge.compressionEstimate + "%"
+                                font.pixelSize: 11
+                                color: Material.secondaryTextColor
+                                ToolTip.text: strings.compress_estimate_tip
+                                ToolTip.visible: hovered
+                                ToolTip.delay: 500
+                            }
                             Item { Layout.fillWidth: true }
                         }
 
-                        RowLayout {
+                        Flow {
                             Layout.fillWidth: true
                             spacing: 10
-                            Label { text: strings.compress_speed; font.pixelSize: 13; color: Material.secondaryTextColor }
-                            ComboBox {
-                                id: compSpeed
-                                model: [
-                                    { text: strings.compress_speed_fast, value: "fast" },
-                                    { text: strings.compress_speed_balanced, value: "balanced" },
-                                    { text: strings.compress_speed_slow, value: "slow" }
-                                ]
-                                textRole: "text"
-                                valueRole: "value"
-                                currentIndex: bridge.compressionSpeed === "fast" ? 0
-                                              : (bridge.compressionSpeed === "slow" ? 2 : 1)
-                                Layout.preferredWidth: 150
-                                onActivated: bridge.setCompressionSpeed(currentValue)
+
+                            RowLayout {
+                                spacing: 6
+                                Label { text: strings.compress_codec; font.pixelSize: 13; color: Material.secondaryTextColor }
+                                ComboBox {
+                                    id: compCodec
+                                    model: bridge.compressionCodecs
+                                    textRole: "name"
+                                    valueRole: "key"
+                                    currentIndex: {
+                                        for (var i = 0; i < model.length; i++)
+                                            if (model[i].key === bridge.compressionCodec)
+                                                return i
+                                        return 0
+                                    }
+                                    Layout.preferredWidth: 150
+                                    ToolTip.text: strings.compress_codec_tip
+                                    ToolTip.visible: hovered
+                                    ToolTip.delay: 500
+                                    onActivated: bridge.setCompressionCodec(currentValue)
+                                }
                             }
-                            Label { text: strings.compress_parallel; font.pixelSize: 13; color: Material.secondaryTextColor }
-                            SpinBox {
-                                id: compParallel
-                                from: 1; to: 8
-                                value: bridge.compressionParallel
-                                editable: true
-                                onValueChanged: if (value !== bridge.compressionParallel) bridge.setCompressionParallel(value)
+
+                            RowLayout {
+                                spacing: 6
+                                Label { text: strings.compress_container; font.pixelSize: 13; color: Material.secondaryTextColor }
+                                ComboBox {
+                                    id: compContainer
+                                    model: bridge.compressionContainers
+                                    currentIndex: Math.max(0, model.indexOf(bridge.compressionContainer))
+                                    Layout.preferredWidth: 100
+                                    ToolTip.text: strings.compress_container_tip
+                                    ToolTip.visible: hovered
+                                    ToolTip.delay: 500
+                                    onActivated: bridge.setCompressionContainer(currentText)
+                                }
                             }
-                            Label { text: strings.compress_min_size; font.pixelSize: 13; color: Material.secondaryTextColor }
-                            SpinBox {
-                                id: compMinSize
-                                from: 0; to: 100000
-                                stepSize: 100
-                                value: bridge.compressionMinSizeMB
-                                editable: true
-                                onValueChanged: if (value !== bridge.compressionMinSizeMB) bridge.setCompressionMinSizeMB(value)
+
+                            RowLayout {
+                                spacing: 6
+                                Label { text: strings.compress_speed; font.pixelSize: 13; color: Material.secondaryTextColor }
+                                ComboBox {
+                                    id: compSpeed
+                                    model: [
+                                        { text: strings.compress_speed_fast, value: "fast" },
+                                        { text: strings.compress_speed_balanced, value: "balanced" },
+                                        { text: strings.compress_speed_slow, value: "slow" },
+                                        { text: strings.compress_speed_slower, value: "slower" }
+                                    ]
+                                    textRole: "text"
+                                    valueRole: "value"
+                                    currentIndex: {
+                                        for (var i = 0; i < model.length; i++)
+                                            if (model[i].value === bridge.compressionSpeed)
+                                                return i
+                                        return 1
+                                    }
+                                    Layout.preferredWidth: 180
+                                    ToolTip.text: strings.compress_speed_tip
+                                    ToolTip.visible: hovered
+                                    ToolTip.delay: 500
+                                    onActivated: bridge.setCompressionSpeed(currentValue)
+                                }
                             }
-                            Item { Layout.fillWidth: true }
+
+                            RowLayout {
+                                spacing: 6
+                                Label { text: strings.compress_parallel; font.pixelSize: 13; color: Material.secondaryTextColor }
+                                SpinBox {
+                                    id: compParallel
+                                    from: 1; to: 8
+                                    value: bridge.compressionParallel
+                                    editable: true
+                                    ToolTip.text: strings.compress_parallel_tip
+                                    ToolTip.visible: hovered
+                                    ToolTip.delay: 500
+                                    onValueChanged: if (value !== bridge.compressionParallel) bridge.setCompressionParallel(value)
+                                }
+                            }
+
+                            RowLayout {
+                                spacing: 6
+                                Label { text: strings.compress_min_size; font.pixelSize: 13; color: Material.secondaryTextColor }
+                                SpinBox {
+                                    id: compMinSize
+                                    from: 0; to: 100000
+                                    stepSize: 100
+                                    value: bridge.compressionMinSizeMB
+                                    editable: true
+                                    ToolTip.text: strings.compress_min_size_tip
+                                    ToolTip.visible: hovered
+                                    ToolTip.delay: 500
+                                    onValueChanged: if (value !== bridge.compressionMinSizeMB) bridge.setCompressionMinSizeMB(value)
+                                }
+                            }
+
+                            Button {
+                                text: strings.compress_suggestions
+                                ToolTip.text: strings.compress_suggestions_tip
+                                ToolTip.visible: hovered
+                                ToolTip.delay: 500
+                                onClicked: compressSuggestions.open()
+                            }
                         }
 
                         Flow {
@@ -1317,21 +1479,33 @@ ApplicationWindow {
                             CheckBox {
                                 text: strings.compress_only_smaller
                                 checked: bridge.compressionOnlyIfSmaller
+                                ToolTip.text: strings.compress_only_smaller_tip
+                                ToolTip.visible: hovered
+                                ToolTip.delay: 500
                                 onToggled: bridge.setCompressionOnlyIfSmaller(checked)
                             }
                             CheckBox {
                                 text: strings.compress_replace_original
                                 checked: bridge.compressionReplaceOriginal
+                                ToolTip.text: strings.compress_replace_original_tip
+                                ToolTip.visible: hovered
+                                ToolTip.delay: 500
                                 onToggled: bridge.setCompressionReplaceOriginal(checked)
                             }
                             CheckBox {
                                 text: strings.compress_reencode_hevc
                                 checked: bridge.compressionReencodeHevc
+                                ToolTip.text: strings.compress_reencode_hevc_tip
+                                ToolTip.visible: hovered
+                                ToolTip.delay: 500
                                 onToggled: bridge.setCompressionReencodeHevc(checked)
                             }
                             CheckBox {
                                 text: strings.compress_skip_hdr
                                 checked: bridge.compressionSkipHdr
+                                ToolTip.text: strings.compress_skip_hdr_tip
+                                ToolTip.visible: hovered
+                                ToolTip.delay: 500
                                 onToggled: bridge.setCompressionSkipHdr(checked)
                             }
                         }
@@ -1519,26 +1693,41 @@ ApplicationWindow {
                     }
                     Button {
                         text: strings.btn_start; highlighted: true
+                        icon.source: root.iconPath("play")
+                        icon.width: 16; icon.height: 16
+                        display: AbstractButton.TextBesideIcon
                         visible: !bridge.compressionActive
                         onClicked: bridge.startCompression()
                     }
                     Button {
                         text: strings.btn_pause
+                        icon.source: root.iconPath("pause")
+                        icon.width: 16; icon.height: 16
+                        display: AbstractButton.TextBesideIcon
                         visible: bridge.compressionActive && !bridge.compressionPaused
                         onClicked: bridge.pauseCompression()
                     }
                     Button {
                         text: strings.btn_resume
+                        icon.source: root.iconPath("play")
+                        icon.width: 16; icon.height: 16
+                        display: AbstractButton.TextBesideIcon
                         visible: bridge.compressionActive && bridge.compressionPaused
                         highlighted: true
                         onClicked: bridge.resumeCompression()
                     }
                     Button {
                         text: strings.btn_cancel_all
+                        icon.source: root.iconPath("stop")
+                        icon.width: 16; icon.height: 16
+                        display: AbstractButton.TextBesideIcon
                         onClicked: bridge.cancelCompression()
                     }
                     Button {
                         text: strings.btn_clear_finished
+                        icon.source: root.iconPath("trash")
+                        icon.width: 16; icon.height: 16
+                        display: AbstractButton.TextBesideIcon
                         onClicked: bridge.clearCompressionFinished()
                     }
                 }
@@ -1576,10 +1765,18 @@ ApplicationWindow {
                                 Layout.fillWidth: true
                                 spacing: 12
                                 Label { text: strings.cfg_dark; Layout.fillWidth: true; font.pixelSize: 13; wrapMode: Text.WordWrap }
-                                Switch {
-                                    checked: root.dark
-                                    ToolTip.text: strings.cfg_dark_tip; ToolTip.visible: hovered; ToolTip.delay: 500
-                                    onToggled: bridge.setDark(checked)
+                                ToolButton {
+                                    display: AbstractButton.IconOnly
+                                    icon.source: root.dark
+                                                 ? root.iconPath("sun")
+                                                 : root.iconPath("moon")
+                                    icon.width: 20
+                                    icon.height: 20
+                                    Accessible.name: strings.cfg_dark
+                                    ToolTip.text: strings.cfg_dark_tip
+                                    ToolTip.visible: hovered
+                                    ToolTip.delay: 500
+                                    onClicked: bridge.setDark(!root.dark)
                                 }
                             }
                             RowLayout {
@@ -1954,11 +2151,17 @@ ApplicationWindow {
                                 }
                                 Button {
                                     text: strings.update_check
+                                    icon.source: root.iconPath("retry")
+                                    icon.width: 16; icon.height: 16
+                                    display: AbstractButton.TextBesideIcon
                                     enabled: !bridge.updateBusy
                                     onClicked: bridge.checkForUpdates()
                                 }
                                 Button {
                                     text: strings.update_download
+                                    icon.source: root.iconPath("download")
+                                    icon.width: 16; icon.height: 16
+                                    display: AbstractButton.TextBesideIcon
                                     visible: bridge.updateAvailable
                                     enabled: !bridge.updateBusy
                                     highlighted: true
@@ -1966,6 +2169,9 @@ ApplicationWindow {
                                 }
                                 Button {
                                     text: strings.update_open_page
+                                    icon.source: root.iconPath("open")
+                                    icon.width: 16; icon.height: 16
+                                    display: AbstractButton.TextBesideIcon
                                     visible: bridge.updateHtmlUrl !== ""
                                     onClicked: bridge.openReleasePage()
                                 }
@@ -2054,9 +2260,14 @@ ApplicationWindow {
         Item {
             id: rowItem
             width: listView.width
-            height: 64
             property bool editing: false
             property string st: model.status
+            property string filterText: queueFilter.text.toLowerCase()
+            property bool matches: filterText.length === 0
+                || String(model.title).toLowerCase().indexOf(filterText) !== -1
+                || String(model.url).toLowerCase().indexOf(filterText) !== -1
+            height: matches ? 64 : 0
+            visible: matches
             property bool active: root.isActive(st)
             property bool final: root.isFinal(st)
             property bool canEdit: st === "waiting" || st === "error" || st === "cancelled"
@@ -2295,6 +2506,49 @@ ApplicationWindow {
     }
 
     // --------------------------------------------------------- erro detalhado
+    Dialog {
+        id: compressSuggestions
+        parent: root
+        modal: true
+        title: strings.compress_suggestions
+        width: 540
+        x: (root.width - width) / 2
+        y: (root.height - height) / 2
+        standardButtons: Dialog.NoButton
+        contentItem: ColumnLayout {
+            spacing: 10
+            Label {
+                Layout.fillWidth: true
+                text: strings.compress_best_saving + "   ≈ -" + root.estimateSaving("av1") + "%"
+                wrapMode: Text.Wrap
+            }
+            Label {
+                Layout.fillWidth: true
+                text: strings.compress_best_balance + "   ≈ -" + root.estimateSaving("hevc") + "%"
+                wrapMode: Text.Wrap
+            }
+            Label {
+                Layout.fillWidth: true
+                text: strings.compress_best_compat + "   ≈ -" + root.estimateSaving("h264") + "%"
+                wrapMode: Text.Wrap
+            }
+            Label {
+                Layout.fillWidth: true
+                text: strings.compress_estimate_tip
+                wrapMode: Text.Wrap
+                font.pixelSize: 11
+                color: Material.secondaryTextColor
+            }
+        }
+        footer: DialogButtonBox {
+            Button {
+                text: strings.dlg_error_close
+                DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
+                onClicked: compressSuggestions.close()
+            }
+        }
+    }
+
     Dialog {
         id: errorDialog
         parent: root

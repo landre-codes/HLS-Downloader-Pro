@@ -1789,6 +1789,214 @@ var extraGpu = {
     "zh": { compress_gpu: "GPU：", compress_gpu_tip: "自动优先使用独立显卡。" }
 }
 
+// Textos de codecs/estimativas/filtro (mesclados por getAll).
+var extraCompress2 = {
+    "pt": {
+        compress_codec: "Codec:",
+        compress_codec_tip: "AV1 economiza mais; H.264 é o mais compatível.",
+        compress_container: "Formato:",
+        compress_container_tip: "Contêiner do arquivo final.",
+        compress_estimate: "Economia estimada:",
+        compress_estimate_tip: "Estimativa heurística; o resultado real depende do conteúdo.",
+        compress_suggestions: "Sugestões",
+        compress_best_saving: "Maior economia: AV1 + MKV",
+        compress_best_balance: "Melhor equilíbrio: HEVC + MP4",
+        compress_best_compat: "Mais compatível: H.264 + MP4",
+        compress_speed_slower: "Muito lenta (máxima qualidade)",
+        compress_speed_tip: "Mais lento = mais qualidade por tamanho.",
+        filter_placeholder: "Filtrar por título ou URL…"
+    },
+    "en": {
+        compress_codec: "Codec:",
+        compress_codec_tip: "AV1 saves the most; H.264 is the most compatible.",
+        compress_container: "Format:",
+        compress_container_tip: "Container of the final file.",
+        compress_estimate: "Estimated saving:",
+        compress_estimate_tip: "Heuristic estimate; actual result depends on the content.",
+        compress_suggestions: "Suggestions",
+        compress_best_saving: "Best saving: AV1 + MKV",
+        compress_best_balance: "Best balance: HEVC + MP4",
+        compress_best_compat: "Most compatible: H.264 + MP4",
+        compress_speed_slower: "Slower (max quality)",
+        compress_speed_tip: "Slower = more quality per size.",
+        filter_placeholder: "Filter by title or URL…"
+    },
+    "es": {
+        compress_codec: "Códec:",
+        compress_codec_tip: "AV1 ahorra más; H.264 es el más compatible.",
+        compress_container: "Formato:",
+        compress_container_tip: "Contenedor del archivo final.",
+        compress_estimate: "Ahorro estimado:",
+        compress_estimate_tip: "Estimación heurística; el resultado real depende del contenido.",
+        compress_suggestions: "Sugerencias",
+        compress_best_saving: "Mayor ahorro: AV1 + MKV",
+        compress_best_balance: "Mejor equilibrio: HEVC + MP4",
+        compress_best_compat: "Más compatible: H.264 + MP4",
+        compress_speed_slower: "Muy lenta (máxima calidad)",
+        compress_speed_tip: "Más lento = más calidad por tamaño.",
+        filter_placeholder: "Filtrar por título o URL…"
+    },
+    "it": {
+        compress_codec: "Codec:",
+        compress_codec_tip: "AV1 risparmia di più; H.264 è il più compatibile.",
+        compress_container: "Formato:",
+        compress_container_tip: "Contenitore del file finale.",
+        compress_estimate: "Risparmio stimato:",
+        compress_estimate_tip: "Stima euristica; il risultato reale dipende dal contenuto.",
+        compress_suggestions: "Suggerimenti",
+        compress_best_saving: "Massimo risparmio: AV1 + MKV",
+        compress_best_balance: "Miglior equilibrio: HEVC + MP4",
+        compress_best_compat: "Più compatibile: H.264 + MP4",
+        compress_speed_slower: "Molto lenta (massima qualità)",
+        compress_speed_tip: "Più lento = più qualità per dimensione.",
+        filter_placeholder: "Filtra per titolo o URL…"
+    },
+    "fr": {
+        compress_codec: "Codec :",
+        compress_codec_tip: "AV1 économise le plus ; H.264 est le plus compatible.",
+        compress_container: "Format :",
+        compress_container_tip: "Conteneur du fichier final.",
+        compress_estimate: "Économie estimée :",
+        compress_estimate_tip: "Estimation heuristique ; le résultat réel dépend du contenu.",
+        compress_suggestions: "Suggestions",
+        compress_best_saving: "Meilleure économie : AV1 + MKV",
+        compress_best_balance: "Meilleur équilibre : HEVC + MP4",
+        compress_best_compat: "Plus compatible : H.264 + MP4",
+        compress_speed_slower: "Très lente (qualité max)",
+        compress_speed_tip: "Plus lent = plus de qualité par taille.",
+        filter_placeholder: "Filtrer par titre ou URL…"
+    },
+    "ru": {
+        compress_codec: "Кодек:",
+        compress_codec_tip: "AV1 экономит больше; H.264 — самый совместимый.",
+        compress_container: "Формат:",
+        compress_container_tip: "Контейнер итогового файла.",
+        compress_estimate: "Ожидаемая экономия:",
+        compress_estimate_tip: "Эвристическая оценка; результат зависит от содержимого.",
+        compress_suggestions: "Рекомендации",
+        compress_best_saving: "Максимальная экономия: AV1 + MKV",
+        compress_best_balance: "Лучший баланс: HEVC + MP4",
+        compress_best_compat: "Максимальная совместимость: H.264 + MP4",
+        compress_speed_slower: "Очень медленно (макс. качество)",
+        compress_speed_tip: "Медленнее = больше качества на размер.",
+        filter_placeholder: "Фильтр по названию или URL…"
+    },
+    "ja": {
+        compress_codec: "コーデック:",
+        compress_codec_tip: "AV1 が最も節約、H.264 が最も互換性が高いです。",
+        compress_container: "形式:",
+        compress_container_tip: "最終ファイルのコンテナ。",
+        compress_estimate: "推定削減率:",
+        compress_estimate_tip: "ヒューリスティックな推定です。実際は内容によります。",
+        compress_suggestions: "おすすめ",
+        compress_best_saving: "最大の節約: AV1 + MKV",
+        compress_best_balance: "バランス: HEVC + MP4",
+        compress_best_compat: "互換性重視: H.264 + MP4",
+        compress_speed_slower: "非常に遅い（最高画質）",
+        compress_speed_tip: "遅いほどサイズあたりの画質が向上します。",
+        filter_placeholder: "タイトルまたは URL で絞り込み…"
+    },
+    "zh": {
+        compress_codec: "编解码器：",
+        compress_codec_tip: "AV1 最省空间；H.264 兼容性最好。",
+        compress_container: "格式：",
+        compress_container_tip: "最终文件的容器。",
+        compress_estimate: "预计节省：",
+        compress_estimate_tip: "启发式估算；实际取决于内容。",
+        compress_suggestions: "建议",
+        compress_best_saving: "最省空间：AV1 + MKV",
+        compress_best_balance: "最佳平衡：HEVC + MP4",
+        compress_best_compat: "兼容性最好：H.264 + MP4",
+        compress_speed_slower: "很慢（最高画质）",
+        compress_speed_tip: "越慢，单位体积画质越高。",
+        filter_placeholder: "按标题或 URL 筛选…"
+    }
+}
+
+// Tooltips adicionais (mesclados por getAll).
+var extraTips = {
+    "pt": {
+        compress_encoder_tip: "Auto prioriza a GPU dedicada; escolha um fornecedor para forçar.",
+        compress_parallel_tip: "Quantos arquivos comprimem ao mesmo tempo.",
+        compress_min_size_tip: "Ignora arquivos menores que este tamanho.",
+        compress_only_smaller_tip: "Se o resultado não for menor, descarta e mantém o original.",
+        compress_replace_original_tip: "Remove o arquivo original após sucesso.",
+        compress_reencode_hevc_tip: "Reprocessa mesmo que já esteja no codec escolhido.",
+        compress_skip_hdr_tip: "Evita HDR/HLG (exigem tone mapping).",
+        compress_suggestions_tip: "Compara economia × compatibilidade × velocidade."
+    },
+    "en": {
+        compress_encoder_tip: "Auto prefers the dedicated GPU; pick a vendor to force it.",
+        compress_parallel_tip: "How many files compress at the same time.",
+        compress_min_size_tip: "Ignore files smaller than this size.",
+        compress_only_smaller_tip: "If the result is not smaller, discard it and keep the original.",
+        compress_replace_original_tip: "Delete the original file after success.",
+        compress_reencode_hevc_tip: "Re-encode even if already in the chosen codec.",
+        compress_skip_hdr_tip: "Skip HDR/HLG (they need tone mapping).",
+        compress_suggestions_tip: "Compares savings × compatibility × speed."
+    },
+    "es": {
+        compress_encoder_tip: "Auto prioriza la GPU dedicada; elige un fabricante para forzarla.",
+        compress_parallel_tip: "Cuántos archivos se comprimen a la vez.",
+        compress_min_size_tip: "Ignora archivos menores que este tamaño.",
+        compress_only_smaller_tip: "Si el resultado no es menor, se descarta y conserva el original.",
+        compress_replace_original_tip: "Borra el original tras el éxito.",
+        compress_reencode_hevc_tip: "Recodifica aunque ya esté en el códec elegido.",
+        compress_skip_hdr_tip: "Omite HDR/HLG (requieren tone mapping).",
+        compress_suggestions_tip: "Compara ahorro × compatibilidad × velocidad."
+    },
+    "it": {
+        compress_encoder_tip: "Auto preferisce la GPU dedicata; scegli un fornitore per forzarla.",
+        compress_parallel_tip: "Quanti file comprimono contemporaneamente.",
+        compress_min_size_tip: "Ignora file più piccoli di questa dimensione.",
+        compress_only_smaller_tip: "Se il risultato non è più piccolo, lo scarta e mantiene l'originale.",
+        compress_replace_original_tip: "Elimina l'originale dopo il successo.",
+        compress_reencode_hevc_tip: "Ricodifica anche se già nel codec scelto.",
+        compress_skip_hdr_tip: "Salta HDR/HLG (richiedono tone mapping).",
+        compress_suggestions_tip: "Confronta risparmio × compatibilità × velocità."
+    },
+    "fr": {
+        compress_encoder_tip: "Auto privilégie le GPU dédié ; choisissez un fournisseur pour forcer.",
+        compress_parallel_tip: "Combien de fichiers se compressent en même temps.",
+        compress_min_size_tip: "Ignore les fichiers plus petits que cette taille.",
+        compress_only_smaller_tip: "Si le résultat n'est pas plus petit, il est ignoré et l'original conservé.",
+        compress_replace_original_tip: "Supprime l'original après succès.",
+        compress_reencode_hevc_tip: "Réencode même si déjà dans le codec choisi.",
+        compress_skip_hdr_tip: "Ignore HDR/HLG (nécessitent un tone mapping).",
+        compress_suggestions_tip: "Compare économie × compatibilité × vitesse."
+    },
+    "ru": {
+        compress_encoder_tip: "Auto предпочитает дискретную GPU; выберите поставщика, чтобы форсировать.",
+        compress_parallel_tip: "Сколько файлов сжимаются одновременно.",
+        compress_min_size_tip: "Пропускать файлы меньше этого размера.",
+        compress_only_smaller_tip: "Если результат не меньше, он отбрасывается, оригинал сохраняется.",
+        compress_replace_original_tip: "Удалить оригинал после успеха.",
+        compress_reencode_hevc_tip: "Перекодировать, даже если уже выбранный кодек.",
+        compress_skip_hdr_tip: "Пропускать HDR/HLG (нужен tone mapping).",
+        compress_suggestions_tip: "Сравнивает экономию × совместимость × скорость."
+    },
+    "ja": {
+        compress_encoder_tip: "Auto は専用 GPU を優先します。ベンダーを選ぶと強制できます。",
+        compress_parallel_tip: "同時に圧縮するファイル数。",
+        compress_min_size_tip: "このサイズ未満のファイルは無視します。",
+        compress_only_smaller_tip: "小さくならなければ破棄し、元ファイルを保持します。",
+        compress_replace_original_tip: "成功後に元ファイルを削除します。",
+        compress_reencode_hevc_tip: "既に選択したコーデックでも再エンコードします。",
+        compress_skip_hdr_tip: "HDR/HLG をスキップ（トーンマッピングが必要）。",
+        compress_suggestions_tip: "節約 × 互換性 × 速度を比較します。"
+    },
+    "zh": {
+        compress_encoder_tip: "自动优先使用独立显卡；选择厂商可强制使用。",
+        compress_parallel_tip: "同时压缩的文件数量。",
+        compress_min_size_tip: "忽略小于此大小的文件。",
+        compress_only_smaller_tip: "若结果没有更小则丢弃并保留原文件。",
+        compress_replace_original_tip: "成功后删除原文件。",
+        compress_reencode_hevc_tip: "即使已是所选编解码器也重新编码。",
+        compress_skip_hdr_tip: "跳过 HDR/HLG（需要色调映射）。",
+        compress_suggestions_tip: "比较节省 × 兼容性 × 速度。"
+    }
+}
+
 function getAll() {
     var out = {}
     var base = dict["pt"]
@@ -1806,6 +2014,12 @@ function getAll() {
     var g = extraGpu[lang] || {}
     for (var k5 in g)
         out[k5] = g[k5]
+    var c = extraCompress2[lang] || {}
+    for (var k6 in c)
+        out[k6] = c[k6]
+    var t = extraTips[lang] || {}
+    for (var k7 in t)
+        out[k7] = t[k7]
     return out
 }
 
