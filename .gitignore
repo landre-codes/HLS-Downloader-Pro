@@ -25,8 +25,10 @@ package/
 portable.flag
 /tools/
 SHA256SUMS-*.txt
+SHA256SUMS.txt
 HLS-Downloader-Pro-*.zip
 HLS-Downloader-Pro-*.tar.gz
+diagnostico-hlsdl.txt
 
 # IDEs
 .vscode/

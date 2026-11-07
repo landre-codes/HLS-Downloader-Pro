@@ -32,6 +32,7 @@ ApplicationWindow {
     property var strings: ({})
     property string errorText: ""
     property string depsLog: ""
+    property string queueFilterText: ""
     property int playlistSelCount: 0
 
     function retranslate() {
@@ -1063,6 +1064,19 @@ ApplicationWindow {
                                 ToolTip.text: strings.filter_tip
                                 ToolTip.visible: hovered
                                 ToolTip.delay: 500
+                                onTextChanged: {
+                                    if (text.length === 0) {
+                                        filterDebounce.stop()
+                                        root.queueFilterText = ""
+                                    } else {
+                                        filterDebounce.restart()
+                                    }
+                                }
+                            }
+                            Timer {
+                                id: filterDebounce
+                                interval: 220
+                                onTriggered: root.queueFilterText = queueFilter.text.toLowerCase()
                             }
                             HandToolButton {
                                 display: AbstractButton.IconOnly
@@ -2492,7 +2506,7 @@ ApplicationWindow {
             width: listView.width
             property bool editing: false
             property string st: model.status
-            property string filterText: queueFilter.text.toLowerCase()
+            property string filterText: root.queueFilterText
             property bool matches: filterText.length === 0
                 || String(model.title).toLowerCase().indexOf(filterText) !== -1
                 || String(model.url).toLowerCase().indexOf(filterText) !== -1

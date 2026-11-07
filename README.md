@@ -183,6 +183,60 @@ A escala automática pode ser desativada com `--ui-scale 1`.
 A geometria salva é limitada à área disponível da tela, então mudar a escala
 não deixa a janela maior que o monitor.
 
+## Diagnóstico
+
+Se a janela abrir com tamanho estranho, escala errada, ferramenta não encontrada
+ou a interface parecer cortada:
+
+```powershell
+python diagnostico.py
+# no executável empacotado:
+HLS-Downloader-Pro.exe --diagnose
+```
+
+Gera `diagnostico-hlsdl.txt` ao lado do projeto (em dev) ou na pasta de
+configuração, com:
+
+- versão do app, Python, PySide6, Qt, sistema e modo portátil;
+- telas, geometria, área disponível, `devicePixelRatio` e escala calculada;
+- caminhos de configuração, log, crash log, ferramentas e saída;
+- geometria salva da janela;
+- versões de ffmpeg/ffprobe/yt-dlp;
+- GPUs detectadas, fornecedores e encoders de hardware/software disponíveis.
+
+O diagnóstico **não abre a janela principal nem altera arquivos do usuário**.
+
+## Logs e recuperação de falhas
+
+- **Log rotativo**: `%APPDATA%\HLSDownloaderPro\hls_downloader.log` (ou ao lado
+  do executável no modo portátil). Em desenvolvimento também é gravado
+  `hls_downloader.log` na raiz do projeto.
+- **Crash log**: `hlsdl-crash.log` na pasta de configuração, via `faulthandler`
+  (captura falhas nativas do Qt/ffmpeg e o stack de todas as threads).
+- **Avisos do Qt/QML** (bindings quebrados, propriedades inexistentes) vão para
+  o mesmo log — inclusive no build `--windowed`, sem console.
+- **Exceções não tratadas** na thread principal e nas threads de
+  download/compressão são registradas com traceback.
+- Use `--verbose` para elevar o nível para `DEBUG`.
+
+## Exportar
+
+Para gerar pacotes de distribuição e conferir integridade:
+
+```powershell
+python exportar.py
+```
+
+Saída em `dist/`:
+
+- `HLS-Downloader-Pro-<versão>-source.zip` — código, testes e documentação;
+- `HLS-Downloader-Pro-<versão>-portable-win64.zip` — build `onedir` com
+  `portable.flag` e documentação (quando `dist/HLS-Downloader-Pro` existe);
+- `SHA256SUMS.txt` — hashes dos pacotes e do instalador, quando presente.
+
+No dia a dia de desenvolvimento, `iniciar.cmd` abre o app usando o `.venv`
+(ou `py -3`/`python` como fallback).
+
 ## Testes
 
 A suíte principal usa **pytest** e é offscreen (sem rede por padrão):
@@ -190,7 +244,7 @@ A suíte principal usa **pytest** e é offscreen (sem rede por padrão):
 ```bash
 pip install -e ".[dev]"     # ou: pip install pytest ruff
 python -m pytest -q
-ruff check hlsdl tests main.py worker.py
+ruff check hlsdl tests main.py worker.py diagnostico.py exportar.py
 ```
 
 Scripts de integração/manuais (requerem rede ou ffmpeg):
@@ -210,7 +264,7 @@ python layout_debug.py       # dump da geometria do layout
 
 | Arquivo | Papel |
 |---|---|
-| `hlsdl/app.py` | Entry point: logging rotativo, instância única, shutdown gracioso |
+| `hlsdl/app.py` | Entry point: logging rotativo, crash log, hooks de exceção/Qt, instância única e shutdown gracioso |
 | `hlsdl/bridge.py` | Ponte Python↔QML (slots, sinais, persistência, dependências) |
 | `hlsdl/config.py` | Caminhos (inclui build congelado), constantes, preferências |
 | `hlsdl/model.py` | `DownloadModel` — **dono único** da lista de itens |
@@ -225,12 +279,15 @@ python layout_debug.py       # dump da geometria do layout
 | `hlsdl/status.py` | Enum de status (fonte única de verdade) |
 | `hlsdl/naming.py`, `hlsdl/urlutils.py` | Nomes de arquivo e URLs |
 | `hlsdl/services/` | Scraper HTML e utilitários de processo/ffmpeg |
+| `hlsdl/diagnostics.py`, `diagnostico.py` | Relatório de ambiente, telas, escala, ferramentas e encoders |
+| `hlsdl/exporter.py`, `exportar.py` | Pacotes de código-fonte/portátil e `SHA256SUMS.txt` |
 | `hlsdl/ui/main.qml`, `hlsdl/ui/i18n.js` | Interface completa |
 | `installer/` | Script Inno Setup do instalador Windows |
 | `scripts/` | Geração do ícone e dos metadados de versão do exe |
 | `assets/` | Ícone (`icon.ico`/`icon.png`) |
 | `LICENSE`, `THIRD_PARTY_NOTICES.md`, `CHANGELOG.md` | Licença e documentação legal |
 | `main.py`, `worker.py` | Fachadas de compatibilidade (empacotamento/scripts) |
+| `iniciar.cmd` | Atalho de desenvolvimento (`.venv` → `main.py`) |
 
 ## Notas de arquitetura
 

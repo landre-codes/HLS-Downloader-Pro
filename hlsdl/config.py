@@ -120,6 +120,31 @@ def log_path() -> str:
         return os.path.join(_dev_root(), "hls_downloader.log")
 
 
+def crash_log_path() -> str:
+    """Caminho do log de falhas nativas (faulthandler)."""
+    if is_portable():
+        return os.path.join(app_dir(), "hlsdl-crash.log")
+    try:
+        return os.path.join(user_config_dir(), "hlsdl-crash.log")
+    except OSError:
+        return os.path.join(_dev_root(), "hlsdl-crash.log")
+
+
+def diagnostics_path() -> str:
+    """Onde salvar o relatório de diagnóstico."""
+    if not is_frozen():
+        target = os.path.join(_dev_root(), "diagnostico-hlsdl.txt")
+        try:
+            if os.access(_dev_root(), os.W_OK):
+                return target
+        except OSError:
+            pass
+    try:
+        return os.path.join(user_config_dir(), "diagnostico-hlsdl.txt")
+    except OSError:
+        return os.path.join(tempfile.gettempdir(), "diagnostico-hlsdl.txt")
+
+
 def qml_path() -> str:
     """Caminho do arquivo QML principal (tolera os dois layouts de build)."""
     candidates = [

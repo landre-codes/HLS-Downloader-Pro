@@ -14,9 +14,13 @@ e o versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 - **Kvazaar (`libkvazaar`)** como opção de HEVC software rápido, além de **10-bit** (`yuv420p10le`) e **ajuste fino do x265** (`aq-mode`, `psy-rd`, `psy-rdoq`, `deblock`).
 - **Metadados HDR preservados** na compressão (primárias, transferência, espaço de cor e faixa) e **encoder real** exibido por arquivo (ex.: `QSV HEVC · Intel Arc B580`).
 - **Notificação de conclusão** da compressão (toast + diálogo quando há erros).
-- **Filtro na fila de lote** (título/URL) com ícone de pesquisa, **cabeçalhos de tabela maiores/destacados** e mais tooltips/ícones (tema claro/escuro, ações).
+- **Filtro na fila de lote** (título/URL) com ícone de pesquisa, **debounce de 220 ms** e **cabeçalhos de tabela maiores/destacados**, além de mais tooltips/ícones (tema claro/escuro, ações).
 - **Console de instalação estilo terminal** no log de dependências (Configurações → Dependências e diálogo de instalação): fundo escuro, fonte monoespaçada e botão de copiar saída.
 - **Escala automática da interface** conforme a tela (até 128%), com `--ui-scale`/`HLSDL_UI_SCALE` para ajuste manual; fonte, ícones e espaçamentos escalam juntos.
+- **Diagnóstico integrado** (`python diagnostico.py` ou `--diagnose`): relatório com Python/Qt, telas, DPI/escala, caminhos, geometria salva, ffmpeg/yt-dlp, GPUs e encoders.
+- **Crash log e avisos do Qt/QML**: `hlsdl-crash.log` via `faulthandler`, hooks para exceções não tratadas (thread principal e workers) e mensagens do Qt gravadas no log rotativo.
+- **Exportação de pacotes** (`python exportar.py`): ZIP de código-fonte, ZIP portátil do build `onedir` e `SHA256SUMS.txt`.
+- **Atalho `iniciar.cmd`** para abrir o app pelo `.venv` (ou `py -3`/`python`).
 - **Cursor de mão** (indicador) em botões, abas, combos, checkboxes e switches.
 - **Atualizador**: verifica a release, baixa o instalador e valida o SHA-256 antes de executar.
 - **Modos de extração**: vídeo + áudio, apenas vídeo, somente áudio.
@@ -75,6 +79,8 @@ e o versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
   aparecem conforme o estado.
 - **Saída de atualizações** fica sempre visível em Configurações → Dependências,
   com placeholder quando ainda não há log.
+- Avisos de QML/Qt e exceções de threads não ficam mais silenciosos no build
+  `--windowed`: são gravados no log rotativo e no crash log.
 - Diálogos agora usam `contentItem` como pai (sem avisos de `parent` inválido),
   e bindings de `lastItem`/tooltips não geram mais `undefined`/`hovered`.
 - Janela restaurada é **limitada à área disponível da tela**, evitando ficar

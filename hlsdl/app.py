@@ -11,13 +11,26 @@ Responsabilidades:
 
 from __future__ import annotations
 
+import faulthandler
 import logging
 import os
+import platform
 import sys
 import tempfile
+import threading
+import traceback
 from logging.handlers import RotatingFileHandler
 
-from PySide6.QtCore import QObject, QRect, QSettings, QUrl, Signal
+from PySide6.QtCore import (
+    QObject,
+    QRect,
+    QSettings,
+    Qt,
+    QtMsgType,
+    QUrl,
+    Signal,
+    qInstallMessageHandler,
+)
 from PySide6.QtGui import QFont, QGuiApplication
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtQml import QQmlApplicationEngine
@@ -29,7 +42,11 @@ from .config import (
     APP_ID,
     APP_NAME,
     ORG,
+    app_dir,
+    crash_log_path,
     default_output_folder,
+    is_frozen,
+    is_portable,
     log_path,
     qml_path,
 )
@@ -43,23 +60,148 @@ log = logging.getLogger("hlsdl")
 # Janela mínima (espelha o QML). A geometria salva só é aplicada se couber.
 MIN_W, MIN_H = 940, 620
 
+_LOG_CONFIGURED = False
+_CRASH_FILE = None
+_QT_HANDLER = None
+
+
+def _qt_message_level(mode: QtMsgType) -> int:
+    """Converte o nível de mensagem do Qt para o nível de logging."""
+    return {
+        QtMsgType.QtDebugMsg: logging.DEBUG,
+        QtMsgType.QtInfoMsg: logging.INFO,
+        QtMsgType.QtWarningMsg: logging.WARNING,
+        QtMsgType.QtCriticalMsg: logging.ERROR,
+        QtMsgType.QtFatalMsg: logging.CRITICAL,
+    }.get(mode, logging.INFO)
+
+
+def _qt_message_handler(mode, context, message) -> None:
+    """Registra avisos do Qt/QML no log (importante no build sem console)."""
+    logger = logging.getLogger("qt")
+    # Aviso benigno do Qt ao montar o SwipeView de 5 páginas; não afeta a UI.
+    if "Window.window only supports types derived from Item" in message:
+        logger.debug("aviso Qt ignorado: %s", message)
+        return
+    level = _qt_message_level(mode)
+    if context is not None and getattr(context, "file", ""):
+        logger.log(level, "%s (%s:%s)", message, context.file, context.line)
+    else:
+        logger.log(level, "%s", message)
+    if mode == QtMsgType.QtFatalMsg:
+        try:
+            stream = sys.__stderr__
+            if stream is not None:
+                stream.write(message + "\n")
+                stream.flush()
+        except Exception:
+            pass
+        os.abort()
+
+
+def _log_unhandled(exc_type, exc_value, exc_tb) -> None:
+    """Hook global para exceções não tratadas na thread principal."""
+    logging.getLogger("hlsdl").critical(
+        "exceção não tratada", exc_info=(exc_type, exc_value, exc_tb)
+    )
+    try:
+        traceback.print_exception(exc_type, exc_value, exc_tb)
+    except Exception:
+        pass
+
+
+def _thread_excepthook(args) -> None:
+    """Hook para exceções não tratadas em threads de download/compressão."""
+    thread_name = getattr(getattr(args, "thread", None), "name", "?")
+    logging.getLogger("hlsdl").critical(
+        "exceção não tratada na thread %s",
+        thread_name,
+        exc_info=(args.exc_type, args.exc_value, args.exc_traceback),
+    )
+
+
+def _enable_crash_log() -> None:
+    """Ativa o faulthandler em um arquivo (falhas nativas do Qt/ffmpeg)."""
+    global _CRASH_FILE
+    candidates = []
+    if not is_frozen():
+        candidates.append(os.path.join(app_dir(), "hlsdl-crash.log"))
+    try:
+        candidates.append(crash_log_path())
+    except OSError:
+        pass
+    for candidate in dict.fromkeys(candidates):
+        try:
+            _CRASH_FILE = open(candidate, "a", encoding="utf-8", buffering=1)
+            faulthandler.enable(file=_CRASH_FILE, all_threads=True)
+            return
+        except OSError:
+            _CRASH_FILE = None
+
 
 def setup_logging(verbose: bool = False) -> None:
-    """Configura o log rotativo (evita crescimento infinito do arquivo)."""
+    """Configura logs rotativos, crash log, hooks e mensagens do Qt/QML."""
+    global _LOG_CONFIGURED
+    if _LOG_CONFIGURED:
+        return
+    _LOG_CONFIGURED = True
+
     level = logging.DEBUG if verbose else logging.INFO
-    fmt = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+    fmt = logging.Formatter(
+        "%(asctime)s %(levelname)s %(name)s: %(message)s"
+    )
     root = logging.getLogger()
     root.setLevel(level)
-    if root.handlers:
-        return
+
+    destinations: list[str] = []
     try:
-        handler = RotatingFileHandler(
-            log_path(), maxBytes=2_000_000, backupCount=3, encoding="utf-8"
-        )
-        handler.setFormatter(fmt)
-        root.addHandler(handler)
+        destinations.append(log_path())
     except OSError:
+        pass
+    if not is_frozen():
+        dev_log = os.path.join(app_dir(), "hls_downloader.log")
+        if os.path.normcase(dev_log) not in {os.path.normcase(p) for p in destinations}:
+            destinations.append(dev_log)
+
+    for path in dict.fromkeys(destinations):
+        try:
+            handler = RotatingFileHandler(
+                path, maxBytes=2_000_000, backupCount=3, encoding="utf-8"
+            )
+            handler.setFormatter(fmt)
+            root.addHandler(handler)
+        except OSError:
+            continue
+    if not root.handlers:
         root.addHandler(logging.NullHandler())
+
+    try:
+        stream = logging.StreamHandler()
+        stream.setFormatter(fmt)
+        root.addHandler(stream)
+    except Exception:
+        pass
+
+    _enable_crash_log()
+    sys.excepthook = _log_unhandled
+    try:
+        threading.excepthook = _thread_excepthook
+    except Exception:
+        pass
+    global _QT_HANDLER
+    try:
+        _QT_HANDLER = qInstallMessageHandler(_qt_message_handler)
+    except Exception:
+        _QT_HANDLER = None
+
+    log.info(
+        "iniciando %s %s | python=%s | frozen=%s | portable=%s",
+        APP_NAME,
+        __version__,
+        platform.python_version(),
+        is_frozen(),
+        is_portable(),
+    )
 
 
 # ===========================================================================
@@ -317,8 +459,15 @@ def main() -> int:
         os.environ["HLSDL_PORTABLE"] = "1"
         sys.argv = [arg for arg in sys.argv if arg != "--portable"]
     apply_ui_scale()
+    if "--diagnose" in sys.argv:
+        from .diagnostics import run as run_diagnostics
+
+        return run_diagnostics()
     setup_logging("--verbose" in sys.argv)
 
+    QGuiApplication.setHighDpiScaleFactorRoundingPolicy(
+        Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
+    )
     app = QApplication(sys.argv)
     _create_windows_mutex()
     app.setApplicationName(APP_NAME)
@@ -354,6 +503,7 @@ def main() -> int:
 
     engine.load(QUrl.fromLocalFile(qml_path()))
     if not engine.rootObjects():
+        log.critical("falha ao carregar main.qml")
         sys.stderr.write("Falha ao carregar main.qml — Qt/QML não pôde inicializar.\n")
         QMessageBox.critical(None, APP_NAME, "Falha ao carregar a interface (main.qml).")
         return 1
