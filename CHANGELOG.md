@@ -4,7 +4,7 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/)
 e o versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 
-## [Não lançado] — correções P0/P1/P2 da auditoria
+## [1.4.0] — 2026-11-09
 
 ### Corrigido
 - **Threading**: sinais de download/compressão agora são entregues por slots
