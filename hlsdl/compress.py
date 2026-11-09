@@ -15,7 +15,6 @@ import re
 import subprocess
 import sys
 import threading
-import time
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from enum import Enum
@@ -31,7 +30,7 @@ from PySide6.QtCore import (
 )
 
 from .i18n import translator
-from .lifecycle import note_stuck_qthread
+from .lifecycle import shutdown_threads
 from .services.procutils import (
     popen_kwargs,
     spawn_kwargs,
@@ -1007,32 +1006,12 @@ class CompressionManager(QObject):
 
     def shutdown(self, timeout: float = 6.0) -> None:
         """Cancela tudo e aguarda as threads (mesma proteção de queue.py)."""
-        self.cancelAll()
-        deadline = time.time() + timeout
-        for thread, worker, _item in list(self._threads.values()):
-            remaining = max(0.0, deadline - time.time())
-            try:
-                thread.quit()
-                if thread.wait(int(remaining * 1000)):
-                    continue
-                log.warning(
-                    "thread de compressão não terminou em %.1fs; "
-                    "encerrando à força", timeout,
-                )
-                worker.cancel()
-                thread.terminate()
-                if not thread.wait(2000):
-                    log.critical(
-                        "thread de compressão continua viva após terminate; "
-                        "registrando saída de emergência",
-                    )
-                    note_stuck_qthread(thread)
-            except RuntimeError:
-                pass
-        self._threads = {
-            key: entry for key, entry in self._threads.items()
-            if not entry[0].isFinished()
-        }
+        self._threads = shutdown_threads(
+            self._threads,
+            timeout=timeout,
+            label="thread de compressão",
+            cancel=self.cancelAll,
+        )
         self._running = len(self._threads)
 
     # ------------------------------------------------------------- scheduler

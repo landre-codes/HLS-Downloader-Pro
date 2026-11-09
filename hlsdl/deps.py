@@ -18,9 +18,12 @@ com a saída transmitida para a interface.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import logging
 import os
+import re
 import shutil
 import stat
 import subprocess
@@ -55,6 +58,82 @@ FFMPEG_LINUX_TAR = "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd
 # O endpoint antigo /getrelease/... foi removido (410). A API de info
 # devolve a URL atual do ZIP de release para ffmpeg/ffprobe.
 FFMPEG_MAC_INFO = "https://evermeet.cx/ffmpeg/info/{name}/release"
+
+# Sidecars publicados pelos fornecedores. O yt-dlp publica SHA-256 de todos
+# os assets; o Gyan publica um SHA-256 único do ZIP e o johnvansickle publica
+# MD5 (o SHA-256 não existe para esse build Linux).
+YTDLP_CHECKSUMS = "SHA2-256SUMS"
+FFMPEG_WIN_SHA256 = FFMPEG_WIN_ZIP + ".sha256"
+FFMPEG_LINUX_MD5 = FFMPEG_LINUX_TAR + ".md5"
+
+_HEX_DIGEST = re.compile(r"^[0-9a-fA-F]{32,128}$")
+_HASH_CHUNK = 1024 * 1024
+
+
+def _hash_file(path: str, algorithm: str) -> str:
+    """Calcula o digest hexadecimal de um arquivo em blocos."""
+    digest = hashlib.new(algorithm)
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(_HASH_CHUNK), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def parse_checksum(text: str, asset: str | None = None) -> str:
+    """Extrai um digest de um sidecar de checksum.
+
+    Aceita os formatos publicados pelos fornecedores:
+
+    * ``<hash>  <arquivo>`` (yt-dlp, johnvansickle);
+    * ``<hash> *<arquivo>`` (GNU md5sum);
+    * ``SHA256 (<arquivo>) = <hash>`` (OpenSSL);
+    * hash puro em uma linha (Gyan).
+
+    ``asset`` restringe a busca ao nome exato do arquivo. Levanta
+    :class:`ValueError` quando o digest está ausente, é ambíguo ou não tem
+    tamanho compatível com o algoritmo.
+    """
+    hashes: list[str] = []
+    for raw in (text or "").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        tokens = [t for t in re.split(r"[\s()=*]+", line) if t]
+        line_hashes = [t.lower() for t in tokens if _HEX_DIGEST.match(t)]
+        if not line_hashes:
+            continue
+        if asset is not None and not any(
+            t.lstrip("*").lower() == asset.lower() for t in tokens
+        ):
+            continue
+        hashes.extend(line_hashes)
+
+    unique = sorted(set(hashes))
+    if not unique:
+        raise ValueError(
+            f"checksum ausente para {asset}" if asset else "checksum ausente"
+        )
+    if len(unique) > 1:
+        raise ValueError("checksum ambíguo (mais de um digest no sidecar)")
+    return unique[0]
+
+
+def verify_checksum(path: str, expected: str, algorithm: str = "sha256") -> bool:
+    """Confere o digest de ``path``; levanta ``ValueError`` se não conferir."""
+    expected = (expected or "").strip().lower()
+    try:
+        digest_size = hashlib.new(algorithm).digest_size
+    except ValueError as exc:
+        raise ValueError(f"algoritmo de checksum desconhecido: {algorithm}") from exc
+    if len(expected) != digest_size * 2 or not _HEX_DIGEST.match(expected):
+        raise ValueError(f"checksum {algorithm.upper()} inválido")
+    actual = _hash_file(path, algorithm)
+    if not hmac.compare_digest(actual, expected):
+        raise ValueError(
+            f"checksum {algorithm.upper()} não confere "
+            f"(esperado {expected[:12]}…, obtido {actual[:12]}…)"
+        )
+    return True
 
 
 @dataclass
@@ -407,6 +486,36 @@ class DependencyManager(QObject):
         terminate_tree(self._proc)
 
     # -------------------------------------------------------------- download
+    def _fetch_text(self, url: str, timeout: int = 30) -> str:
+        """Baixa um sidecar de checksum (texto pequeno)."""
+        req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.read().decode("utf-8", "replace")
+
+    def _verify_download(
+        self,
+        path: str,
+        checksum_url: str,
+        *,
+        asset: str | None = None,
+        algorithm: str = "sha256",
+    ) -> None:
+        """Verifica o arquivo baixado contra o sidecar oficial.
+
+        A ausência do sidecar, um digest inválido ou uma divergência abortam a
+        instalação. O chamador é responsável por remover o arquivo temporário.
+        """
+        self.installOutput.emit(
+            f"Verificando checksum {algorithm.upper()} de {os.path.basename(path)}…"
+        )
+        try:
+            text = self._fetch_text(checksum_url)
+            expected = parse_checksum(text, asset)
+            verify_checksum(path, expected, algorithm)
+        except ValueError as exc:
+            raise RuntimeError(f"verificação de integridade falhou: {exc}") from exc
+        self.installOutput.emit(f"checksum {algorithm.upper()} verificado")
+
     def _download(self, url: str, dest: str) -> None:
         self.installOutput.emit(f"Baixando {url}")
         req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
@@ -441,8 +550,21 @@ class DependencyManager(QObject):
             asset = "yt-dlp"
         target = os.path.join(config.tools_dir(), name)
         tmp = target + ".download"
-        self._download(self._ytdlp_base_url() + asset, tmp)
-        os.replace(tmp, target)
+        base_url = self._ytdlp_base_url()
+        try:
+            self._download(base_url + asset, tmp)
+            self._verify_download(
+                tmp, base_url + YTDLP_CHECKSUMS, asset=asset, algorithm="sha256"
+            )
+            os.replace(tmp, target)
+        except Exception:
+            # Nunca deixe um binário não verificado no caminho definitivo nem
+            # um .download parcial para uma próxima execução.
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+            raise
         self._make_executable(target)
         ok = os.path.isfile(target) and os.path.getsize(target) > 0
         self.installOutput.emit(f"yt-dlp instalado em {target}" if ok else "falha ao baixar yt-dlp")
@@ -478,15 +600,20 @@ class DependencyManager(QObject):
         return found
 
     @staticmethod
-    def _mac_ffmpeg_url(name: str) -> str:
-        """URL atual do ZIP de release no evermeet.cx (endpoint antigo: 410)."""
+    def _mac_ffmpeg_zip(name: str) -> dict:
+        """Metadados do ZIP atual do evermeet.cx (URL e tamanho)."""
         req = urllib.request.Request(
             FFMPEG_MAC_INFO.format(name=name),
             headers={"User-Agent": USER_AGENT},
         )
         with urllib.request.urlopen(req, timeout=30) as resp:
             data = json.loads(resp.read().decode("utf-8"))
-        url = str((data.get("download") or {}).get("zip", {}).get("url") or "")
+        return (data.get("download") or {}).get("zip", {}) or {}
+
+    @staticmethod
+    def _mac_ffmpeg_url(name: str) -> str:
+        """URL atual do ZIP de release no evermeet.cx (endpoint antigo: 410)."""
+        url = str(DependencyManager._mac_ffmpeg_zip(name).get("url") or "")
         if not url:
             raise RuntimeError(f"URL de download ausente para {name}")
         return url
@@ -516,18 +643,43 @@ class DependencyManager(QObject):
             if os.name == "nt":
                 archive = os.path.join(tmp_dir, "ffmpeg.zip")
                 self._download(FFMPEG_WIN_ZIP, archive)
+                self._verify_download(
+                    archive, FFMPEG_WIN_SHA256, algorithm="sha256"
+                )
                 found = self._extract_members(archive, {"ffmpeg.exe", "ffprobe.exe"}, target_dir)
                 needed = "ffmpeg.exe"
             elif sys.platform == "darwin":
                 found = set()
                 for name in ("ffmpeg", "ffprobe"):
+                    info = self._mac_ffmpeg_zip(name)
+                    url = str(info.get("url") or "")
+                    if not url:
+                        raise RuntimeError(f"URL de download ausente para {name}")
                     archive = os.path.join(tmp_dir, f"{name}.zip")
-                    self._download(self._mac_ffmpeg_url(name), archive)
+                    self._download(url, archive)
+                    # O evermeet não publica hash; confere ao menos o tamanho
+                    # exato informado pela API para detectar truncamento.
+                    expected_size = int(info.get("size") or 0)
+                    if expected_size <= 0:
+                        raise RuntimeError(
+                            f"tamanho de verificação ausente para {name}"
+                        )
+                    if os.path.getsize(archive) != expected_size:
+                        raise RuntimeError(
+                            f"tamanho do download de {name} não confere"
+                        )
+                    self.installOutput.emit(
+                        f"tamanho de {name} verificado "
+                        "(evermeet não publica hash)"
+                    )
                     found |= self._extract_members(archive, {name}, target_dir)
                 needed = "ffmpeg"
             else:
                 archive = os.path.join(tmp_dir, "ffmpeg.tar.xz")
                 self._download(FFMPEG_LINUX_TAR, archive)
+                self._verify_download(
+                    archive, FFMPEG_LINUX_MD5, algorithm="md5"
+                )
                 found = self._extract_members(archive, {"ffmpeg", "ffprobe"}, target_dir)
                 needed = "ffmpeg"
             ok = needed in found

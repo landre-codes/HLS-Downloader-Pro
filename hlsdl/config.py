@@ -157,6 +157,20 @@ def qml_path() -> str:
     return candidates[0]
 
 
+def icon_path() -> str:
+    """Ícone da janela/bandeja (bundled em ``hlsdl/assets`` ou no repo)."""
+    candidates = [
+        os.path.join(_PKG_DIR, "assets", "icon.ico"),
+        os.path.join(_dev_root(), "assets", "icon.ico"),
+        os.path.join(app_dir(), "assets", "icon.ico"),
+        os.path.join(getattr(sys, "_MEIPASS", _PKG_DIR), "assets", "icon.ico"),
+    ]
+    for candidate in candidates:
+        if os.path.isfile(candidate):
+            return candidate
+    return ""
+
+
 def thumbs_dir() -> str:
     """Pasta temporária das miniaturas (apagada ao fechar o app)."""
     return os.path.join(tempfile.gettempdir(), "hlsdlp-thumbs")

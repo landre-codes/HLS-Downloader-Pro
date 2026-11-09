@@ -31,10 +31,15 @@ from PySide6.QtCore import (
     Signal,
     qInstallMessageHandler,
 )
-from PySide6.QtGui import QFont, QGuiApplication
+from PySide6.QtGui import QFont, QGuiApplication, QIcon
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtQml import QQmlApplicationEngine
-from PySide6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtWidgets import (
+    QApplication,
+    QMenu,
+    QMessageBox,
+    QSystemTrayIcon,
+)
 
 from . import __version__, config
 from .bridge import Bridge
@@ -45,14 +50,18 @@ from .config import (
     app_dir,
     crash_log_path,
     default_output_folder,
+    icon_path,
     is_frozen,
     is_portable,
     log_path,
     qml_path,
+    settings_path,
 )
-from .i18n import tr
+from .i18n import detect_language, tr
 from .model import DownloadModel
+from .nativeui import show_message
 from .queue import QueueManager
+from .redact import RedactionFilter
 from .services.procutils import cleanup_thumbs
 
 log = logging.getLogger("hlsdl")
@@ -63,6 +72,10 @@ MIN_W, MIN_H = 940, 620
 _LOG_CONFIGURED = False
 _CRASH_FILE = None
 _QT_HANDLER = None
+# QSystemTrayIcon/QMenu não têm pai QWidget; mantemos referências Python para
+# que o menu de contexto não seja coletado enquanto o app estiver aberto.
+_TRAY = None
+_TRAY_MENU = None
 
 
 def _qt_message_level(mode: QtMsgType) -> int:
@@ -181,6 +194,12 @@ def setup_logging(verbose: bool = False) -> None:
         root.addHandler(stream)
     except Exception:
         pass
+
+    # Remove tokens de URLs assinadas, cookies e cabeçalhos de autorização de
+    # TODOS os handlers (arquivo, console e qualquer handler externo).
+    redaction = RedactionFilter()
+    for handler in root.handlers:
+        handler.addFilter(redaction)
 
     _enable_crash_log()
     sys.excepthook = _log_unhandled
@@ -302,6 +321,17 @@ def _create_windows_mutex(name: str = "HLS-Downloader-Pro-Mutex") -> None:
         _WINDOWS_MUTEX = None
 
 
+def _current_language() -> str:
+    """Idioma salvo nas configurações (ou o do sistema) antes do Bridge."""
+    stored = ""
+    try:
+        settings = QSettings(settings_path(), QSettings.Format.IniFormat)
+        stored = str(settings.value("i18n/language", "") or "").strip()
+    except Exception:
+        pass
+    return detect_language(stored)
+
+
 def _single_instance() -> bool:
     """True se esta instância é a principal; False se já existe outra."""
     global _SINGLE
@@ -310,10 +340,13 @@ def _single_instance() -> bool:
     if _SINGLE.is_primary():
         return True
     _SINGLE.notify_existing()
-    msg = tr("pt", "already_open")
+    lang = _current_language()
+    msg = tr(lang, "already_open")
     try:
         if isinstance(QApplication.instance(), QApplication):
-            QMessageBox.information(None, APP_NAME, msg)
+            show_message(
+                None, QMessageBox.Icon.Information, APP_NAME, msg, lang
+            )
     except Exception:
         pass
     sys.stderr.write(msg + "\n")
@@ -398,6 +431,50 @@ def _raise_window(window) -> None:
         window.requestActivate()
     except Exception:
         pass
+
+
+def _setup_tray(app: QApplication, window, bridge):
+    """Cria o ícone da bandeja quando o ambiente oferece suporte.
+
+    A bandeja é opcional: em sessões sem tray (ou com o plugin indisponível)
+    o app continua funcionando normalmente.
+    """
+    global _TRAY, _TRAY_MENU
+    try:
+        if not QSystemTrayIcon.isSystemTrayAvailable():
+            return None
+        path = icon_path()
+        icon = QIcon(path) if path else app.windowIcon()
+        tray = QSystemTrayIcon(icon, app)
+        tray.setToolTip(APP_NAME)
+        menu = QMenu()
+        show_action = menu.addAction("")
+        quit_action = menu.addAction("")
+        show_action.triggered.connect(lambda: _raise_window(window))
+        quit_action.triggered.connect(app.quit)
+        tray.setContextMenu(menu)
+
+        def activate(reason) -> None:
+            if reason in (
+                QSystemTrayIcon.ActivationReason.Trigger,
+                QSystemTrayIcon.ActivationReason.DoubleClick,
+            ):
+                _raise_window(window)
+
+        def retranslate(lang: str) -> None:
+            show_action.setText(tr(lang, "tray_show"))
+            quit_action.setText(tr(lang, "tray_quit"))
+
+        tray.activated.connect(activate)
+        retranslate(bridge.language)
+        bridge.languageChanged.connect(retranslate)
+        tray.show()
+        _TRAY = tray
+        _TRAY_MENU = menu
+        return tray
+    except Exception:
+        log.exception("falha ao criar ícone da bandeja")
+        return None
 
 
 # ===========================================================================
@@ -526,6 +603,10 @@ def main() -> int:
     font = QFont("Segoe UI", 10) if os.name == "nt" else QFont("Sans Serif", 10)
     app.setFont(font)
 
+    icon = icon_path()
+    if icon:
+        app.setWindowIcon(QIcon(icon))
+
     if not _single_instance():
         return 0
 
@@ -547,9 +628,11 @@ def main() -> int:
 
     engine.load(QUrl.fromLocalFile(qml_path()))
     if not engine.rootObjects():
+        lang = bridge.language
+        msg = tr(lang, "qml_load_failed")
         log.critical("falha ao carregar main.qml")
-        sys.stderr.write("Falha ao carregar main.qml — Qt/QML não pôde inicializar.\n")
-        QMessageBox.critical(None, APP_NAME, "Falha ao carregar a interface (main.qml).")
+        sys.stderr.write(msg + "\n")
+        show_message(None, QMessageBox.Icon.Critical, APP_NAME, msg, lang)
         return 1
 
     window = engine.rootObjects()[0]
@@ -557,6 +640,8 @@ def main() -> int:
 
     if _SINGLE is not None:
         _SINGLE.activated.connect(lambda: _raise_window(window))
+
+    _setup_tray(app, window, bridge)
 
     # Encerramento gracioso: cancela downloads/playlist/instalação e aguarda.
     # A limpeza das miniaturas só roda depois que os workers pararem.

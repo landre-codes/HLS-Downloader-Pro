@@ -11,7 +11,7 @@ import os
 import subprocess
 import threading
 
-from PySide6.QtCore import Property, QLocale, QObject, QSettings, Qt, QUrl, Signal, Slot
+from PySide6.QtCore import Property, QObject, QSettings, Qt, QUrl, Signal, Slot
 from PySide6.QtGui import QDesktopServices, QGuiApplication
 from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox
 
@@ -47,8 +47,9 @@ from .formats import (
     QUALITIES,
     VIDEO_CONTAINERS,
 )
-from .i18n import LANGUAGE_NAMES, LANGUAGES, tr
+from .i18n import LANGUAGE_NAMES, LANGUAGES, detect_language, tr
 from .model import DownloadModel
+from .nativeui import show_message
 from .playlist import PlaylistLoader
 from .queue import QueueManager
 from .services.procutils import spawn_kwargs
@@ -135,11 +136,7 @@ class Bridge(QObject):
             "deps/prompt_dismissed", False
         )
         stored_lang = str(self._settings.value("i18n/language", "") or "").strip()
-        if stored_lang in LANGUAGES:
-            self._lang = stored_lang
-        else:
-            system_lang = QLocale.system().name().split("_", 1)[0].lower()
-            self._lang = system_lang if system_lang in LANGUAGES else "pt"
+        self._lang = detect_language(stored_lang)
         self._format_mode = str(self._settings.value("download/format_mode", "video_audio"))
         if self._format_mode not in FORMAT_MODES:
             self._format_mode = "video_audio"
@@ -814,8 +811,12 @@ class Bridge(QObject):
                 message += "\n\n" + "\n".join(details[:3])
                 if len(details) > 3:
                     message += f"\n… (+{len(details) - 3})"
-            QMessageBox.warning(
-                None, self._tr("compress_finished_title"), message
+            show_message(
+                None,
+                QMessageBox.Icon.Warning,
+                self._tr("compress_finished_title"),
+                message,
+                self._lang,
             )
 
     @Slot()

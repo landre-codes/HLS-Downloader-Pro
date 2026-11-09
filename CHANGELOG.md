@@ -4,7 +4,7 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/)
 e o versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 
-## [Não lançado] — correções P0/P1 da auditoria
+## [Não lançado] — correções P0/P1/P2 da auditoria
 
 ### Corrigido
 - **Threading**: sinais de download/compressão agora são entregues por slots
@@ -48,6 +48,23 @@ e o versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 - **Alto DPI**: escala automática não multiplica o scaling do Windows.
 - **i18n/acessibilidade**: filtros de arquivo, terminal, dicas e botões da
   janela traduzidos nos 8 idiomas; nomes acessíveis nos controles do título.
+
+### Segurança/arquitetura (P2)
+- **Integridade dos downloads**: yt-dlp é verificado contra o
+  `SHA2-256SUMS` oficial (todos os canais), o ffmpeg Windows contra o
+  `.sha256` do Gyan e o build Linux contra o `.md5` publicado. Sidecar
+  ausente, digest inválido ou divergência abortam a instalação e removem o
+  arquivo temporário; no macOS, onde o evermeet não publica hash, o tamanho
+  exato informado pela API é conferido.
+- **Privacidade dos logs**: URLs assinadas (query/fragmento), credenciais
+  embutidas, cabeçalhos `Authorization`/`Cookie` e caminhos de cookies são
+  redigidos antes de chegar aos arquivos de log.
+- **Encerramento de QThreads**: a lógica de cancelar/aguardar/terminar foi
+  extraída para `lifecycle.shutdown_threads`, usada pelas filas de download e
+  compressão.
+- **Diálogos e bandeja**: `QMessageBox` nativos usam o botão OK traduzido;
+  a janela ganhou ícone próprio e ícone de bandeja (mostrar janela/sair),
+  quando o ambiente oferece suporte.
 
 ## [1.3.0] — 2026-11-02
 
