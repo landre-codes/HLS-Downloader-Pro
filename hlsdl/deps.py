@@ -282,6 +282,15 @@ class DependencyManager(QObject):
                 status.version = _binary_version(spec, binary)
             elif module:
                 status.version = _module_version(spec.dist or "")
+        elif spec.key == "ffmpeg":
+            # ffmpeg sozinho não basta para compressão/progresso: o ffprobe
+            # é usado para validar saída e duração.
+            ffmpeg = config.find_binary("ffmpeg")
+            ffprobe = config.find_binary("ffprobe")
+            status.found = bool(ffmpeg and ffprobe)
+            status.path = ffmpeg or ffprobe or ""
+            if ffmpeg:
+                status.version = _binary_version(spec, ffmpeg)
         else:
             path = _binary_path(spec)
             status.found = bool(path)

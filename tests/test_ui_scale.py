@@ -35,6 +35,16 @@ def test_apply_ui_scale_env(monkeypatch):
     assert os.environ["QT_SCALE_FACTOR"] == "1.20"
 
 
+def test_auto_scale_does_not_stack_on_system_dpi(monkeypatch):
+    monkeypatch.delenv("QT_SCALE_FACTOR", raising=False)
+    monkeypatch.delenv("HLSDL_UI_SCALE", raising=False)
+    monkeypatch.setattr("hlsdl.app._system_screen_width", lambda: 3840)
+    monkeypatch.setattr("hlsdl.app._system_dpi_scale", lambda: 1.5)
+    argv = ["app.exe"]
+    assert apply_ui_scale(argv) == 1.0
+    assert "QT_SCALE_FACTOR" not in os.environ
+
+
 def test_fit_window_to_screen(qapp):
     from PySide6.QtGui import QGuiApplication, QWindow
 

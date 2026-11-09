@@ -178,7 +178,10 @@ HLS-Downloader-Pro.exe --ui-scale 1.25
 # ou: --ui-scale=1.25 / variável HLSDL_UI_SCALE=1.25
 ```
 
-A escala automática pode ser desativada com `--ui-scale 1`.
+A escala automática pode ser desativada com `--ui-scale 1`. Quando o Windows
+já aplica escala de DPI (125%, 150%, 200%), o app **não soma** outro fator, para
+evitar texto gigante e layout cortado; o `--ui-scale` explícito continua
+funcionando.
 
 A geometria salva é limitada à área disponível da tela, então mudar a escala
 não deixa a janela maior que o monitor.

@@ -434,6 +434,21 @@ def _system_screen_width() -> int:
         return 0
 
 
+def _system_dpi_scale() -> float:
+    """Escala DPI aplicada pelo SO (1.0 quando desconhecida)."""
+    if os.name != "nt":
+        return 1.0
+    try:
+        import ctypes
+
+        get_dpi = getattr(ctypes.windll.user32, "GetDpiForSystem", None)
+        if get_dpi is None:
+            return 1.0
+        return max(1.0, float(get_dpi()) / 96.0)
+    except Exception:
+        return 1.0
+
+
 def apply_ui_scale(argv: list[str] | None = None) -> float:
     """Aplica a escala antes do ``QApplication`` (o Qt lê no startup).
 
@@ -456,6 +471,10 @@ def apply_ui_scale(argv: list[str] | None = None) -> float:
             break
 
     scale = compute_ui_scale(_system_screen_width())
+    if not explicit and _system_dpi_scale() > 1.05:
+        # O Qt já aplica o scaling do Windows; somar outro fator deixaria a
+        # interface ~1,5×/2× maior e cortaria o layout.
+        scale = UI_SCALE_MIN
     if explicit:
         try:
             scale = max(0.75, min(2.0, float(override.replace(",", "."))))
@@ -519,7 +538,7 @@ def main() -> int:
     outdir = default_output_folder()
     model = DownloadModel([])
     manager = QueueManager(model, outdir=outdir, concurrency=3)
-    bridge = Bridge(manager, outdir)
+    bridge = Bridge(manager, outdir, defer_detection=True)
 
     engine = QQmlApplicationEngine()
     engine.rootContext().setContextProperty("downloadModel", model)

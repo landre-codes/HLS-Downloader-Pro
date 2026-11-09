@@ -29,11 +29,75 @@ ApplicationWindow {
     title: "HLS Downloader Pro"
 
     property bool dark: bridge.dark
+
+    // Tokens semânticos de tema. Todo texto/plano de fundo deve usar estes
+    // valores (evita combinações claro-sobre-claro/escuro-sobre-escuro).
+    component ThemeTokens: QtObject {
+        property bool dark: false
+        readonly property color windowBg: dark ? "#14181c" : "#f5f5f5"
+        readonly property color cardBg: dark ? "#1d2329" : "#ffffff"
+        readonly property color cardBorder: dark ? "#33404a" : "#d7dde3"
+        readonly property color titleBg: dark ? "#101419" : "#e9ebee"
+        readonly property color tabBg: dark ? "#181d22" : "#eef0f3"
+        readonly property color text: dark ? "#f2f4f6" : "#202428"
+        readonly property color textSecondary: dark ? "#c2cbd3" : "#4f5862"
+        readonly property color textMuted: dark ? "#9aa5af" : "#626b75"
+        readonly property color divider: dark ? "#33404a" : "#d7dde3"
+        readonly property color hover: dark ? "#2a323a" : "#dfe4e8"
+        readonly property color rowHighlight: dark ? "#223038" : "#dceef7"
+        readonly property color tableHeaderBg: dark ? "#232b33" : "#eef1f4"
+        readonly property color tableHeaderText: dark ? "#e3e8ec" : "#2f3a42"
+        readonly property color thumbnailBg: dark ? "#262e35" : "#eef0f3"
+        readonly property color thumbnailBorder: dark ? "#33404a" : "#d7dde3"
+        readonly property color accentText: dark ? "#90caf9" : "#0d47a1"
+        readonly property color accentFill: "#1565c0"
+        readonly property color onAccent: "#ffffff"
+        readonly property color dangerFill: "#b71c1c"
+        readonly property color successText: dark ? "#81c784" : "#1b5e20"
+        readonly property color busyText: dark ? "#ffb74d" : "#9a4a00"
+        readonly property color errorText: dark ? "#ff8a80" : "#b71c1c"
+        readonly property color warningBg: "#4a2c1f"
+        readonly property color warningText: dark ? "#ffd180" : "#ffd180"
+        readonly property color terminalBg: "#0d1117"
+        readonly property color terminalBorder: "#30363d"
+        readonly property color terminalText: "#d6dde5"
+        readonly property color terminalMuted: "#9aa5af"
+        readonly property color terminalPrompt: "#27c93f"
+        readonly property color terminalSelection: "#264f78"
+        readonly property color toastBg: dark ? "#2b3138" : "#32363c"
+        readonly property color badgeDone: "#2e7d32"
+        readonly property color badgeError: "#b71c1c"
+        readonly property color badgeDownloading: "#00695c"
+        readonly property color badgeAnalyzing: "#8a4b08"
+        readonly property color badgeEncoding: "#4a148c"
+        readonly property color badgeMuted: "#455a64"
+    }
+    property QtObject theme: ThemeTokens { dark: root.dark }
+
+    // Corpo opaco dos diálogos: o fundo do Popup do Qt Material pode não
+    // cobrir a área de conteúdo em alguns estilos/versões.
+    component DialogSurface: Rectangle {
+        color: root.theme.windowBg
+        implicitWidth: 400
+        implicitHeight: dialogColumn.implicitHeight
+        default property alias content: dialogColumn.data
+        ColumnLayout {
+            id: dialogColumn
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            spacing: 10
+        }
+    }
+
     property var strings: ({})
     property string errorText: ""
     property string depsLog: ""
     property string queueFilterText: ""
     property int playlistSelCount: 0
+    property string playlistFilterText: ""
+    property int playlistVisibleCount: 0
+    property bool depsPromptShown: false
     property string pendingDepKey: ""
     property string pendingDepName: ""
     property string pendingDepAction: ""
@@ -42,6 +106,7 @@ ApplicationWindow {
     property int normalY: 0
     property int normalW: 0
     property int normalH: 0
+    property bool allowClose: false
 
     function rememberNormalGeometry() {
         if (root.visibility !== Window.Maximized) {
@@ -62,6 +127,15 @@ ApplicationWindow {
             rememberNormalGeometry()
             root.showMaximized()
         }
+    }
+    function saveWindowGeometry() {
+        bridge.saveGeometry(
+            root.visibility === Window.Maximized && root.normalW > 0 ? root.normalX : root.x,
+            root.visibility === Window.Maximized && root.normalH > 0 ? root.normalY : root.y,
+            root.visibility === Window.Maximized && root.normalW > 0 ? root.normalW : root.width,
+            root.visibility === Window.Maximized && root.normalH > 0 ? root.normalH : root.height,
+            root.visibility === Window.Maximized
+        )
     }
 
     function askInstallDependency(key, name, update) {
@@ -86,18 +160,28 @@ ApplicationWindow {
     function statusText(s) { return strings["s_" + s] || s }
     function badgeColor(s) {
         switch (s) {
-        case "done":        return "#2e7d32"
-        case "error":       return "#c62828"
-        case "downloading": return "#00838f"
-        case "analyzing":   return "#b45309"
-        case "encoding":    return "#6a1b9a"
-        case "cancelled":   return "#546e7a"
-        case "skipped":     return "#546e7a"
-        default:            return "#455a64"
+        case "done":        return root.theme.badgeDone
+        case "error":       return root.theme.badgeError
+        case "downloading": return root.theme.badgeDownloading
+        case "analyzing":   return root.theme.badgeAnalyzing
+        case "encoding":    return root.theme.badgeEncoding
+        case "cancelled":   return root.theme.badgeMuted
+        case "skipped":     return root.theme.badgeMuted
+        default:            return root.theme.badgeMuted
         }
     }
     function isActive(s) { return s === "analyzing" || s === "downloading" || s === "encoding" }
     function isFinal(s) { return s === "done" || s === "error" || s === "cancelled" }
+
+    function maybeShowDepsPrompt() {
+        if (root.depsPromptShown)
+            return
+        if (bridge.dependencies.length === 0)
+            return
+        root.depsPromptShown = true
+        if (bridge.anyEssentialMissing && !bridge.depsPromptDismissed)
+            depsDialog.open()
+    }
 
     function startSingle() {
         var value = singleUrl.text.trim()
@@ -124,6 +208,21 @@ ApplicationWindow {
             })
         }
         root.playlistSelCount = 0
+        root.refreshPlaylistVisibleCount()
+    }
+    function playlistMatches(it) {
+        var f = root.playlistFilterText
+        if (f.length === 0)
+            return true
+        return String(it.title).toLowerCase().indexOf(f) !== -1
+            || String(it.url).toLowerCase().indexOf(f) !== -1
+    }
+    function refreshPlaylistVisibleCount() {
+        var n = 0
+        for (var i = 0; i < playlistModel.count; i++)
+            if (root.playlistMatches(playlistModel.get(i)))
+                n++
+        root.playlistVisibleCount = n
     }
     function refreshSelCount() {
         var n = 0
@@ -143,6 +242,7 @@ ApplicationWindow {
             return
         playlistModel.clear()
         root.playlistSelCount = 0
+        root.playlistVisibleCount = 0
         bridge.loadPlaylist(u, playlistLimit.value)
     }
     function selectedPlaylistText() {
@@ -181,6 +281,10 @@ ApplicationWindow {
     // Cursor de mão (indicador) em tudo que responde a clique, como links.
     // Derivam dos tipos originais (Material), sem substituir o estilo.
     component HandButton: Button {
+        // Botões flat usam accent como cor do texto; preenchidos usam
+        // accentFill como fundo com texto branco. Isso evita azul claro
+        // sobre branco (ou branco sobre azul claro).
+        Material.accent: highlighted ? root.theme.accentFill : root.theme.accentText
         HoverHandler { cursorShape: Qt.PointingHandCursor }
     }
     component HandToolButton: ToolButton {
@@ -221,8 +325,8 @@ ApplicationWindow {
         Layout.fillWidth: true
         Layout.preferredHeight: panelHeight
         radius: 8
-        color: "#0d1117"
-        border.color: "#30363d"
+        color: root.theme.terminalBg
+        border.color: root.theme.terminalBorder
         border.width: 1
         clip: true
 
@@ -236,7 +340,7 @@ ApplicationWindow {
                 spacing: 6
                 Label {
                     text: ">_"
-                    color: "#27c93f"
+                    color: root.theme.terminalPrompt
                     font.family: "monospace"
                     font.pixelSize: 12
                     font.bold: true
@@ -244,7 +348,7 @@ ApplicationWindow {
                 Label {
                     Layout.fillWidth: true
                     text: term.title
-                    color: "#8b949e"
+                    color: root.theme.terminalMuted
                     font.family: "monospace"
                     font.pixelSize: 11
                     elide: Text.ElideRight
@@ -270,7 +374,7 @@ ApplicationWindow {
             Rectangle {
                 Layout.fillWidth: true
                 height: 1
-                color: "#21262d"
+                color: root.theme.terminalBorder
             }
 
             ScrollView {
@@ -285,9 +389,9 @@ ApplicationWindow {
                     readOnly: true
                     wrapMode: TextEdit.NoWrap
                     selectByMouse: true
-                    color: "#c9d1d9"
-                    selectionColor: "#264f78"
-                    selectedTextColor: "#ffffff"
+                    color: root.theme.terminalText
+                    selectionColor: root.theme.terminalSelection
+                    selectedTextColor: root.theme.onAccent
                     font.family: "monospace"
                     font.pixelSize: 12
                     background: null
@@ -299,7 +403,7 @@ ApplicationWindow {
             anchors.centerIn: parent
             text: strings.terminal_empty
             visible: term.output.length === 0
-            color: "#6e7681"
+            color: root.theme.terminalMuted
             font.family: "monospace"
             font.pixelSize: 11
             z: 2
@@ -389,7 +493,7 @@ ApplicationWindow {
             width: hintField.width - hintField.leftPadding - hintField.rightPadding
             text: hintField.hint
             visible: hintField.text.length === 0
-            color: Material.hintTextColor
+            color: root.theme.textMuted
             elide: Text.ElideRight
             font: hintField.font
             z: 1
@@ -412,7 +516,7 @@ ApplicationWindow {
             width: hintArea.width - hintArea.leftPadding - hintArea.rightPadding
             text: hintArea.hint
             visible: hintArea.text.length === 0
-            color: Material.hintTextColor
+            color: root.theme.textMuted
             wrapMode: Text.WordWrap
             font: hintArea.font
             z: 1
@@ -504,21 +608,24 @@ ApplicationWindow {
     Connections {
         target: bridge
         function onLanguageChanged() { retranslate() }
+        function onDepsChanged() { root.maybeShowDepsPrompt() }
     }
     Component.onCompleted: {
         retranslate()
-        if (bridge.anyEssentialMissing && !bridge.depsPromptDismissed)
-            depsDialog.open()
+        root.maybeShowDepsPrompt()
     }
 
     Material.theme: root.dark ? Material.Dark : Material.Light
-    Material.accent: "#1e88e5"
-    Material.background: root.dark ? "#14181c" : "#f5f5f5"
+    Material.accent: root.theme.accentText
+    Material.primary: root.theme.accentFill
+    Material.foreground: root.theme.text
+    Material.background: root.theme.windowBg
 
     property int statWaiting: 0
     property int statDownloading: 0
     property int statDone: 0
     property int statError: 0
+    property int statCancelled: 0
     property int statTotal: 0
     property int compWait: 0
     property int compWork: 0
@@ -526,13 +633,14 @@ ApplicationWindow {
     property int compErr: 0
     property int compSkip: 0
 
-    onClosing: bridge.saveGeometry(
-        root.visibility === Window.Maximized && root.normalW > 0 ? root.normalX : root.x,
-        root.visibility === Window.Maximized && root.normalH > 0 ? root.normalY : root.y,
-        root.visibility === Window.Maximized && root.normalW > 0 ? root.normalW : root.width,
-        root.visibility === Window.Maximized && root.normalH > 0 ? root.normalH : root.height,
-        root.visibility === Window.Maximized
-    )
+    onClosing: function(close) {
+        if (!root.allowClose && (bridge.queueActive || bridge.compressionActive)) {
+            close.accepted = false
+            confirmClose.open()
+            return
+        }
+        root.saveWindowGeometry()
+    }
 
     onVisibilityChanged: {
         if (root.visibility === Window.Maximized && root.screen) {
@@ -544,16 +652,27 @@ ApplicationWindow {
 
     // ====================================================== Atalhos
     readonly property bool typing: {
-        var item = Window.activeFocusItem
-        return item !== null && (item instanceof TextInput || item instanceof TextEdit)
+        // Window.activeFocusItem retorna null no Qt 6.12; a propriedade
+        // correta é root.activeFocusItem.
+        var item = root.activeFocusItem
+        return item !== null && (item instanceof TextInput || item instanceof TextEdit
+                                 || item.text !== undefined)
     }
     Shortcut { sequence: "Ctrl+V"; enabled: !root.typing; onActivated: bridge.pasteFromClipboard() }
-    Shortcut { sequence: "Ctrl+Return"; onActivated: { bridge.addLinks(inputArea.text); inputArea.clear() } }
-    Shortcut { sequence: "Ctrl+Enter"; onActivated: { bridge.addLinks(inputArea.text); inputArea.clear() } }
+    Shortcut {
+        sequence: "Ctrl+Return"
+        enabled: !root.typing && tabBar.currentIndex === 1
+        onActivated: { bridge.addLinks(inputArea.text); inputArea.clear() }
+    }
+    Shortcut {
+        sequence: "Ctrl+Enter"
+        enabled: !root.typing && tabBar.currentIndex === 1
+        onActivated: { bridge.addLinks(inputArea.text); inputArea.clear() }
+    }
     Shortcut { sequence: "F5"; onActivated: bridge.startQueue() }
     Shortcut {
         sequence: "Delete"
-        enabled: !root.typing
+        enabled: !root.typing && tabBar.currentIndex === 1 && root.queueFilterText.length === 0
         onActivated: if (listView.currentIndex >= 0) bridge.removeItem(listView.currentIndex)
     }
 
@@ -588,12 +707,13 @@ ApplicationWindow {
 
     Connections {
         target: bridge
-        function onStatsChanged(waiting, downloading, done, errors) {
+        function onStatsChanged(waiting, downloading, done, errors, cancelled) {
             root.statWaiting = waiting
             root.statDownloading = downloading
             root.statDone = done
             root.statError = errors
-            root.statTotal = waiting + downloading + done + errors
+            root.statCancelled = cancelled
+            root.statTotal = waiting + downloading + done + errors + cancelled
         }
         function onNotifyText(message) {
             toastText.text = message
@@ -622,7 +742,7 @@ ApplicationWindow {
         anchors.left: parent.left
         anchors.right: parent.right
         height: 44
-        color: root.dark ? "#101419" : "#e9ebee"
+        color: root.theme.titleBg
         z: 60
 
         MouseArea {
@@ -669,40 +789,73 @@ ApplicationWindow {
                 text: "HLS Downloader Pro"
                 font.pixelSize: 13
                 font.weight: Font.DemiBold
-                color: root.dark ? "#e8ebee" : "#202428"
+                color: root.theme.text
             }
             Label {
                 text: strings.titlebar_sub + "  ·  v" + bridge.appVersion
                 font.pixelSize: 11
-                color: root.dark ? "#7f8892" : "#6a7078"
+                color: root.theme.textMuted
                 Layout.topMargin: 6
             }
             Item { Layout.fillWidth: true }
-            Rectangle { width: 1; height: 18; color: root.dark ? "#2a323a" : "#d3d7db" }
+            Rectangle { width: 1; height: 18; color: root.theme.divider }
 
             Rectangle {
                 id: minBtn
                 width: 46; height: 30; radius: 6
-                color: minHov.containsMouse ? (root.dark ? "#2a323a" : "#d8dce0") : "transparent"
-                Label { anchors.centerIn: parent; text: "—"; font.pixelSize: 14; color: root.dark ? "#dfe3e8" : "#3c4043" }
-                MouseArea { id: minHov; anchors.fill: parent; hoverEnabled: true; onClicked: root.showMinimized() }
+                color: minHov.containsMouse ? (root.theme.hover) : "transparent"
+                Accessible.role: Accessible.Button
+                Accessible.name: strings.win_minimize
+                ToolTip.text: strings.win_minimize
+                ToolTip.visible: minHov.containsMouse
+                ToolTip.delay: 500
+                Label { anchors.centerIn: parent; text: "—"; font.pixelSize: 14; color: root.theme.text }
+                MouseArea {
+                    id: minHov
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.showMinimized()
+                }
             }
             Rectangle {
                 id: maxBtn
                 width: 46; height: 30; radius: 6
-                color: maxHov.containsMouse ? (root.dark ? "#2a323a" : "#d8dce0") : "transparent"
-                Label { anchors.centerIn: parent; text: root.visibility === Window.Maximized ? "❐" : "▢"; font.pixelSize: 14; color: root.dark ? "#dfe3e8" : "#3c4043" }
+                color: maxHov.containsMouse ? (root.theme.hover) : "transparent"
+                Accessible.role: Accessible.Button
+                Accessible.name: strings.win_maximize
+                ToolTip.text: strings.win_maximize
+                ToolTip.visible: maxHov.containsMouse
+                ToolTip.delay: 500
+                Label { anchors.centerIn: parent; text: root.visibility === Window.Maximized ? "❐" : "▢"; font.pixelSize: 14; color: root.theme.text }
                 MouseArea {
                     id: maxHov; anchors.fill: parent; hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
                     onClicked: root.toggleMaximize()
                 }
             }
             Rectangle {
                 id: closeBtn
                 width: 46; height: 30; radius: 6
-                color: closeHov.containsMouse ? "#c62828" : "transparent"
-                Label { anchors.centerIn: parent; text: "✕"; font.pixelSize: 14; color: root.dark ? "#dfe3e8" : "#3c4043" }
-                MouseArea { id: closeHov; anchors.fill: parent; hoverEnabled: true; onClicked: root.close() }
+                color: closeHov.containsMouse ? root.theme.dangerFill : "transparent"
+                Accessible.role: Accessible.Button
+                Accessible.name: strings.win_close
+                ToolTip.text: strings.win_close
+                ToolTip.visible: closeHov.containsMouse
+                ToolTip.delay: 500
+                Label {
+                    anchors.centerIn: parent
+                    text: "✕"
+                    font.pixelSize: 14
+                    color: closeHov.containsMouse ? root.theme.onAccent : root.theme.text
+                }
+                MouseArea {
+                    id: closeHov
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.close()
+                }
             }
         }
     }
@@ -714,7 +867,7 @@ ApplicationWindow {
         anchors.left: parent.left
         anchors.right: parent.right
         contentHeight: 42
-        background: Rectangle { color: root.dark ? "#181d22" : "#eef0f3" }
+        background: Rectangle { color: root.theme.tabBg }
         HandTabButton {
             text: strings.tab_single; font.pixelSize: 13; implicitWidth: 170
             ToolTip.text: strings.tab_single_tip; ToolTip.visible: hovered; ToolTip.delay: 500
@@ -757,8 +910,8 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     Layout.preferredHeight: singleCol.implicitHeight + 32
                     radius: 12
-                    color: root.dark ? "#1d2329" : "#ffffff"
-                    border.color: root.dark ? "#2a323a" : "#e0e0e0"
+                    color: root.theme.cardBg
+                    border.color: root.theme.cardBorder
                     border.width: 1
                     ColumnLayout {
                         id: singleCol
@@ -780,13 +933,13 @@ ApplicationWindow {
                             spacing: 12
                             Label {
                                 text: strings.fmt_label; font.pixelSize: 13
-                                color: Material.secondaryTextColor; Layout.alignment: Qt.AlignVCenter
+                                color: root.theme.textSecondary; Layout.alignment: Qt.AlignVCenter
                             }
                             FormatSelector { Layout.alignment: Qt.AlignVCenter }
                             Item { Layout.fillWidth: true }
                             Label {
                                 text: strings.container_label; font.pixelSize: 13
-                                color: Material.secondaryTextColor; Layout.alignment: Qt.AlignVCenter
+                                color: root.theme.textSecondary; Layout.alignment: Qt.AlignVCenter
                             }
                             ContainerCombo { Layout.alignment: Qt.AlignVCenter }
                         }
@@ -797,7 +950,7 @@ ApplicationWindow {
                             visible: bridge.formatMode !== "audio_only"
                             Label {
                                 text: strings.quality_label; font.pixelSize: 13
-                                color: Material.secondaryTextColor; Layout.alignment: Qt.AlignVCenter
+                                color: root.theme.textSecondary; Layout.alignment: Qt.AlignVCenter
                             }
                             QualityCombo { Layout.alignment: Qt.AlignVCenter }
                             Item { Layout.fillWidth: true }
@@ -810,7 +963,7 @@ ApplicationWindow {
                             Label {
                                 visible: bridge.formatMode !== "audio_only"
                                 text: strings.codec_label; font.pixelSize: 13
-                                color: Material.secondaryTextColor; Layout.alignment: Qt.AlignVCenter
+                                color: root.theme.textSecondary; Layout.alignment: Qt.AlignVCenter
                             }
                             CodecCombo {
                                 visible: bridge.formatMode !== "audio_only"
@@ -819,7 +972,7 @@ ApplicationWindow {
                             Label {
                                 visible: bridge.formatMode !== "audio_only" && bridge.codec !== "copy"
                                 text: strings.compress_label; font.pixelSize: 13
-                                color: Material.secondaryTextColor; Layout.alignment: Qt.AlignVCenter
+                                color: root.theme.textSecondary; Layout.alignment: Qt.AlignVCenter
                             }
                             CompressCombo {
                                 visible: bridge.formatMode !== "audio_only" && bridge.codec !== "copy"
@@ -847,7 +1000,7 @@ ApplicationWindow {
                         Label {
                             text: strings.single_hint
                             font.pixelSize: 11
-                            color: Material.secondaryTextColor
+                            color: root.theme.textSecondary
                             wrapMode: Text.Wrap
                             Layout.fillWidth: true
                         }
@@ -858,8 +1011,8 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     radius: 12
-                    color: root.dark ? "#1d2329" : "#ffffff"
-                    border.color: root.dark ? "#2a323a" : "#e0e0e0"
+                    color: root.theme.cardBg
+                    border.color: root.theme.cardBorder
                     border.width: 1
                     ColumnLayout {
                         anchors.fill: parent
@@ -870,7 +1023,7 @@ ApplicationWindow {
                         Label {
                             visible: bridge.lastItem.url === undefined || bridge.lastItem.url === ""
                             text: strings.single_idle
-                            color: Material.secondaryTextColor
+                            color: root.theme.textSecondary
                             font.pixelSize: 13
                         }
 
@@ -897,7 +1050,7 @@ ApplicationWindow {
                                         anchors.fill: parent
                                         anchors.margins: 4
                                         text: root.statusText(bridge.lastItem.status || "")
-                                        color: "white"
+                                        color: root.theme.onAccent
                                         font.pixelSize: 11
                                         font.bold: true
                                         horizontalAlignment: Text.AlignHCenter
@@ -908,7 +1061,7 @@ ApplicationWindow {
                                 Label {
                                     Layout.fillWidth: true
                                     text: (bridge.lastItem.speed || "") + "   " + (bridge.lastItem.size || "")
-                                    color: Material.secondaryTextColor
+                                    color: root.theme.textSecondary
                                     font.pixelSize: 12
                                     elide: Text.ElideRight
                                 }
@@ -925,7 +1078,7 @@ ApplicationWindow {
                                 Layout.fillWidth: true
                                 visible: bridge.lastItem.status === "error" && (bridge.lastItem.error || "").length > 0
                                 text: bridge.lastItem.error || ""
-                                color: root.dark ? "#ff8a80" : "#c62828"
+                                color: root.theme.errorText
                                 wrapMode: Text.Wrap
                                 font.pixelSize: 12
                                 MouseArea {
@@ -978,8 +1131,8 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     Layout.preferredHeight: batchEntryCol.implicitHeight + 32
                     radius: 12
-                    color: root.dark ? "#1d2329" : "#ffffff"
-                    border.color: root.dark ? "#2a323a" : "#e0e0e0"
+                    color: root.theme.cardBg
+                    border.color: root.theme.cardBorder
                     border.width: 1
 
                     ColumnLayout {
@@ -999,7 +1152,7 @@ ApplicationWindow {
                             selectByMouse: true
                         }
 
-                        RowLayout {
+                        Flow {
                             Layout.fillWidth: true
                             spacing: 8
                             HandButton {
@@ -1026,7 +1179,6 @@ ApplicationWindow {
                                 ToolTip.text: strings.btn_import_tip; ToolTip.visible: hovered; ToolTip.delay: 500
                                 onClicked: bridge.importTxt()
                             }
-                            Item { Layout.fillWidth: true }
                             HandButton {
                                 text: strings.btn_clear; flat: true
                                 icon.source: root.iconPath("trash")
@@ -1037,22 +1189,20 @@ ApplicationWindow {
                             }
                         }
 
-                        RowLayout {
+                        Flow {
                             Layout.fillWidth: true
                             spacing: 10
                             Label {
                                 text: strings.batch_fmt_label; font.pixelSize: 13
-                                color: Material.secondaryTextColor; Layout.alignment: Qt.AlignVCenter
+                                color: root.theme.textSecondary
                             }
-                            FormatSelector { Layout.alignment: Qt.AlignVCenter }
-                            Item { Layout.fillWidth: true }
+                            FormatSelector { }
                             Label {
                                 text: root.downloadSummary()
                                 font.pixelSize: 11
-                                color: Material.secondaryTextColor
+                                color: root.theme.textSecondary
                                 elide: Text.ElideRight
-                                Layout.maximumWidth: 260
-                                Layout.alignment: Qt.AlignVCenter
+                                width: 260
                             }
                             HandButton {
                                 text: strings.batch_options
@@ -1063,7 +1213,7 @@ ApplicationWindow {
                         Label {
                             text: strings.entry_hint
                             font.pixelSize: 11
-                            color: Material.secondaryTextColor
+                            color: root.theme.textSecondary
                             wrapMode: Text.Wrap
                             Layout.fillWidth: true
                         }
@@ -1076,21 +1226,21 @@ ApplicationWindow {
                     visible: bridge.anyEssentialMissing
                     Layout.preferredHeight: warnRow.implicitHeight + 16
                     radius: 8
-                    color: "#4a2c1f"
+                    color: root.theme.warningBg
                     RowLayout {
                         id: warnRow
                         anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
                         anchors.margins: 8
                         spacing: 8
                         Label {
-                            text: strings.warn_attention; font.bold: true; color: "#ffcc80"
+                            text: strings.warn_attention; font.bold: true; color: root.theme.warningText
                             Layout.alignment: Qt.AlignVCenter
                         }
                         Label {
                             text: (bridge.ytdlpAvailable ? "" : strings.warn_ytdlp_missing + " ")
                                   + (bridge.ffmpegAvailable ? "" : strings.warn_ffmpeg_missing + " ")
                                   + strings.warn_tools
-                            color: "#ffcc80"
+                            color: root.theme.warningText
                             Layout.fillWidth: true
                             Layout.alignment: Qt.AlignVCenter
                             verticalAlignment: Text.AlignVCenter
@@ -1109,8 +1259,8 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     radius: 12
-                    color: root.dark ? "#1d2329" : "#ffffff"
-                    border.color: root.dark ? "#2a323a" : "#e0e0e0"
+                    color: root.theme.cardBg
+                    border.color: root.theme.cardBorder
                     border.width: 1
 
                     ColumnLayout {
@@ -1166,7 +1316,7 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             Layout.preferredHeight: 36
                             radius: 6
-                            color: root.dark ? "#232b33" : "#f2f5f7"
+                            color: root.theme.tableHeaderBg
 
                             RowLayout {
                                 anchors.fill: parent
@@ -1174,14 +1324,14 @@ ApplicationWindow {
                                 anchors.rightMargin: 12
                                 spacing: 10
                                 Item { Layout.fillWidth: true; Layout.minimumWidth: 180 }
-                                Label { text: strings.h_status; Layout.preferredWidth: 104; font.pixelSize: 13; font.bold: true; color: root.dark ? "#cfd8dc" : "#37474f" }
-                                Label { text: strings.h_progress; Layout.preferredWidth: 150; font.pixelSize: 13; font.bold: true; color: root.dark ? "#cfd8dc" : "#37474f"; horizontalAlignment: Text.AlignHCenter }
-                                Label { text: strings.h_speed_size; Layout.preferredWidth: 130; font.pixelSize: 13; font.bold: true; color: root.dark ? "#cfd8dc" : "#37474f" }
+                                Label { text: strings.h_status; Layout.preferredWidth: 104; font.pixelSize: 13; font.bold: true; color: root.theme.tableHeaderText }
+                                Label { text: strings.h_progress; Layout.preferredWidth: 150; font.pixelSize: 13; font.bold: true; color: root.theme.tableHeaderText; horizontalAlignment: Text.AlignHCenter }
+                                Label { text: strings.h_speed_size; Layout.preferredWidth: 130; font.pixelSize: 13; font.bold: true; color: root.theme.tableHeaderText }
                                 Item { Layout.preferredWidth: 136 }
                             }
                         }
 
-                        Rectangle { Layout.fillWidth: true; height: 1; color: root.dark ? "#2a323a" : "#e0e0e0" }
+                        Rectangle { Layout.fillWidth: true; height: 1; color: root.theme.cardBorder }
 
                         ListView {
                             id: listView
@@ -1195,7 +1345,7 @@ ApplicationWindow {
                             boundsBehavior: Flickable.StopAtBounds
                             highlightMoveDuration: 0
                             highlight: Rectangle {
-                                color: root.dark ? "#223038" : "#e3f3f0"
+                                color: root.theme.rowHighlight
                                 visible: listView.currentIndex >= 0
                             }
 
@@ -1208,13 +1358,22 @@ ApplicationWindow {
                                     spacing: 6
                                     Label {
                                         anchors.horizontalCenter: parent.horizontalCenter
-                                        text: strings.empty_title; font.pixelSize: 15; color: Material.secondaryTextColor
+                                        text: strings.empty_title; font.pixelSize: 15; color: root.theme.textSecondary
                                     }
                                     Label {
                                         anchors.horizontalCenter: parent.horizontalCenter
-                                        text: strings.empty_hint; font.pixelSize: 12; color: Material.secondaryTextColor
+                                        text: strings.empty_hint; font.pixelSize: 12; color: root.theme.textSecondary
                                     }
                                 }
+                            }
+                            Label {
+                                anchors.centerIn: parent
+                                visible: listView.count > 0
+                                         && root.queueFilterText.length > 0
+                                         && listView.contentHeight <= 0
+                                text: strings.filter_no_results
+                                font.pixelSize: 13
+                                color: root.theme.textSecondary
                             }
                         }
                     }
@@ -1231,16 +1390,19 @@ ApplicationWindow {
                         text: root.statWaiting + " " + strings.stat_waiting + " · " + root.statDownloading
                               + " " + strings.stat_downloading + " · " + root.statDone + " "
                               + strings.stat_done + " · " + root.statError + " " + strings.stat_errors
+                              + " · " + root.statCancelled + " " + strings.stat_cancelled
                         font.pixelSize: 12
-                        color: Material.secondaryTextColor
+                        color: root.theme.textSecondary
                         elide: Text.ElideRight
                     }
 
                     ProgressBar {
                         Layout.preferredWidth: 180
                         value: {
-                            var total = downloadModel.rowCount()
-                            return total > 0 ? (root.statDone + root.statError) / total : 0
+                            var total = root.statTotal
+                            return total > 0
+                                ? (root.statDone + root.statError + root.statCancelled) / total
+                                : 0
                         }
                         from: 0
                         to: 1
@@ -1305,8 +1467,8 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     Layout.preferredHeight: plLoadCol.implicitHeight + 32
                     radius: 12
-                    color: root.dark ? "#1d2329" : "#ffffff"
-                    border.color: root.dark ? "#2a323a" : "#e0e0e0"
+                    color: root.theme.cardBg
+                    border.color: root.theme.cardBorder
                     border.width: 1
                     ColumnLayout {
                         id: plLoadCol
@@ -1327,20 +1489,27 @@ ApplicationWindow {
                                 onAccepted: root.loadPlaylist()
                             }
                             HandButton {
-                                text: bridge.playlistLoading ? strings.playlist_loading : strings.btn_load_playlist
-                                icon.source: root.iconPath("retry")
+                                text: bridge.playlistLoading
+                                      ? strings.confirm_cancel
+                                      : strings.btn_load_playlist
+                                icon.source: root.iconPath(
+                                    bridge.playlistLoading ? "stop" : "retry"
+                                )
                                 icon.width: 16; icon.height: 16
                                 display: AbstractButton.TextBesideIcon
-                                enabled: !bridge.playlistLoading
+                                enabled: bridge.playlistLoading
+                                         || playlistUrl.text.trim().length > 0
                                 highlighted: true
-                                onClicked: root.loadPlaylist()
+                                onClicked: bridge.playlistLoading
+                                           ? bridge.cancelPlaylist()
+                                           : root.loadPlaylist()
                             }
                         }
 
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: 8
-                            Label { text: strings.playlist_limit; font.pixelSize: 13; color: Material.secondaryTextColor; Layout.alignment: Qt.AlignVCenter }
+                            Label { text: strings.playlist_limit; font.pixelSize: 13; color: root.theme.textSecondary; Layout.alignment: Qt.AlignVCenter }
                             SpinBox {
                                 id: playlistLimit
                                 from: 0; to: 5000; stepSize: 50
@@ -1354,7 +1523,7 @@ ApplicationWindow {
                         Label {
                             text: strings.playlist_hint
                             font.pixelSize: 11
-                            color: Material.secondaryTextColor
+                            color: root.theme.textSecondary
                             wrapMode: Text.Wrap
                             Layout.fillWidth: true
                         }
@@ -1365,8 +1534,8 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     radius: 12
-                    color: root.dark ? "#1d2329" : "#ffffff"
-                    border.color: root.dark ? "#2a323a" : "#e0e0e0"
+                    color: root.theme.cardBg
+                    border.color: root.theme.cardBorder
                     border.width: 1
                     ColumnLayout {
                         anchors.fill: parent
@@ -1378,10 +1547,12 @@ ApplicationWindow {
                             spacing: 8
                             Label {
                                 Layout.fillWidth: true
-                                text: playlistModel.count + " " + strings.playlist_items
+                                text: (root.playlistFilterText.length > 0
+                                       ? root.playlistVisibleCount + "/" : "")
+                                      + playlistModel.count + " " + strings.playlist_items
                                       + (root.playlistSelCount > 0 ? " · " + root.playlistSelCount + " ✓" : "")
                                 font.pixelSize: 13
-                                color: Material.secondaryTextColor
+                                color: root.theme.textSecondary
                             }
                             HandButton {
                                 text: strings.btn_select_all
@@ -1395,7 +1566,48 @@ ApplicationWindow {
                             }
                         }
 
-                        Rectangle { Layout.fillWidth: true; height: 1; color: root.dark ? "#2a323a" : "#e0e0e0" }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+                            HintField {
+                                id: playlistFilter
+                                Layout.fillWidth: true
+                                hint: strings.filter_placeholder
+                                leadingIcon: root.iconPath("search")
+                                selectByMouse: true
+                                onTextChanged: {
+                                    if (text.length === 0) {
+                                        playlistFilterDebounce.stop()
+                                        root.playlistFilterText = ""
+                                        root.refreshPlaylistVisibleCount()
+                                    } else {
+                                        playlistFilterDebounce.restart()
+                                    }
+                                }
+                            }
+                            Timer {
+                                id: playlistFilterDebounce
+                                interval: 220
+                                onTriggered: {
+                                    root.playlistFilterText = playlistFilter.text.toLowerCase()
+                                    root.refreshPlaylistVisibleCount()
+                                }
+                            }
+                            HandToolButton {
+                                display: AbstractButton.IconOnly
+                                icon.source: root.iconPath("cancel")
+                                icon.width: 14; icon.height: 14
+                                opacity: playlistFilter.text.length > 0 ? 1 : 0
+                                enabled: playlistFilter.text.length > 0
+                                Accessible.name: strings.btn_clear
+                                ToolTip.text: strings.btn_clear
+                                ToolTip.visible: hovered
+                                ToolTip.delay: 500
+                                onClicked: playlistFilter.clear()
+                            }
+                        }
+
+                        Rectangle { Layout.fillWidth: true; height: 1; color: root.theme.cardBorder }
 
                         ListView {
                             id: playlistView
@@ -1410,18 +1622,24 @@ ApplicationWindow {
                             Rectangle {
                                 anchors.fill: parent
                                 visible: playlistView.count === 0
+                                         || (root.playlistFilterText.length > 0
+                                             && root.playlistVisibleCount === 0)
                                 color: "transparent"
                                 Label {
                                     anchors.centerIn: parent
-                                    text: strings.playlist_empty_ui
+                                    text: root.playlistFilterText.length > 0
+                                          ? strings.filter_no_results
+                                          : strings.playlist_empty_ui
                                     font.pixelSize: 13
-                                    color: Material.secondaryTextColor
+                                    color: root.theme.textSecondary
                                 }
                             }
 
                             delegate: Item {
                                 width: playlistView.width
-                                height: 52
+                                property bool matches: root.playlistMatches(model)
+                                height: matches ? 52 : 0
+                                visible: matches
                                 RowLayout {
                                     anchors.fill: parent
                                     anchors.leftMargin: 6
@@ -1438,7 +1656,7 @@ ApplicationWindow {
                                     Label {
                                         text: model.idx
                                         font.pixelSize: 11
-                                        color: Material.secondaryTextColor
+                                        color: root.theme.textSecondary
                                         Layout.preferredWidth: 34
                                     }
                                     Rectangle {
@@ -1446,7 +1664,7 @@ ApplicationWindow {
                                         Layout.preferredHeight: 36
                                         Layout.alignment: Qt.AlignVCenter
                                         radius: 4
-                                        color: root.dark ? "#262e35" : "#eef0f3"
+                                        color: root.theme.thumbnailBg
                                         Image {
                                             anchors.fill: parent
                                             visible: model.thumb !== ""
@@ -1460,19 +1678,19 @@ ApplicationWindow {
                                         Layout.fillWidth: true
                                         spacing: 0
                                         Label { Layout.fillWidth: true; text: model.title; elide: Text.ElideMiddle; font.pixelSize: 12 }
-                                        Label { Layout.fillWidth: true; text: model.url; elide: Text.ElideMiddle; font.pixelSize: 10; color: Material.secondaryTextColor }
+                                        Label { Layout.fillWidth: true; text: model.url; elide: Text.ElideMiddle; font.pixelSize: 10; color: root.theme.textSecondary }
                                     }
                                     Label {
                                         text: root.formatDuration(model.duration)
                                         font.pixelSize: 11
-                                        color: Material.secondaryTextColor
+                                        color: root.theme.textSecondary
                                         Layout.preferredWidth: 48
                                     }
                                 }
                                 Rectangle {
                                     anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom
                                     height: 1
-                                    color: root.dark ? "#262e35" : "#ececec"
+                                    color: root.theme.divider
                                 }
                             }
                         }
@@ -1513,25 +1731,34 @@ ApplicationWindow {
 
                 Rectangle {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: compOpts.implicitHeight + 32
+                    Layout.preferredHeight: Math.min(
+                        compOpts.implicitHeight + 32,
+                        Math.max(240, root.height - 354)
+                    )
                     radius: 12
-                    color: root.dark ? "#1d2329" : "#ffffff"
-                    border.color: root.dark ? "#2a323a" : "#e0e0e0"
+                    color: root.theme.cardBg
+                    border.color: root.theme.cardBorder
                     border.width: 1
-                    ColumnLayout {
-                        id: compOpts
-                        anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
+                    ScrollView {
+                        id: compOptsScroll
+                        anchors.fill: parent
                         anchors.margins: 16
-                        spacing: 10
+                        clip: true
+                        contentWidth: availableWidth
+                        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                        ScrollBar.vertical.policy: ScrollBar.AsNeeded
+                        ColumnLayout {
+                            id: compOpts
+                            width: compOptsScroll.availableWidth
+                            spacing: 10
 
-                        RowLayout {
+                        Flow {
                             Layout.fillWidth: true
                             spacing: 8
                             Label {
                                 text: strings.compress_title
                                 font.pixelSize: 15
                                 font.weight: Font.DemiBold
-                                Layout.fillWidth: true
                             }
                             HandButton {
                                 text: strings.compress_add_files
@@ -1549,10 +1776,10 @@ ApplicationWindow {
                             }
                         }
 
-                        RowLayout {
+                        Flow {
                             Layout.fillWidth: true
                             spacing: 10
-                            Label { text: strings.compress_encoder; font.pixelSize: 13; color: Material.secondaryTextColor }
+                            Label { text: strings.compress_encoder; font.pixelSize: 13; color: root.theme.textSecondary }
                             HandComboBox {
                                 id: compEncoder
                                 model: bridge.compressionEncoders
@@ -1564,7 +1791,7 @@ ApplicationWindow {
                                             return i
                                     return 0
                                 }
-                                Layout.preferredWidth: 170
+                                width: 170
                                 ToolTip.text: strings.compress_encoder_tip
                                 ToolTip.visible: hovered
                                 ToolTip.delay: 500
@@ -1575,7 +1802,7 @@ ApplicationWindow {
                                          || bridge.compressionEncoder === "qsv"
                                 text: strings.compress_gpu
                                 font.pixelSize: 13
-                                color: Material.secondaryTextColor
+                                color: root.theme.textSecondary
                             }
                             HandComboBox {
                                 id: compGpu
@@ -1590,7 +1817,7 @@ ApplicationWindow {
                                             return i
                                     return 0
                                 }
-                                Layout.preferredWidth: 200
+                                width: 200
                                 ToolTip.text: strings.compress_gpu_tip
                                 ToolTip.visible: hovered
                                 ToolTip.delay: 500
@@ -1609,7 +1836,7 @@ ApplicationWindow {
                                 Accessible.name: strings.compress_gpu
                                 onClicked: bridge.refreshCompressionEncoders()
                             }
-                            Label { text: strings.compress_quality; font.pixelSize: 13; color: Material.secondaryTextColor }
+                            Label { text: strings.compress_quality; font.pixelSize: 13; color: root.theme.textSecondary }
                             SpinBox {
                                 id: compQuality
                                 from: 1; to: 51
@@ -1623,9 +1850,8 @@ ApplicationWindow {
                                 text: strings.compress_estimate + " ~" + bridge.compressionEstimate + "%"
                                 tip: strings.compress_estimate_tip
                                 font.pixelSize: 11
-                                color: Material.secondaryTextColor
+                                color: root.theme.textSecondary
                             }
-                            Item { Layout.fillWidth: true }
                         }
 
                         Flow {
@@ -1634,7 +1860,7 @@ ApplicationWindow {
 
                             RowLayout {
                                 spacing: 6
-                                Label { text: strings.compress_codec; font.pixelSize: 13; color: Material.secondaryTextColor }
+                                Label { text: strings.compress_codec; font.pixelSize: 13; color: root.theme.textSecondary }
                                 HandComboBox {
                                     id: compCodec
                                     model: bridge.compressionCodecs
@@ -1656,7 +1882,7 @@ ApplicationWindow {
 
                             RowLayout {
                                 spacing: 6
-                                Label { text: strings.compress_container; font.pixelSize: 13; color: Material.secondaryTextColor }
+                                Label { text: strings.compress_container; font.pixelSize: 13; color: root.theme.textSecondary }
                                 HandComboBox {
                                     id: compContainer
                                     model: bridge.compressionContainers
@@ -1671,7 +1897,7 @@ ApplicationWindow {
 
                             RowLayout {
                                 spacing: 6
-                                Label { text: strings.compress_speed; font.pixelSize: 13; color: Material.secondaryTextColor }
+                                Label { text: strings.compress_speed; font.pixelSize: 13; color: root.theme.textSecondary }
                                 HandComboBox {
                                     id: compSpeed
                                     model: [
@@ -1698,7 +1924,7 @@ ApplicationWindow {
 
                             RowLayout {
                                 spacing: 6
-                                Label { text: strings.compress_parallel; font.pixelSize: 13; color: Material.secondaryTextColor }
+                                Label { text: strings.compress_parallel; font.pixelSize: 13; color: root.theme.textSecondary }
                                 SpinBox {
                                     id: compParallel
                                     from: 1; to: 8
@@ -1713,7 +1939,7 @@ ApplicationWindow {
 
                             RowLayout {
                                 spacing: 6
-                                Label { text: strings.compress_min_size; font.pixelSize: 13; color: Material.secondaryTextColor }
+                                Label { text: strings.compress_min_size; font.pixelSize: 13; color: root.theme.textSecondary }
                                 SpinBox {
                                     id: compMinSize
                                     from: 0; to: 100000
@@ -1774,9 +2000,8 @@ ApplicationWindow {
                             HandCheckBox {
                                 text: strings.compress_ten_bit
                                 visible: bridge.compressionCodec === "hevc"
-                                         && (bridge.compressionEncoder === "auto"
-                                             || bridge.compressionEncoder === "software"
-                                             || bridge.compressionEncoder === "kvazaar")
+                                         && (bridge.compressionEffectiveEncoder === "libx265"
+                                             || bridge.compressionEffectiveEncoder === "libkvazaar")
                                 checked: bridge.compressionTenBit
                                 ToolTip.text: strings.compress_ten_bit_tip
                                 ToolTip.visible: hovered
@@ -1786,9 +2011,7 @@ ApplicationWindow {
                             HandCheckBox {
                                 text: strings.compress_x265_tuning
                                 visible: bridge.compressionCodec === "hevc"
-                                         && (bridge.compressionEncoder === "auto"
-                                             || bridge.compressionEncoder === "software"
-                                             || bridge.compressionEncoder === "kvazaar")
+                                         && bridge.compressionEffectiveEncoder === "libx265"
                                 checked: bridge.compressionX265Tuning
                                 ToolTip.text: strings.compress_x265_tuning_tip
                                 ToolTip.visible: hovered
@@ -1800,9 +2023,10 @@ ApplicationWindow {
                         Label {
                             text: strings.compress_hint
                             font.pixelSize: 11
-                            color: Material.secondaryTextColor
+                            color: root.theme.textSecondary
                             wrapMode: Text.Wrap
                             Layout.fillWidth: true
+                        }
                         }
                     }
                 }
@@ -1810,9 +2034,10 @@ ApplicationWindow {
                 Rectangle {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
+                    Layout.minimumHeight: 150
                     radius: 12
-                    color: root.dark ? "#1d2329" : "#ffffff"
-                    border.color: root.dark ? "#2a323a" : "#e0e0e0"
+                    color: root.theme.cardBg
+                    border.color: root.theme.cardBorder
                     border.width: 1
                     ColumnLayout {
                         anchors.fill: parent
@@ -1824,7 +2049,7 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             Layout.preferredHeight: 36
                             radius: 6
-                            color: root.dark ? "#232b33" : "#f2f5f7"
+                            color: root.theme.tableHeaderBg
 
                             RowLayout {
                                 anchors.fill: parent
@@ -1832,13 +2057,13 @@ ApplicationWindow {
                                 anchors.rightMargin: 8
                                 spacing: 10
                                 Item { Layout.fillWidth: true; Layout.minimumWidth: 160 }
-                                Label { text: strings.h_status; Layout.preferredWidth: 110; font.pixelSize: 13; font.bold: true; color: root.dark ? "#cfd8dc" : "#37474f" }
-                                Label { text: strings.h_progress; Layout.preferredWidth: 150; font.pixelSize: 13; font.bold: true; color: root.dark ? "#cfd8dc" : "#37474f"; horizontalAlignment: Text.AlignHCenter }
-                                Label { text: strings.compress_col_result; Layout.preferredWidth: 190; font.pixelSize: 13; font.bold: true; color: root.dark ? "#cfd8dc" : "#37474f" }
+                                Label { text: strings.h_status; Layout.preferredWidth: 110; font.pixelSize: 13; font.bold: true; color: root.theme.tableHeaderText }
+                                Label { text: strings.h_progress; Layout.preferredWidth: 150; font.pixelSize: 13; font.bold: true; color: root.theme.tableHeaderText; horizontalAlignment: Text.AlignHCenter }
+                                Label { text: strings.compress_col_result; Layout.preferredWidth: 190; font.pixelSize: 13; font.bold: true; color: root.theme.tableHeaderText }
                                 Item { Layout.preferredWidth: 76 }
                             }
                         }
-                        Rectangle { Layout.fillWidth: true; height: 1; color: root.dark ? "#2a323a" : "#e0e0e0" }
+                        Rectangle { Layout.fillWidth: true; height: 1; color: root.theme.cardBorder }
 
                         ListView {
                             id: compList
@@ -1858,7 +2083,7 @@ ApplicationWindow {
                                     anchors.centerIn: parent
                                     text: strings.compress_empty
                                     font.pixelSize: 13
-                                    color: Material.secondaryTextColor
+                                    color: root.theme.textSecondary
                                 }
                             }
 
@@ -1889,7 +2114,7 @@ ApplicationWindow {
                                             visible: model.encoder.length > 0
                                             elide: Text.ElideRight
                                             font.pixelSize: 9
-                                            color: Material.secondaryTextColor
+                                            color: root.theme.textSecondary
                                         }
                                     }
                                     Item {
@@ -1902,7 +2127,7 @@ ApplicationWindow {
                                                 anchors.fill: parent
                                                 anchors.margins: 4
                                                 text: root.statusText(compRow.st)
-                                                color: "white"
+                                                color: root.theme.onAccent
                                                 font.pixelSize: 11
                                                 font.bold: true
                                                 horizontalAlignment: Text.AlignHCenter
@@ -1924,7 +2149,7 @@ ApplicationWindow {
                                             anchors.right: parent.right
                                             text: compRow.st === "done" ? "100%" : Math.round(model.progress) + "%"
                                             font.pixelSize: 10
-                                            color: Material.secondaryTextColor
+                                            color: root.theme.textSecondary
                                         }
                                     }
                                     Column {
@@ -1944,8 +2169,8 @@ ApplicationWindow {
                                                   : (model.error.length > 0 ? model.error : model.speed)
                                             font.pixelSize: 10
                                             color: compRow.st === "error"
-                                                   ? (root.dark ? "#ff8a80" : "#c62828")
-                                                   : Material.secondaryTextColor
+                                                   ? (root.theme.errorText)
+                                                   : root.theme.textSecondary
                                             elide: Text.ElideRight
                                             HoverHandler { id: compErrHover }
                                             ToolTip.text: model.error
@@ -1963,6 +2188,9 @@ ApplicationWindow {
                                             icon.width: 16; icon.height: 16
                                             visible: compRow.st === "waiting" || compRow.st === "analyzing" || compRow.st === "encoding"
                                             Accessible.name: strings.tip_cancel
+                                            ToolTip.text: strings.tip_cancel
+                                            ToolTip.visible: hovered
+                                            ToolTip.delay: 500
                                             onClicked: bridge.cancelCompressionItem(index)
                                         }
                                         HandToolButton {
@@ -1972,16 +2200,22 @@ ApplicationWindow {
                                             icon.width: 16; icon.height: 16
                                             visible: compRow.st === "done" && model.output !== ""
                                             Accessible.name: strings.tip_open
+                                            ToolTip.text: strings.tip_open
+                                            ToolTip.visible: hovered
+                                            ToolTip.delay: 500
                                             onClicked: bridge.openCompressionOutput(model.output)
                                         }
                                         HandToolButton {
                                             width: 32; height: 28
                                             display: AbstractButton.IconOnly
-                                            icon.source: root.iconPath("cancel")
+                                            icon.source: root.iconPath("trash")
                                             icon.width: 16; icon.height: 16
                                             visible: compRow.st === "done" || compRow.st === "error"
                                                      || compRow.st === "cancelled" || compRow.st === "skipped"
                                             Accessible.name: strings.ctx_remove
+                                            ToolTip.text: strings.ctx_remove
+                                            ToolTip.visible: hovered
+                                            ToolTip.delay: 500
                                             onClicked: bridge.removeCompressionItem(index)
                                         }
                                     }
@@ -1989,7 +2223,7 @@ ApplicationWindow {
                                 Rectangle {
                                     anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom
                                     height: 1
-                                    color: root.dark ? "#262e35" : "#ececec"
+                                    color: root.theme.divider
                                 }
                             }
                         }
@@ -2007,7 +2241,7 @@ ApplicationWindow {
                               + root.compErr + " " + strings.compress_stat_errors + " · "
                               + root.compSkip + " " + strings.compress_stat_skipped
                         font.pixelSize: 12
-                        color: Material.secondaryTextColor
+                        color: root.theme.textSecondary
                         elide: Text.ElideRight
                     }
                     HandButton {
@@ -2060,7 +2294,9 @@ ApplicationWindow {
                 anchors.fill: parent
                 anchors.margins: 16
                 clip: true
-                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                contentWidth: availableWidth
+                ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                ScrollBar.vertical.policy: ScrollBar.AsNeeded
 
                 ColumnLayout {
                     width: settingsScroll.availableWidth
@@ -2071,8 +2307,8 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         Layout.preferredHeight: appearanceCol.implicitHeight + 32
                         radius: 12
-                        color: root.dark ? "#1d2329" : "#ffffff"
-                        border.color: root.dark ? "#2a323a" : "#e0e0e0"
+                        color: root.theme.cardBg
+                        border.color: root.theme.cardBorder
                         border.width: 1
                         ColumnLayout {
                             id: appearanceCol
@@ -2125,8 +2361,8 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         Layout.preferredHeight: downloadsCol.implicitHeight + 32
                         radius: 12
-                        color: root.dark ? "#1d2329" : "#ffffff"
-                        border.color: root.dark ? "#2a323a" : "#e0e0e0"
+                        color: root.theme.cardBg
+                        border.color: root.theme.cardBorder
                         border.width: 1
                         ColumnLayout {
                             id: downloadsCol
@@ -2184,7 +2420,7 @@ ApplicationWindow {
                                 Label {
                                     id: outputFolderLabel
                                     text: bridge.outputFolder
-                                    color: Material.secondaryTextColor
+                                    color: root.theme.textSecondary
                                     font.pixelSize: 12
                                     elide: Text.ElideMiddle
                                     Layout.fillWidth: true
@@ -2198,8 +2434,8 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         Layout.preferredHeight: networkCol.implicitHeight + 32
                         radius: 12
-                        color: root.dark ? "#1d2329" : "#ffffff"
-                        border.color: root.dark ? "#2a323a" : "#e0e0e0"
+                        color: root.theme.cardBg
+                        border.color: root.theme.cardBorder
                         border.width: 1
                         ColumnLayout {
                             id: networkCol
@@ -2245,8 +2481,8 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         Layout.preferredHeight: cookiesCol.implicitHeight + 32
                         radius: 12
-                        color: root.dark ? "#1d2329" : "#ffffff"
-                        border.color: root.dark ? "#2a323a" : "#e0e0e0"
+                        color: root.theme.cardBg
+                        border.color: root.theme.cardBorder
                         border.width: 1
                         ColumnLayout {
                             id: cookiesCol
@@ -2267,7 +2503,7 @@ ApplicationWindow {
                             RowLayout {
                                 Layout.fillWidth: true
                                 spacing: 12
-                                Label { text: strings.cfg_browser; font.pixelSize: 13; color: Material.secondaryTextColor; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                                Label { text: strings.cfg_browser; font.pixelSize: 13; color: root.theme.textSecondary; Layout.fillWidth: true; wrapMode: Text.WordWrap }
                                 HandComboBox {
                                     id: browserCombo
                                     model: ["Chrome", "Chromium", "Edge", "Firefox", "Opera", "Vivaldi", "Brave"]
@@ -2284,7 +2520,7 @@ ApplicationWindow {
                                 Label {
                                     text: strings.cfg_cookies_file
                                     font.pixelSize: 12
-                                    color: Material.secondaryTextColor
+                                    color: root.theme.textSecondary
                                     Layout.preferredWidth: 220
                                     wrapMode: Text.WordWrap
                                 }
@@ -2306,7 +2542,7 @@ ApplicationWindow {
                             Label {
                                 text: strings.cfg_cookies_hint
                                 font.pixelSize: 11
-                                color: Material.secondaryTextColor
+                                color: root.theme.textSecondary
                                 wrapMode: Text.Wrap
                                 Layout.fillWidth: true
                             }
@@ -2319,8 +2555,8 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         Layout.preferredHeight: depsCol.implicitHeight + 32
                         radius: 12
-                        color: root.dark ? "#1d2329" : "#ffffff"
-                        border.color: root.dark ? "#2a323a" : "#e0e0e0"
+                        color: root.theme.cardBg
+                        border.color: root.theme.cardBorder
                         border.width: 1
 
                         ColumnLayout {
@@ -2337,7 +2573,7 @@ ApplicationWindow {
                                 Label {
                                     visible: bridge.depsBusy
                                     text: bridge.depsBusy ? strings.dep_busy : ""
-                                    color: "#ef6c00"
+                                    color: root.theme.busyText
                                     font.pixelSize: 12
                                     Layout.rightMargin: 6
                                     Layout.alignment: Qt.AlignVCenter
@@ -2356,7 +2592,7 @@ ApplicationWindow {
                             Label {
                                 text: strings.cfg_deps_tip
                                 font.pixelSize: 11
-                                color: Material.secondaryTextColor
+                                color: root.theme.textSecondary
                                 wrapMode: Text.Wrap
                                 Layout.fillWidth: true
                             }
@@ -2367,7 +2603,7 @@ ApplicationWindow {
                                 Label {
                                     text: strings.dep_ytdlp_channel
                                     font.pixelSize: 13
-                                    color: Material.secondaryTextColor
+                                    color: root.theme.textSecondary
                                     Layout.alignment: Qt.AlignVCenter
                                 }
                                 HandComboBox {
@@ -2396,7 +2632,7 @@ ApplicationWindow {
 
                                     Rectangle {
                                         width: 10; height: 10; radius: 5
-                                        color: modelData.found ? "#2e7d32" : "#c62828"
+                                        color: modelData.found ? root.theme.successText : root.theme.dangerFill
                                         Layout.alignment: Qt.AlignVCenter
                                     }
                                     Label {
@@ -2408,7 +2644,7 @@ ApplicationWindow {
                                     Label {
                                         text: modelData.version ? ("v" + modelData.version) : ""
                                         font.pixelSize: 11
-                                        color: Material.secondaryTextColor
+                                        color: root.theme.textSecondary
                                         Layout.preferredWidth: 96
                                         elide: Text.ElideRight
                                     }
@@ -2418,7 +2654,7 @@ ApplicationWindow {
                                               : ((modelData.required ? strings.dep_required : strings.dep_optional)
                                                  + " · " + (modelData.found ? strings.dep_found : strings.dep_missing))
                                         font.pixelSize: 11
-                                        color: modelData.found ? Material.secondaryTextColor : "#c62828"
+                                        color: modelData.found ? root.theme.textSecondary : root.theme.dangerFill
                                         Layout.fillWidth: true
                                         elide: Text.ElideRight
                                     }
@@ -2446,8 +2682,8 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         Layout.preferredHeight: aboutCol.implicitHeight + 32
                         radius: 12
-                        color: root.dark ? "#1d2329" : "#ffffff"
-                        border.color: root.dark ? "#2a323a" : "#e0e0e0"
+                        color: root.theme.cardBg
+                        border.color: root.theme.cardBorder
                         border.width: 1
                         ColumnLayout {
                             id: aboutCol
@@ -2462,7 +2698,7 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     text: strings.update_current + " " + bridge.appVersion
                                     font.pixelSize: 13
-                                    color: Material.secondaryTextColor
+                                    color: root.theme.textSecondary
                                 }
                                 HandButton {
                                     text: strings.update_check
@@ -2509,7 +2745,7 @@ ApplicationWindow {
                                 text: strings.update_notes
                                 font.pixelSize: 11
                                 font.bold: true
-                                color: Material.secondaryTextColor
+                                color: root.theme.textSecondary
                                 visible: bridge.updateNotes !== ""
                             }
                             ScrollView {
@@ -2555,12 +2791,12 @@ ApplicationWindow {
         width: Math.min(root.width - 40, toastText.implicitWidth + 36)
         height: 42
         radius: 21
-        color: root.dark ? "#2b3138" : "#32363c"
+        color: root.theme.toastBg
         z: 100
         Label {
             id: toastText
             anchors.centerIn: parent
-            color: "white"
+            color: root.theme.onAccent
             font.pixelSize: 13
             elide: Text.ElideRight
             width: parent.width - 24
@@ -2576,6 +2812,7 @@ ApplicationWindow {
             id: rowItem
             width: listView.width
             property bool editing: false
+            property bool cancelEdit: false
             property string st: model.status
             property string filterText: root.queueFilterText
             property bool matches: filterText.length === 0
@@ -2623,8 +2860,8 @@ ApplicationWindow {
                         Layout.preferredHeight: 40
                         Layout.alignment: Qt.AlignVCenter
                         radius: 4
-                        color: root.dark ? "#262e35" : "#eef0f3"
-                        border.color: root.dark ? "#2a323a" : "#dddddd"
+                        color: root.theme.thumbnailBg
+                        border.color: root.theme.thumbnailBorder
                         border.width: 1
                         Image {
                             anchors.fill: parent
@@ -2668,8 +2905,25 @@ ApplicationWindow {
                             font.pixelSize: 11
                             selectByMouse: true
                             onVisibleChanged: if (visible) { text = model.url; forceActiveFocus() }
-                            onEditingFinished: if (rowItem.editing) { bridge.editUrl(index, text); rowItem.editing = false }
-                            Keys.onEscapePressed: rowItem.editing = false
+                            onEditingFinished: {
+                                if (rowItem.cancelEdit) {
+                                    rowItem.cancelEdit = false
+                                    return
+                                }
+                                if (!rowItem.editing)
+                                    return
+                                if (bridge.editUrl(index, text)) {
+                                    rowItem.editing = false
+                                } else {
+                                    // Mantém o campo aberto para o usuário
+                                    // corrigir URL duplicada/inválida.
+                                    Qt.callLater(function() { editField.forceActiveFocus() })
+                                }
+                            }
+                            Keys.onEscapePressed: {
+                                rowItem.cancelEdit = true
+                                rowItem.editing = false
+                            }
                         }
 
                         Label {
@@ -2678,7 +2932,7 @@ ApplicationWindow {
                             text: model.url
                             elide: Text.ElideMiddle
                             font.pixelSize: 11
-                            color: Material.secondaryTextColor
+                            color: root.theme.textSecondary
                             MouseArea {
                                 anchors.fill: parent
                                 cursorShape: Qt.PointingHandCursor
@@ -2702,7 +2956,7 @@ ApplicationWindow {
                             text: root.statusText(rowItem.st)
                             font.pixelSize: 11
                             font.bold: true
-                            color: "white"
+                            color: root.theme.onAccent
                             horizontalAlignment: Text.AlignHCenter
                             verticalAlignment: Text.AlignVCenter
                             elide: Text.ElideRight
@@ -2720,7 +2974,7 @@ ApplicationWindow {
                         text: model.error
                         elide: Text.ElideRight
                         font.pixelSize: 11
-                        color: root.dark ? "#ff8a80" : "#c62828"
+                        color: root.theme.errorText
                         MouseArea {
                             anchors.fill: parent
                             cursorShape: Qt.PointingHandCursor
@@ -2743,7 +2997,7 @@ ApplicationWindow {
                         anchors.right: parent.right
                         text: rowItem.st === "done" ? "100%" : Math.round(model.progress) + "%"
                         font.pixelSize: 11
-                        color: Material.secondaryTextColor
+                        color: root.theme.textSecondary
                     }
                 }
 
@@ -2752,7 +3006,7 @@ ApplicationWindow {
                     Layout.alignment: Qt.AlignVCenter
                     spacing: 2
                     Label { width: parent.width; text: model.speed; font.pixelSize: 11; elide: Text.ElideRight }
-                    Label { width: parent.width; text: model.size; font.pixelSize: 11; color: Material.secondaryTextColor; elide: Text.ElideRight }
+                    Label { width: parent.width; text: model.size; font.pixelSize: 11; color: root.theme.textSecondary; elide: Text.ElideRight }
                 }
 
                 Item {
@@ -2819,7 +3073,7 @@ ApplicationWindow {
                 anchors.right: parent.right
                 anchors.bottom: parent.bottom
                 height: 1
-                color: root.dark ? "#262e35" : "#ececec"
+                color: root.theme.divider
             }
         }
     }
@@ -2834,8 +3088,7 @@ ApplicationWindow {
         x: (root.width - width) / 2
         y: (root.height - height) / 2
         standardButtons: Dialog.NoButton
-        contentItem: ColumnLayout {
-            spacing: 10
+        contentItem: DialogSurface {
             Label {
                 Layout.fillWidth: true
                 text: strings.compress_best_saving + "   ≈ -" + root.estimateSaving("av1") + "%"
@@ -2856,7 +3109,7 @@ ApplicationWindow {
                 text: strings.compress_estimate_tip
                 wrapMode: Text.Wrap
                 font.pixelSize: 11
-                color: Material.secondaryTextColor
+                color: root.theme.textSecondary
             }
         }
         footer: DialogButtonBox {
@@ -2877,13 +3130,13 @@ ApplicationWindow {
         width: 540
         x: (root.width - width) / 2
         y: (root.height - height) / 2
-        contentItem: ColumnLayout {
+        contentItem: DialogSurface {
             Label {
                 Layout.fillWidth: true
                 text: root.errorText
                 wrapMode: Text.Wrap
                 font.pixelSize: 12
-                color: root.dark ? "#ff8a80" : "#c62828"
+                color: root.theme.errorText
             }
             HandButton {
                 text: strings.dlg_error_copy
@@ -2909,10 +3162,12 @@ ApplicationWindow {
         width: 420
         x: (root.width - width) / 2
         y: (root.height - height) / 2
-        contentItem: Label {
-            width: confirmCancel.availableWidth
-            text: strings.confirm_cancel_text
-            wrapMode: Text.Wrap
+        contentItem: DialogSurface {
+            Label {
+                Layout.fillWidth: true
+                text: strings.confirm_cancel_text
+                wrapMode: Text.Wrap
+            }
         }
         footer: DialogButtonBox {
             HandButton {
@@ -2937,10 +3192,12 @@ ApplicationWindow {
         width: 420
         x: (root.width - width) / 2
         y: (root.height - height) / 2
-        contentItem: Label {
-            width: confirmClear.availableWidth
-            text: strings.confirm_clear_text
-            wrapMode: Text.Wrap
+        contentItem: DialogSurface {
+            Label {
+                Layout.fillWidth: true
+                text: strings.confirm_clear_text
+                wrapMode: Text.Wrap
+            }
         }
         footer: DialogButtonBox {
             HandButton {
@@ -2966,8 +3223,7 @@ ApplicationWindow {
         x: (root.width - width) / 2
         y: (root.height - height) / 2
         standardButtons: Dialog.NoButton
-        contentItem: ColumnLayout {
-            spacing: 12
+        contentItem: DialogSurface {
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 12
@@ -3015,8 +3271,7 @@ ApplicationWindow {
         x: (root.width - width) / 2
         y: (root.height - height) / 2
         standardButtons: Dialog.NoButton
-        contentItem: ColumnLayout {
-            spacing: 10
+        contentItem: DialogSurface {
             Label {
                 Layout.fillWidth: true
                 text: strings.dlg_deps_body
@@ -3033,7 +3288,7 @@ ApplicationWindow {
                     }
                     return parts.join("\n")
                 }
-                color: root.dark ? "#ff8a80" : "#c62828"
+                color: root.theme.errorText
                 font.pixelSize: 12
             }
             TerminalPanel {
@@ -3075,8 +3330,7 @@ ApplicationWindow {
         x: (root.width - width) / 2
         y: (root.height - height) / 2
         standardButtons: Dialog.NoButton
-        contentItem: ColumnLayout {
-            spacing: 10
+        contentItem: DialogSurface {
             Label {
                 Layout.fillWidth: true
                 wrapMode: Text.Wrap
@@ -3088,7 +3342,7 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 wrapMode: Text.Wrap
                 font.pixelSize: 11
-                color: Material.secondaryTextColor
+                color: root.theme.textSecondary
                 text: strings.dep_confirm_detail
             }
         }
@@ -3108,6 +3362,41 @@ ApplicationWindow {
                 text: strings.confirm_cancel
                 DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
                 onClicked: confirmDeps.close()
+            }
+        }
+    }
+
+    // ------------------------------------------------ confirmação de fechamento
+    Dialog {
+        id: confirmClose
+        parent: root.contentItem
+        modal: true
+        title: strings.confirm_close_title
+        width: 460
+        x: (root.width - width) / 2
+        y: (root.height - height) / 2
+        standardButtons: Dialog.NoButton
+        contentItem: DialogSurface {
+            Label {
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                text: strings.confirm_close_text
+            }
+        }
+        footer: DialogButtonBox {
+            HandButton {
+                text: strings.dlg_error_close
+                DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
+                onClicked: {
+                    confirmClose.close()
+                    root.allowClose = true
+                    root.close()
+                }
+            }
+            HandButton {
+                text: strings.confirm_cancel
+                DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
+                onClicked: confirmClose.close()
             }
         }
     }

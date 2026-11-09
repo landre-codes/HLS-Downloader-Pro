@@ -358,30 +358,104 @@ class DownloadWorker(QObject):
         return []
 
     # ---------------------------------------------------- download via ffmpeg
+    def _ffmpeg_cookie_header(self) -> str:
+        """Converte cookies.txt Netscape em ``name=value; ...`` para ffmpeg."""
+        if not self.cookies.startswith("file:"):
+            return ""
+        path = self.cookies[len("file:"):].strip()
+        if not path or not os.path.isfile(path):
+            return ""
+        pairs: list[str] = []
+        try:
+            with open(path, encoding="utf-8", errors="ignore") as handle:
+                for line in handle:
+                    if not line.strip() or line.startswith("#"):
+                        continue
+                    parts = line.rstrip("\n").split("\t")
+                    if len(parts) >= 7 and parts[5] and parts[6]:
+                        pairs.append(f"{parts[5]}={parts[6]}")
+        except OSError:
+            return ""
+        return "; ".join(pairs)
+
     def _run_ffmpeg(self, media_url: str) -> tuple[bool, str]:
-        """Baixa um ``.m3u8`` com ffmpeg, copiando o codec (fallback final)."""
+        """Fallback final via ffmpeg, respeitando modo/contêiner/referer."""
         ffmpeg = which("ffmpeg")
         if not ffmpeg:
             return False, self._t("err_ffmpeg_missing")
 
         digest = url_digest(media_url)
-        out_path = os.path.join(self.outdir, f"hls_{digest}.mp4")
-        if os.path.exists(out_path):
+        audio_only = self.format_mode == "audio_only"
+        if audio_only:
+            container = (
+                self.container if self.container in AUDIO_CONTAINERS
+                else DEFAULT_AUDIO_CONTAINER
+            )
+        else:
+            container = self.container or DEFAULT_VIDEO_CONTAINER
+            if container not in ("mp4", "mkv", "webm", "mov", "avi"):
+                container = "mp4"
+        prefix = "vid" if self.naming_mode == "id" else "hls"
+        out_path = os.path.join(self.outdir, f"{prefix}_{digest}.{container}")
+        if os.path.exists(out_path) and os.path.getsize(out_path) > 0:
             return True, out_path  # já baixado antes
 
         duration = probe_duration(media_url)
+        http_args = ["-user_agent", USER_AGENT]
+        if self.url.startswith(("http://", "https://")):
+            http_args += ["-referer", self.url]
+        cookie_header = self._ffmpeg_cookie_header()
+        if cookie_header:
+            http_args += ["-cookies", cookie_header]
 
-        # copiar direto; re-codificar áudio; re-codificar tudo.
-        recipes = [
-            ["-c", "copy", "-bsf:a", "aac_adtstoasc"],
-            ["-c:v", "copy", "-c:a", "aac", "-bsf:a", "aac_adtstoasc"],
-            ["-c:v", "libx264", "-preset", "veryfast", "-c:a", "aac"],
-        ]
         last_error = "desconhecido"
+        if audio_only:
+            codec = {
+                "mp3": "libmp3lame", "m4a": "aac", "wav": "pcm_s16le",
+                "flac": "flac", "opus": "libopus",
+            }.get(container, "aac")
+            cmd = (
+                [ffmpeg, "-y", "-hide_banner", "-loglevel", "error"]
+                + http_args
+                + ["-i", media_url, "-vn", "-c:a", codec, out_path]
+            )
+            ok, last_error = self._run_process(
+                cmd, duration=duration, is_ffmpeg=True
+            )
+            if not ok:
+                try:
+                    os.remove(out_path)
+                except OSError:
+                    pass
+            return ok, out_path if ok else last_error
+
+        # Copiar direto; recodificar áudio; recodificar tudo. Em "apenas
+        # vídeo" todas as receitas usam -an.
+        video_codec = "libvpx-vp9" if container == "webm" else "libx264"
+        audio_codec = "libopus" if container == "webm" else "aac"
+        if self.format_mode == "video_only":
+            recipes = [
+                ["-c", "copy", "-an"],
+                ["-c:v", "copy", "-an"],
+                ["-c:v", video_codec, "-preset", "veryfast", "-an"],
+            ]
+        else:
+            bsf = ["-bsf:a", "aac_adtstoasc"] if container != "webm" else []
+            recipes = [
+                ["-c", "copy"] + bsf,
+                ["-c:v", "copy", "-c:a", audio_codec] + bsf,
+                ["-c:v", video_codec, "-preset", "veryfast", "-c:a", audio_codec],
+            ]
         for recipe in recipes:
             if self._cancel:
                 return False, self._t("err_cancelled")
-            cmd = [ffmpeg, "-y", "-hide_banner", "-i", media_url] + recipe + [out_path]
+            cmd = (
+                [ffmpeg, "-y", "-hide_banner", "-loglevel", "error"]
+                + http_args
+                + ["-i", media_url]
+                + recipe
+                + [out_path]
+            )
             ok, last_error = self._run_process(cmd, duration=duration, is_ffmpeg=True)
             if ok:
                 return True, out_path
