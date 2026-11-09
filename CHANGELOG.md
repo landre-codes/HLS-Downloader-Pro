@@ -1,6 +1,31 @@
 # Changelog
 
 Todas as mudanças relevantes deste projeto são documentadas aqui.
+
+## [Não lançado] — correções P0 da auditoria
+
+### Corrigido
+- **Threading**: sinais de download/compressão agora são entregues por slots
+  `QObject` na thread da GUI (antes, lambdas mutavam modelo/QML na thread do
+  worker).
+- **Encerramento seguro**: threads que não respondem ao cancelamento não são
+  mais destruídas vivas (evita `0xC0000409`); há espera, terminate e saída de
+  emergência sem destruir QThreads.
+- **Instalação do ffmpeg**: URL do Windows corrigida para o build
+  `essentials` e fallback para winget/choco/scoop; macOS usa a API atual do
+  evermeet em vez do endpoint removido.
+- **Download Individual**: fila própria, não inicia mais o lote inteiro;
+  valida o link, não limpa o campo em erro e ganhou cancelar/retentar/detalhes
+  de erro.
+- **Compressão no download**: o original é preservado, todas as trilhas
+  (áudio/legendas) são mapeadas e o arquivo leva sufixo `_h264`/`_h265`.
+- **Nomes/qualidade**: modo título inclui o ID para evitar colisão; qualidade
+  e “apenas vídeo” não caem mais em formatos que violam a escolha.
+- **Configurações**: INI corrompido não derruba o app; pasta vazia usa o
+  padrão em vez do diretório de trabalho.
+- **Janela inicial**: é limitada à área disponível da tela; geometria normal
+  é preservada ao maximizar.
+- **Dependências**: instalar/atualizar agora pede confirmação.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/)
 e o versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 

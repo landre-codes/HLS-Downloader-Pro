@@ -342,10 +342,35 @@ def _clamp_geometry(x: int, y: int, w: int, h: int) -> tuple[int, int, int, int]
     return None
 
 
+def _fit_window_to_screen(window) -> None:
+    """Garante que a janela inicial (mesmo sem settings) caiba na tela.
+
+    O QML usa 1160x800 por padrão; em telas 1366x768/1024x768 isso fica
+    maior que a área útil e esconde a barra de ações. Centralizamos e
+    reduzimos o tamanho quando necessário.
+    """
+    screen = window.screen() or QGuiApplication.primaryScreen()
+    if screen is None:
+        return
+    area = screen.availableGeometry()
+    width = min(max(1, window.width()), area.width())
+    height = min(max(1, window.height()), area.height())
+    x = window.x()
+    y = window.y()
+    if x == 0 and y == 0:
+        x = area.x() + (area.width() - width) // 2
+        y = area.y() + (area.height() - height) // 2
+    else:
+        x = max(area.x(), min(x, area.x() + area.width() - width))
+        y = max(area.y(), min(y, area.y() + area.height() - height))
+    window.setGeometry(x, y, width, height)
+
+
 def _restore_geometry(window, settings: QSettings) -> None:
-    """Aplica a geometria salva (validando que ainda está em alguma tela)."""
+    """Aplica a geometria salva ou encaixa a janela inicial na tela."""
     raw = settings.value("window/geometry", "", type=str)
     maximized = settings.value("window/maximized", False, type=bool)
+    restored = False
     if raw:
         parts = raw.split(",")
         if len(parts) == 4:
@@ -357,6 +382,9 @@ def _restore_geometry(window, settings: QSettings) -> None:
                 geometry = _clamp_geometry(x, y, w, h)
                 if geometry:
                     window.setGeometry(*geometry)
+                    restored = True
+    if not restored:
+        _fit_window_to_screen(window)
     if maximized:
         window.showMaximized()
     else:
@@ -488,9 +516,6 @@ def main() -> int:
     except OSError:
         pass
 
-    # Miniaturas não ficam salvas no disco.
-    app.aboutToQuit.connect(cleanup_thumbs)
-
     outdir = default_output_folder()
     model = DownloadModel([])
     manager = QueueManager(model, outdir=outdir, concurrency=3)
@@ -515,7 +540,9 @@ def main() -> int:
         _SINGLE.activated.connect(lambda: _raise_window(window))
 
     # Encerramento gracioso: cancela downloads/playlist/instalação e aguarda.
+    # A limpeza das miniaturas só roda depois que os workers pararem.
     app.aboutToQuit.connect(bridge.shutdown)
+    app.aboutToQuit.connect(cleanup_thumbs)
 
     return app.exec()
 

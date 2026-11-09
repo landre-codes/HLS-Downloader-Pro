@@ -6,11 +6,12 @@ import os
 
 import pytest
 from PySide6.QtCore import QUrl
-from PySide6.QtQml import QQmlApplicationEngine
+from PySide6.QtQml import QQmlApplicationEngine, QQmlExpression
 
 from hlsdl.bridge import Bridge
 from hlsdl.config import qml_path
 from hlsdl.deps import SPECS, DependencyManager
+from hlsdl.downloader import DownloadWorker
 from hlsdl.model import DownloadModel
 from hlsdl.queue import QueueManager
 
@@ -42,3 +43,38 @@ def test_qml_loads(qapp, fake_deps):
     engine.rootContext().setContextProperty("bridge", bridge)
     engine.load(QUrl.fromLocalFile(qml_path()))
     assert engine.rootObjects(), "main.qml não carregou"
+
+
+class _NoopWorker(DownloadWorker):
+    def run(self) -> None:  # type: ignore[override]
+        self.statusChanged.emit("analyzing")
+        self.finished.emit()
+
+
+def test_qml_single_download_validates_and_isolates(qapp, fake_deps):
+    model = DownloadModel([])
+    manager = QueueManager(model, outdir="out", worker_factory=_NoopWorker)
+    manager.addText("https://lote/1")
+    bridge = Bridge(manager, "out", deps=fake_deps)
+    engine = QQmlApplicationEngine()
+    engine.rootContext().setContextProperty("downloadModel", model)
+    engine.rootContext().setContextProperty("compressionModel", bridge.compression.model)
+    engine.rootContext().setContextProperty("bridge", bridge)
+    engine.load(QUrl.fromLocalFile(qml_path()))
+    root = engine.rootObjects()[0]
+    ctx = engine.contextForObject(root)
+
+    def ev(expr):
+        return QQmlExpression(ctx, root, expr).evaluate()[0]
+
+    ev("singleUrl.text = 'isto-nao-e-url'")
+    ev("root.startSingle()")
+    assert ev("singleUrl.text") == "isto-nao-e-url"
+    assert len(bridge.single_manager.items) == 0
+
+    ev("singleUrl.text = 'https://video/1'")
+    ev("root.startSingle()")
+    assert ev("singleUrl.text") == ""
+    assert len(bridge.single_manager.items) == 1
+    assert manager.items[0]["status"].value == "waiting"
+    bridge.shutdown()

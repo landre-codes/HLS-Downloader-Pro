@@ -35,6 +35,19 @@ def test_apply_ui_scale_env(monkeypatch):
     assert os.environ["QT_SCALE_FACTOR"] == "1.20"
 
 
+def test_fit_window_to_screen(qapp):
+    from PySide6.QtGui import QGuiApplication, QWindow
+
+    from hlsdl.app import _fit_window_to_screen
+
+    window = QWindow()
+    window.setGeometry(0, 0, 9999, 9999)
+    _fit_window_to_screen(window)
+    available = QGuiApplication.primaryScreen().availableGeometry()
+    assert window.width() <= available.width()
+    assert window.height() <= available.height()
+
+
 def test_clamp_geometry_fits_screen(qapp):
     from PySide6.QtGui import QGuiApplication
 

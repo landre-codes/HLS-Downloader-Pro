@@ -21,7 +21,8 @@ def test_format_args_video_audio():
 
 def test_format_args_video_only():
     args = _worker("video_only")._format_args()
-    assert "bv*/b" in args and "-x" not in args
+    # Não pode cair no formato combinado /b (que traz áudio).
+    assert "bv*" in args and "+ba" not in " ".join(args) and "-x" not in args
 
 
 def test_format_args_audio_only():
@@ -36,9 +37,20 @@ def test_format_modes_constant():
 def test_quality_limits_height():
     w = DownloadWorker("https://x.com/v", "out", format_mode="video_audio",
                        quality="720", container="mkv")
-    joined = " ".join(w._format_args())
+    args = w._format_args()
+    joined = " ".join(args)
     assert "height<=720" in joined
-    assert "mkv" in w._format_args()
+    # O fallback também precisa respeitar a altura escolhida.
+    selector = args[args.index("-f") + 1]
+    assert selector.count("height<=720") == 2
+    assert "mkv" in args
+
+
+def test_quality_limits_video_only_fallback():
+    w = DownloadWorker("https://x.com/v", "out", format_mode="video_only",
+                       quality="720")
+    args = w._format_args()
+    assert args[args.index("-f") + 1] == "bv*[height<=720]"
 
 
 def test_quality_best_has_no_height_filter():
@@ -83,6 +95,8 @@ def test_naming_mode_title_template():
     w = DownloadWorker("https://x.com/v", "out", naming_mode="title")
     _, template = w._output_template("https://x.com/v")
     assert "%(title)" in template
+    # ID evita colisão entre vídeos diferentes com o mesmo título.
+    assert "%(id)s" in template
 
 
 # ---------------------------------------------------------------- compressão
@@ -100,6 +114,17 @@ def test_compress_runs_ffmpeg_h264(monkeypatch, tmp_path):
                        compress_level="strong", container="mp4")
     monkeypatch.setattr("hlsdl.downloader.which", lambda name: "/usr/bin/ffmpeg")
     monkeypatch.setattr("hlsdl.downloader.probe_duration", lambda p: 10.0)
+    monkeypatch.setattr(
+        "hlsdl.downloader.probe_media",
+        lambda p: {
+            "streams": [
+                {"codec_type": "video", "codec_name": "h264"},
+                {"codec_type": "audio", "codec_name": "aac"},
+                {"codec_type": "subtitle", "codec_name": "subrip"},
+            ],
+            "format": {"duration": "1"},
+        },
+    )
     captured = {}
 
     def fake_run(cmd, duration=None, is_ffmpeg=False):
@@ -112,9 +137,12 @@ def test_compress_runs_ffmpeg_h264(monkeypatch, tmp_path):
     out = w._maybe_compress(str(src))
     assert out is not None and out.endswith("_h264.mp4")
     assert os.path.exists(out)
-    assert not src.exists()  # original substituído
-    assert "libx264" in captured["cmd"]
-    assert "-crf" in captured["cmd"] and "28" in captured["cmd"]
+    assert src.exists()  # original preservado (sem perda de dados)
+    cmd = captured["cmd"]
+    assert "libx264" in cmd
+    assert "-crf" in cmd and "28" in cmd
+    # Todas as trilhas relevantes devem ser mapeadas, não só a padrão.
+    assert "-map" in cmd and "0:a?" in cmd and "0:s:0" in cmd
 
 
 def test_compress_keeps_original_on_failure(monkeypatch, tmp_path):
@@ -197,7 +225,7 @@ def test_bridge_last_item_scoped_to_single(qapp, tmp_path, fake_deps):
     # Já o download individual deve aparecer.
     bridge.downloadSingle("https://single/1")
     assert bridge.lastItem["url"] == "https://single/1"
-    manager.shutdown(timeout=3)
+    bridge.shutdown()
 
 
 def test_queue_pause_resume_state(qapp):
@@ -237,13 +265,19 @@ def test_queue_becomes_idle_after_finish(qapp):
 def test_download_single_adds_and_starts(qapp, tmp_path, fake_deps):
     model = DownloadModel([])
     manager = QueueManager(model, outdir="out", worker_factory=_NoopWorker)
+    manager.addText("https://lote/1")
     bridge = Bridge(manager, "out", settings_path=str(tmp_path / "s.ini"), deps=fake_deps)
     bridge.setFormatMode("audio_only")
-    bridge.downloadSingle("https://x.com/v")
+    assert bridge.downloadSingle("https://x.com/v") is True
+    # A fila individual é separada do lote: o item do lote continua parado.
     assert model.rowCount() == 1
-    assert manager.items[0]["url"] == "https://x.com/v"
-    assert manager.isActive is True
-    manager.shutdown(timeout=3)
+    assert manager.items[0]["url"] == "https://lote/1"
+    assert manager.items[0]["status"].value == "waiting"
+    assert bridge.single_manager.items[0]["url"] == "https://x.com/v"
+    assert bridge.single_manager.isActive is True
+    assert bridge.downloadSingle("isto-nao-e-url") is False
+    assert len(bridge.single_manager.items) == 1
+    bridge.shutdown()
 
 
 class _NoopWorker(DownloadWorker):

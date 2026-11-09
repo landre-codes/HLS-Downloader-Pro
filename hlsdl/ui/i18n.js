@@ -26,6 +26,7 @@ var dict = {
         btn_download_now: "Baixar agora",
         single_progress: "Progresso",
         single_idle: "Nenhum download individual iniciado ainda.",
+        single_busy: "Já existe um download individual em andamento. Cancele-o ou aguarde.",
 
         fmt_label: "Formato:",
         fmt_video_audio: "Vídeo + áudio",
@@ -139,6 +140,9 @@ var dict = {
         dep_update: "Atualizar",
         dep_recheck: "Verificar novamente",
         dep_update_all: "Atualizar tudo",
+        dep_confirm_task: "Instalar/atualizar {name} agora?",
+        dep_confirm_all: "Atualizar todas as ferramentas agora?",
+        dep_confirm_detail: "Serão executados comandos do gerenciador de pacotes e downloads. É necessária conexão com a internet.",
         dep_bundled: "incluído no app",
         dep_downloading: "baixando…",
         dep_busy: "Instalando… aguarde",
@@ -205,6 +209,7 @@ var dict = {
         btn_download_now: "Download now",
         single_progress: "Progress",
         single_idle: "No single download started yet.",
+        single_busy: "An individual download is already in progress. Cancel it or wait.",
 
         fmt_label: "Format:",
         fmt_video_audio: "Video + audio",
@@ -318,6 +323,9 @@ var dict = {
         dep_update: "Update",
         dep_recheck: "Check again",
         dep_update_all: "Update all",
+        dep_confirm_task: "Install/update {name} now?",
+        dep_confirm_all: "Update all tools now?",
+        dep_confirm_detail: "Package-manager commands and downloads will run. An internet connection is required.",
         dep_bundled: "bundled with the app",
         dep_downloading: "downloading…",
         dep_busy: "Installing… please wait",
@@ -384,6 +392,7 @@ var dict = {
         btn_download_now: "Descargar ahora",
         single_progress: "Progreso",
         single_idle: "Todavía no se ha iniciado ninguna descarga individual.",
+        single_busy: "Ya hay una descarga individual en curso. Cancélala o espera.",
 
         fmt_label: "Formato:",
         fmt_video_audio: "Vídeo + audio",
@@ -497,6 +506,9 @@ var dict = {
         dep_update: "Actualizar",
         dep_recheck: "Comprobar de nuevo",
         dep_update_all: "Actualizar todo",
+        dep_confirm_task: "¿Instalar/actualizar {name} ahora?",
+        dep_confirm_all: "¿Actualizar todas las herramientas ahora?",
+        dep_confirm_detail: "Se ejecutarán comandos del gestor de paquetes y descargas. Se requiere conexión a internet.",
         dep_bundled: "incluido en la app",
         dep_downloading: "descargando…",
         dep_busy: "Instalando… espera",
@@ -563,6 +575,7 @@ var dict = {
         btn_download_now: "Scarica ora",
         single_progress: "Avanzamento",
         single_idle: "Nessun download singolo avviato.",
+        single_busy: "È già in corso un download individuale. Annullalo o attendi.",
 
         fmt_label: "Formato:",
         fmt_video_audio: "Video + audio",
@@ -676,6 +689,9 @@ var dict = {
         dep_update: "Aggiorna",
         dep_recheck: "Controlla di nuovo",
         dep_update_all: "Aggiorna tutto",
+        dep_confirm_task: "Installare/aggiornare {name} ora?",
+        dep_confirm_all: "Aggiornare tutti gli strumenti ora?",
+        dep_confirm_detail: "Verranno eseguiti comandi del gestore di pacchetti e download. È necessaria una connessione a internet.",
         dep_bundled: "incluso nell'app",
         dep_downloading: "download…",
         dep_busy: "Installazione… attendere",
@@ -742,6 +758,7 @@ var dict = {
         btn_download_now: "Télécharger maintenant",
         single_progress: "Progression",
         single_idle: "Aucun téléchargement simple démarré.",
+        single_busy: "Un téléchargement individuel est déjà en cours. Annulez-le ou attendez.",
 
         fmt_label: "Format :",
         fmt_video_audio: "Vidéo + audio",
@@ -855,6 +872,9 @@ var dict = {
         dep_update: "Mettre à jour",
         dep_recheck: "Vérifier à nouveau",
         dep_update_all: "Tout mettre à jour",
+        dep_confirm_task: "Installer/mettre à jour {name} maintenant ?",
+        dep_confirm_all: "Mettre à jour tous les outils maintenant ?",
+        dep_confirm_detail: "Des commandes du gestionnaire de paquets et des téléchargements seront exécutés. Une connexion internet est requise.",
         dep_bundled: "inclus dans l'app",
         dep_downloading: "téléchargement…",
         dep_busy: "Installation… veuillez patienter",
@@ -921,6 +941,7 @@ var dict = {
         btn_download_now: "Скачать сейчас",
         single_progress: "Прогресс",
         single_idle: "Одиночная загрузка ещё не запускалась.",
+        single_busy: "Индивидуальная загрузка уже выполняется. Отмените её или подождите.",
 
         fmt_label: "Формат:",
         fmt_video_audio: "Видео + аудио",
@@ -1034,6 +1055,9 @@ var dict = {
         dep_update: "Обновить",
         dep_recheck: "Проверить снова",
         dep_update_all: "Обновить всё",
+        dep_confirm_task: "Установить/обновить {name} сейчас?",
+        dep_confirm_all: "Обновить все инструменты сейчас?",
+        dep_confirm_detail: "Будут выполнены команды менеджера пакетов и загрузки. Требуется подключение к интернету.",
         dep_bundled: "встроено в приложение",
         dep_downloading: "загрузка…",
         dep_busy: "Установка… подождите",
@@ -1100,6 +1124,7 @@ var dict = {
         btn_download_now: "今すぐダウンロード",
         single_progress: "進捗",
         single_idle: "単体ダウンロードはまだ開始されていません。",
+        single_busy: "個別ダウンロードが既に進行中です。キャンセルするか待ってください。",
 
         fmt_label: "形式:",
         fmt_video_audio: "映像 + 音声",
@@ -1213,6 +1238,9 @@ var dict = {
         dep_update: "更新",
         dep_recheck: "再確認",
         dep_update_all: "すべて更新",
+        dep_confirm_task: "{name} を今すぐインストール/更新しますか？",
+        dep_confirm_all: "すべてのツールを今すぐ更新しますか？",
+        dep_confirm_detail: "パッケージマネージャーのコマンドとダウンロードが実行されます。インターネット接続が必要です。",
         dep_bundled: "アプリに同梱",
         dep_downloading: "ダウンロード中…",
         dep_busy: "インストール中… お待ちください",
@@ -1279,6 +1307,7 @@ var dict = {
         btn_download_now: "立即下载",
         single_progress: "进度",
         single_idle: "尚未开始单个下载。",
+        single_busy: "已有单个下载正在进行。请取消或等待。",
 
         fmt_label: "格式：",
         fmt_video_audio: "视频 + 音频",
@@ -1392,6 +1421,9 @@ var dict = {
         dep_update: "更新",
         dep_recheck: "重新检查",
         dep_update_all: "全部更新",
+        dep_confirm_task: "现在安装/更新 {name}？",
+        dep_confirm_all: "现在更新所有工具？",
+        dep_confirm_detail: "将运行包管理器命令并下载文件。需要联网。",
         dep_bundled: "应用已内置",
         dep_downloading: "下载中…",
         dep_busy: "安装中… 请稍候",
@@ -1927,6 +1959,7 @@ var extraTips = {
         terminal_copy: "Copiar saída",
         terminal_empty: "A saída das atualizações aparecerá aqui.",
         filter_tip: "Filtra por parte do título ou da URL. Ex.: “documentário” ou “youtu.be/abc”.",
+        codec_keep_original: "Gera um arquivo com sufixo _h264/_h265; o original é mantido.",
         naming_tip: "ID estável: vid_9f3c2a81b7 (mesmo link = mesmo nome). Título da página: “Meu vídeo (4K)” (legível, mas pode mudar)."
     },
     "en": {
@@ -1941,6 +1974,7 @@ var extraTips = {
         terminal_copy: "Copy output",
         terminal_empty: "Update output will appear here.",
         filter_tip: "Filters by part of the title or URL. E.g. “documentary” or “youtu.be/abc”.",
+        codec_keep_original: "Creates a file with an _h264/_h265 suffix; the original is kept.",
         naming_tip: "Stable ID: vid_9f3c2a81b7 (same link = same name). Page title: “My video (4K)” (readable, but may change)."
     },
     "es": {
@@ -1955,6 +1989,7 @@ var extraTips = {
         terminal_copy: "Copiar salida",
         terminal_empty: "La salida de las actualizaciones aparecerá aquí.",
         filter_tip: "Filtra por parte del título o de la URL. Ej.: “documental” o “youtu.be/abc”.",
+        codec_keep_original: "Crea un archivo con sufijo _h264/_h265; el original se conserva.",
         naming_tip: "ID estable: vid_9f3c2a81b7 (mismo enlace = mismo nombre). Título: “Mi vídeo (4K)” (legible, pero puede cambiar)."
     },
     "it": {
@@ -1969,6 +2004,7 @@ var extraTips = {
         terminal_copy: "Copiar output",
         terminal_empty: "L'output degli aggiornamenti apparirà qui.",
         filter_tip: "Filtra per parte del titolo o dell'URL. Es.: “documentario” o “youtu.be/abc”.",
+        codec_keep_original: "Crea un file con suffisso _h264/_h265; l'originale viene mantenuto.",
         naming_tip: "ID stabile: vid_9f3c2a81b7 (stesso link = stesso nome). Titolo: “Il mio video (4K)” (leggibile, ma può cambiare)."
     },
     "fr": {
@@ -1983,6 +2019,7 @@ var extraTips = {
         terminal_copy: "Copier la sortie",
         terminal_empty: "La sortie des mises à jour apparaîtra ici.",
         filter_tip: "Filtre par partie du titre ou de l'URL. Ex. : « documentaire » ou « youtu.be/abc ».",
+        codec_keep_original: "Crée un fichier avec le suffixe _h264/_h265 ; l'original est conservé.",
         naming_tip: "ID stable : vid_9f3c2a81b7 (même lien = même nom). Titre : « Ma vidéo (4K) » (lisible, mais peut changer)."
     },
     "ru": {
@@ -1997,6 +2034,7 @@ var extraTips = {
         terminal_copy: "Копировать вывод",
         terminal_empty: "Вывод обновлений появится здесь.",
         filter_tip: "Фильтр по части названия или URL. Напр.: «документальный» или «youtu.be/abc».",
+        codec_keep_original: "Создаёт файл с суффиксом _h264/_h265; оригинал сохраняется.",
         naming_tip: "Стабильный ID: vid_9f3c2a81b7 (та же ссылка = то же имя). Название: «Моё видео (4K)» (читаемо, но может измениться)."
     },
     "ja": {
@@ -2011,6 +2049,7 @@ var extraTips = {
         terminal_copy: "出力をコピー",
         terminal_empty: "更新の出力がここに表示されます。",
         filter_tip: "タイトルまたは URL の一部で絞り込み。例：「ドキュメンタリー」「youtu.be/abc」。",
+        codec_keep_original: "_h264/_h265 の接尾辞付きファイルを作成し、元ファイルは保持します。",
         naming_tip: "固定 ID: vid_9f3c2a81b7（同じリンク＝同じ名前）。ページタイトル:「私の動画 (4K)」（読みやすいが変わる可能性あり）。"
     },
     "zh": {
@@ -2025,6 +2064,7 @@ var extraTips = {
         terminal_copy: "复制输出",
         terminal_empty: "更新输出将显示在这里。",
         filter_tip: "按标题或 URL 的一部分筛选。例如：“纪录片”或“youtu.be/abc”。",
+        codec_keep_original: "生成带 _h264/_h265 后缀的文件，原文件保留。",
         naming_tip: "固定 ID：vid_9f3c2a81b7（同一链接＝同一名称）。页面标题：“我的视频 (4K)”（易读，但可能变化）。"
     }
 }

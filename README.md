@@ -11,15 +11,15 @@ Downloader de vídeos (HLS / m3u8) com interface **Qt Quick (QML) + Material Des
 - **Atualizações**: verifica a última release, baixa o instalador e **valida o SHA-256** antes de executar (Windows; no portátil abre a página da release)
 - **Modo de extração** (Individual e Lote): **Vídeo + áudio**, **Apenas vídeo** ou **Somente áudio**
 - **Qualidade de 144p a 4K** (2160p) e **escolha do arquivo** de saída: **mp4, mkv, webm, avi, mov** (ou **mp3, m4a, wav, flac, opus** no modo áudio)
-- **Compressão de vídeo**: mantenha o original (sem reencode) ou recomprima para **H.264** ou **H.265 (HEVC)**, com nível **Leve / Média / Forte**. O arquivo comprimido substitui o original; se a compressão falhar, o original é preservado
-- **Nome do arquivo**: escolha entre o **ID estável** (hash da URL, `vid_XXXXXXXXXX`) ou o **título da página** (metadados do vídeo)
+- **Compressão de vídeo**: mantenha o original (sem reencode) ou recomprima para **H.264** ou **H.265 (HEVC)**, com nível **Leve / Média / Forte**. O arquivo recomprimido ganha sufixo `_h264`/`_h265` e o original é preservado; se a compressão falhar, o original permanece intacto
+- **Nome do arquivo**: escolha entre o **ID estável** (hash da URL, `vid_XXXXXXXXXX`) ou o **título da página** com o ID entre colchetes (metadados do vídeo), para evitar colisão entre títulos iguais
 - **8 idiomas**: Português, English, Español, Italiano, Français, Русский, 日本語 e 中文 (简体)
 - Baixa vídeos de URLs de playlist `.m3u8` e links de vídeo diretos
 - Fluxo de engenharia em camadas: `yt-dlp` → raspagem do HTML (`requests` + `BeautifulSoup`) → `ffmpeg` como fallback final
 - **Gerenciador de dependências**: detecta `yt-dlp`, `ffmpeg`, `requests`, `beautifulsoup4` e `PySide6` e permite **instalar/atualizar** direto na aba Configurações → Dependências (com confirmação), incluindo a escolha do **canal do yt-dlp** (Estável / Nightly / Master)
 - **Rede amigável ao WiFi**: limite de velocidade (`--limit-rate`) e conexões por download (`--concurrent-fragments`) configuráveis — evita derrubar o WiFi de roteadores domésticos em downloads pesados
 - **Extensões incomuns (`.php`, `.aspx`, ...)**: quando o yt-dlp recusa a URL por segurança (CVE-2024-38519), o app tenta UMA vez com `--compat-options allow-unsafe-ext` e extensão `.mp4` forçada; se o resultado não for vídeo, o download é descartado e o fluxo segue para a raspagem/ffmpeg
-- Múltiplos downloads simultâneos, com **pausar/retomar/cancelar** (individual ou tudo)
+- Múltiplos downloads simultâneos, com **pausar a fila** (os downloads ativos continuam), **retomar** e **cancelar** (individual ou tudo)
 - **Anti-duplicado**: evita links duplicados na fila e não re-baixa arquivos já existentes no disco
 - **Edição inline** do link (duplo clique ou botão ✎), **copiar link**, **tentar novamente** e **abrir pasta**
 - **Menu de contexto** (clique com o botão direito) e **atalhos**: `Ctrl+V` (colar da área de transferência), `Ctrl+Enter` (adicionar), `F5` (iniciar), `Delete` (remover)

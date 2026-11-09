@@ -26,6 +26,7 @@ from collections.abc import Callable
 from PySide6.QtCore import QObject, Signal
 
 from . import config
+from .compress import TEXT_SUBS, analyze, probe_media
 from .config import USER_AGENT
 from .formats import (
     AUDIO_CONTAINERS,
@@ -56,6 +57,7 @@ PROGRESS_RE = re.compile(
 )
 FFMPEG_TIME_RE = re.compile(r"time=(\d+):(\d+):([\d.]+)")
 FFMPEG_SIZE_RE = re.compile(r"size=\s*([\d.]+\w+)")
+TITLE_PREFIX = "__HSLDL_TITLE__"
 
 # Tempo (s) sem nenhuma linha nova do ffmpeg antes de considerá-lo travado.
 FFMPEG_STALL_TIMEOUT = 180.0
@@ -109,6 +111,7 @@ class DownloadWorker(QObject):
         self._cancel = False
         self._proc: subprocess.Popen | None = None
         self._stdout_tail: list[str] = []
+        self._metadata_title = False
 
     # ------------------------------------------------------------------ API
     def cancel(self) -> None:
@@ -143,6 +146,10 @@ class DownloadWorker(QObject):
             self.progressChanged.emit(0.0, "—", "—")
             candidate = HtmlMediaScraper(USER_AGENT).find(self.url)
             log.info("scraper: candidate=%r", candidate)
+            if self._cancel:
+                self.cancelled.emit(self.url)
+                self.finished.emit()
+                return
             if not candidate:
                 msg = result if isinstance(result, str) else self._t("err_download")
                 self.failed.emit(self.url, self._t("err_no_stream", msg=msg))
@@ -154,6 +161,10 @@ class DownloadWorker(QObject):
             log.info("yt-dlp no link raspado: ok=%s result=%r", ok2, result2)
             if ok2:
                 self._succeed(result2)
+                return
+            if self._cancel:
+                self.cancelled.emit(self.url)
+                self.finished.emit()
                 return
 
             # ---- Tentativa final: ffmpeg direto no m3u8 ----
@@ -187,7 +198,11 @@ class DownloadWorker(QObject):
         """
         name_base = f"vid_{url_digest(target)}"
         if self.naming_mode == "title":
-            return name_base, os.path.join(self.outdir, "%(title).120B.%(ext)s")
+            # O ID evita colisão entre vídeos diferentes com o mesmo título
+            # (o yt-dlp com --no-overwrites pularia o segundo download).
+            return name_base, os.path.join(
+                self.outdir, "%(title).100B [%(id)s].%(ext)s"
+            )
         return name_base, os.path.join(self.outdir, f"{name_base}.%(ext)s")
 
     def _format_args(self) -> list[str]:
@@ -209,9 +224,16 @@ class DownloadWorker(QObject):
             ]
         height = "" if self.quality in ("", "best") else f"[height<={self.quality}]"
         if self.format_mode == "video_only":
-            selector = f"bv*{height}/b"
+            # Sem o fallback /b: ele pode ser um formato combinado com áudio
+            # e violaria a escolha "apenas vídeo". Se não existir vídeo puro,
+            # o yt-dlp reporta erro — melhor que entregar o arquivo errado.
+            selector = f"bv*{height}"
+        elif height:
+            # O fallback também respeita a altura escolhida. Antes, /b podia
+            # baixar 4K mesmo com 1080p selecionado.
+            selector = f"bv*{height}+ba/b{height}"
         else:
-            selector = f"bv*{height}+ba/b"
+            selector = "bv*+ba/b"
         return [
             "-f", selector,
             "--merge-output-format", self.container,
@@ -267,6 +289,10 @@ class DownloadWorker(QObject):
         ]
         cmd += self._format_args()
         cmd += [
+            # Título real da página/metadados; usado só para exibição,
+            # independentemente do modo de nome do arquivo.
+            "--print",
+            f"before_dl:{TITLE_PREFIX}%(title)s",
             "--print",
             "after_move:filepath",
             "-o",
@@ -405,11 +431,7 @@ class DownloadWorker(QObject):
             else:
                 result_msg = self._consume_ytdlp_stdout(self._proc)
         finally:
-            try:
-                rc = self._proc.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                terminate_tree(self._proc)
-                rc = self._proc.wait()
+            rc = self._wait_or_kill(self._proc, timeout=10)
             drainer.join(timeout=2)
             self._proc = None
 
@@ -458,6 +480,31 @@ class DownloadWorker(QObject):
         return False, result_msg or self._t("err_ytdlp_no_output")
 
     @staticmethod
+    def _wait_or_kill(proc: subprocess.Popen, timeout: float = 10.0) -> int:
+        """Espera o processo, mas nunca fica bloqueado para sempre.
+
+        ``terminate_tree`` pode falhar (taskkill sem permissão, processo
+        zumbi, etc.). Nesse caso tentamos ``kill`` e, se ainda assim o
+        processo não morrer, retornamos -1 para o worker conseguir sair.
+        """
+        try:
+            return proc.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            terminate_tree(proc)
+        try:
+            return proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            try:
+                proc.kill()
+            except OSError:
+                pass
+            try:
+                return proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                log.error("processo %s não terminou após kill", proc.pid)
+                return -1
+
+    @staticmethod
     def _safe_remove(path: str) -> None:
         try:
             os.remove(path)
@@ -503,6 +550,12 @@ class DownloadWorker(QObject):
             self._stdout_tail.append(line)
             if len(self._stdout_tail) > 40:
                 self._stdout_tail.pop(0)
+            if line.startswith(TITLE_PREFIX):
+                title = line[len(TITLE_PREFIX):].strip()
+                if title:
+                    self._metadata_title = True
+                    self.titleChanged.emit(title)
+                continue
             m = PROGRESS_RE.search(line)
             if m:
                 pct = min(100.0, float(m.group(1)))
@@ -513,12 +566,14 @@ class DownloadWorker(QObject):
                 continue
             if os.path.isabs(line):
                 out_path = line.strip()
-                self.titleChanged.emit(os.path.basename(out_path))
+                if not self._metadata_title:
+                    self.titleChanged.emit(os.path.basename(out_path))
                 continue
             dm = re.search(r"\[download\] Destination: (.+)", line)
             if dm:
                 out_path = dm.group(1).strip()
-                self.titleChanged.emit(os.path.basename(out_path))
+                if not self._metadata_title:
+                    self.titleChanged.emit(os.path.basename(out_path))
                 continue
             skip = re.search(r"\[download\] (.+?) has already been downloaded", line)
             if skip:
@@ -582,6 +637,8 @@ class DownloadWorker(QObject):
             return path
         if not path or not os.path.isfile(path):
             return path
+        if self._cancel:
+            return None
         ffmpeg = which("ffmpeg")
         if not ffmpeg:
             return path
@@ -598,9 +655,28 @@ class DownloadWorker(QObject):
         vcodec = "libx264" if self.codec == "h264" else "libx265"
         cmd = [
             ffmpeg, "-y", "-hide_banner", "-i", path,
+            "-map", "0:v:0", "-map", "0:a?",
             "-c:v", vcodec, "-preset", "medium", "-crf", str(crf),
             "-c:a", "aac", "-b:a", "192k",
+            "-map_metadata", "0", "-map_chapters", "0",
+            "-max_muxing_queue_size", "4096",
         ]
+        # Preserva legendas de texto. MP4/MOV não aceitam PGS/DVD bitmap;
+        # nesse caso copiamos tudo só no MKV, onde qualquer codec é válido.
+        probe = probe_media(path) or {}
+        _videos, _audios, subs, _duration = analyze(probe)
+        text_subs = [
+            index for index, sub in enumerate(subs)
+            if (sub.get("codec_name") or "").lower() in TEXT_SUBS
+        ]
+        if container in ("mp4", "mov") and text_subs:
+            for index in text_subs:
+                cmd += ["-map", f"0:s:{index}"]
+            cmd += ["-c:s", "mov_text", "-movflags", "+faststart"]
+        elif container == "mkv" and subs:
+            cmd += ["-map", "0:s?", "-c:s", "copy"]
+        else:
+            cmd += ["-sn"]
         if self.codec == "h265":
             cmd += ["-tag:v", "hvc1"]
         cmd.append(out)
@@ -611,11 +687,13 @@ class DownloadWorker(QObject):
         if self._cancel:
             return None
         if ok and os.path.exists(out) and os.path.getsize(out) > 0:
-            try:
-                os.remove(path)  # compressão substitui o original
-            except OSError:
-                pass
-            log.info("comprimido (%s/%s): %s -> %s", self.codec, self.compress_level, path, out)
+            # O arquivo original é preservado. A versão recomprimida ganha
+            # sufixo _h264/_h265; quem quiser substituir pode usar a aba
+            # Compressão (que tem a opção explícita de apagar o original).
+            log.info(
+                "comprimido (%s/%s): %s -> %s (original mantido)",
+                self.codec, self.compress_level, path, out,
+            )
             return out
         log.warning("compressão falhou (%s) — mantendo original", err)
         self._safe_remove(out)
