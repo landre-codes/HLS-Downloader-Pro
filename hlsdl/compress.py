@@ -16,7 +16,8 @@ import subprocess
 import sys
 import threading
 import time
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, replace
 from enum import Enum
 
 from PySide6.QtCore import (
@@ -30,10 +31,12 @@ from PySide6.QtCore import (
 )
 
 from .i18n import translator
+from .lifecycle import note_stuck_qthread
 from .services.procutils import (
     popen_kwargs,
     spawn_kwargs,
     terminate_tree,
+    wait_or_kill,
     which,
 )
 
@@ -701,7 +704,13 @@ class CompressionWorker(QObject):
     def run(self) -> None:
         try:
             self.statusChanged.emit(CompressStatus.ANALYZING.value)
+            if self._cancel:
+                self.cancelled.emit()
+                return
             probe = probe_media(self.src)
+            if self._cancel:
+                self.cancelled.emit()
+                return
             if not probe:
                 self.failed.emit(self._t("compress_probe_failed"))
                 return
@@ -759,7 +768,7 @@ class CompressionWorker(QObject):
                         continue
                     pct = min(99.0, seconds / duration * 100.0) if duration else 0.0
                     self.progressChanged.emit(pct, speed)
-            rc = self._proc.wait()
+            rc = wait_or_kill(self._proc, timeout=10)
             drainer.join(timeout=2)
             self._proc = None
 
@@ -806,11 +815,17 @@ class CompressionManager(QObject):
     qsvDevicesChanged = Signal()
     finishedAll = Signal(int, int, int)            # done, errors, skipped
 
-    def __init__(self, model: CompressionModel, parent: QObject | None = None):
+    def __init__(
+        self,
+        model: CompressionModel,
+        parent: QObject | None = None,
+        worker_factory: Callable[..., CompressionWorker] = CompressionWorker,
+    ):
         super().__init__(parent)
         self.model = model
         self.items: list[dict] = model.items()
         self.settings = CompressionSettings()
+        self._worker_factory = worker_factory
         self.available = detect_encoders()
         self.qsv_devices: list[dict] = []
         self._qsv_device = 0
@@ -818,6 +833,7 @@ class CompressionManager(QObject):
         self._paused = False
         self._running = 0
         self._threads: dict[int, tuple[QThread, CompressionWorker, dict]] = {}
+        self._job_settings: dict[int, CompressionSettings] = {}
         self._counter = 0
         self._encoder = ""
         self._t = translator("pt")
@@ -842,6 +858,10 @@ class CompressionManager(QObject):
         if settings.container not in CONTAINERS[settings.codec]:
             settings.container = DEFAULT_CONTAINERS[settings.codec]
         self.settings = settings
+        # Aumentar o paralelismo com itens pendentes deve aproveitar as
+        # vagas imediatamente, não só quando o job atual terminar.
+        if getattr(self, "_active", False) and not getattr(self, "_paused", False):
+            self._pump()
 
     def refresh_encoders(self) -> set[str]:
         self.available = detect_encoders()
@@ -870,6 +890,8 @@ class CompressionManager(QObject):
             self.model.add(make_item(self._counter, path))
             added += 1
         if added:
+            if self._active and not self._paused:
+                self._pump()
             self._emit_stats()
         return added
 
@@ -976,18 +998,35 @@ class CompressionManager(QObject):
             self.model.remove_rows(rows)
             self._emit_stats()
 
-    def shutdown(self, timeout: float = 8.0) -> None:
+    def shutdown(self, timeout: float = 6.0) -> None:
+        """Cancela tudo e aguarda as threads (mesma proteção de queue.py)."""
         self.cancelAll()
         deadline = time.time() + timeout
-        for thread, _worker, _item in list(self._threads.values()):
+        for thread, worker, _item in list(self._threads.values()):
             remaining = max(0.0, deadline - time.time())
             try:
                 thread.quit()
-                thread.wait(int(remaining * 1000))
+                if thread.wait(int(remaining * 1000)):
+                    continue
+                log.warning(
+                    "thread de compressão não terminou em %.1fs; "
+                    "encerrando à força", timeout,
+                )
+                worker.cancel()
+                thread.terminate()
+                if not thread.wait(2000):
+                    log.critical(
+                        "thread de compressão continua viva após terminate; "
+                        "registrando saída de emergência",
+                    )
+                    note_stuck_qthread(thread)
             except RuntimeError:
                 pass
-        self._threads.clear()
-        self._running = 0
+        self._threads = {
+            key: entry for key, entry in self._threads.items()
+            if not entry[0].isFinished()
+        }
+        self._running = len(self._threads)
 
     # ------------------------------------------------------------- scheduler
     def _pump(self) -> None:
@@ -1016,22 +1055,26 @@ class CompressionManager(QObject):
     def _launch(self, item: dict) -> None:
         item["status"] = CompressStatus.ANALYZING
         item["encoder"] = self._encoder_label()
+        # Snapshot: mudar opções na UI não pode alterar um encode em curso
+        # nem a decisão de apagar/substituir o original no fim.
+        job_settings = replace(self.settings)
+        self._job_settings[item["id"]] = job_settings
         self._touch(item)
         thread = QThread(self)
-        worker = CompressionWorker(
-            item["input"], self.settings, self._encoder, self._t,
+        worker = self._worker_factory(
+            item["input"], job_settings, self._encoder, self._t,
             qsv_device=self._qsv_device,
         )
         worker.moveToThread(thread)
-        worker.statusChanged.connect(lambda st, it=item: self._on_status(it, st))
-        worker.progressChanged.connect(lambda pct, sp, it=item: self._on_progress(it, pct, sp))
-        worker.succeeded.connect(
-            lambda tmp, final, before, after, it=item:
-            self._on_success(it, tmp, final, before, after)
-        )
-        worker.skipped.connect(lambda reason, it=item: self._on_skipped(it, reason))
-        worker.failed.connect(lambda err, it=item: self._on_failed(it, err))
-        worker.cancelled.connect(lambda it=item: self._on_cancelled(it))
+        # Slots do manager (thread da GUI): evita mutar modelo/QML a partir
+        # da thread do encoder. Ver comentário equivalente em queue.py.
+        worker._queue_item = item
+        worker.statusChanged.connect(self._worker_status)
+        worker.progressChanged.connect(self._worker_progress)
+        worker.succeeded.connect(self._worker_success)
+        worker.skipped.connect(self._worker_skipped)
+        worker.failed.connect(self._worker_failed)
+        worker.cancelled.connect(self._worker_cancelled)
         thread.started.connect(worker.run)
         worker.finished.connect(thread.quit)
         thread.finished.connect(lambda it=item: self._on_thread_done(it))
@@ -1041,6 +1084,47 @@ class CompressionManager(QObject):
         thread.start()
 
     # ------------------------------------------------------------ callbacks
+    def _sender_item(self) -> dict | None:
+        worker = self.sender()
+        item = getattr(worker, "_queue_item", None)
+        return item if isinstance(item, dict) else None
+
+    @Slot(str)
+    def _worker_status(self, status: str) -> None:
+        item = self._sender_item()
+        if item is not None:
+            self._on_status(item, status)
+
+    @Slot(float, str)
+    def _worker_progress(self, pct: float, speed: str) -> None:
+        item = self._sender_item()
+        if item is not None:
+            self._on_progress(item, pct, speed)
+
+    @Slot(str, str, int, int)
+    def _worker_success(self, tmp: str, final: str, before: int, after: int) -> None:
+        item = self._sender_item()
+        if item is not None:
+            self._on_success(item, tmp, final, before, after)
+
+    @Slot(str)
+    def _worker_skipped(self, reason: str) -> None:
+        item = self._sender_item()
+        if item is not None:
+            self._on_skipped(item, reason)
+
+    @Slot(str)
+    def _worker_failed(self, error: str) -> None:
+        item = self._sender_item()
+        if item is not None:
+            self._on_failed(item, error)
+
+    @Slot()
+    def _worker_cancelled(self) -> None:
+        item = self._sender_item()
+        if item is not None:
+            self._on_cancelled(item)
+
     def _on_status(self, item: dict, status: str) -> None:
         try:
             self._set_status(item, CompressStatus(status))
@@ -1054,7 +1138,8 @@ class CompressionManager(QObject):
 
     def _on_success(self, item: dict, tmp: str, final: str,
                     before: int, after: int) -> None:
-        if self.settings.only_if_smaller and after >= before:
+        settings = self._job_settings.get(item["id"], self.settings)
+        if settings.only_if_smaller and after >= before:
             CompressionWorker._safe_remove(tmp)
             item["size_before"] = before
             item["size_after"] = after
@@ -1067,7 +1152,7 @@ class CompressionManager(QObject):
             CompressionWorker._safe_remove(tmp)
             self._on_failed(item, self._t("compress_failed", err=exc))
             return
-        if self.settings.replace_original and os.path.abspath(final) != os.path.abspath(item["input"]):
+        if settings.replace_original and os.path.abspath(final) != os.path.abspath(item["input"]):
             try:
                 os.remove(item["input"])
             except OSError:
@@ -1093,6 +1178,7 @@ class CompressionManager(QObject):
 
     def _on_thread_done(self, item: dict) -> None:
         self._threads.pop(item["id"], None)
+        self._job_settings.pop(item["id"], None)
         self._running = max(0, self._running - 1)
         self._pump()
         self._emit_stats()

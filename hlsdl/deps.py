@@ -18,6 +18,7 @@ com a saída transmitida para a interface.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import shutil
@@ -35,7 +36,7 @@ from dataclasses import dataclass
 from PySide6.QtCore import QObject, Signal
 
 from . import config
-from .services.procutils import popen_kwargs, spawn_kwargs, terminate_tree
+from .services.procutils import popen_kwargs, spawn_kwargs, terminate_tree, wait_or_kill
 
 log = logging.getLogger("hlsdl")
 
@@ -49,9 +50,11 @@ YTDLP_CHANNELS = {
     "master": "https://github.com/yt-dlp/yt-dlp-master-builds/releases/latest/download/",
 }
 YTDLP_VARIANTS = tuple(YTDLP_CHANNELS)
-FFMPEG_WIN_ZIP = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-full.zip"
+FFMPEG_WIN_ZIP = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
 FFMPEG_LINUX_TAR = "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
-FFMPEG_MAC = "https://evermeet.cx/ffmpeg/getrelease/{name}/zip"
+# O endpoint antigo /getrelease/... foi removido (410). A API de info
+# devolve a URL atual do ZIP de release para ffmpeg/ffprobe.
+FFMPEG_MAC_INFO = "https://evermeet.cx/ffmpeg/info/{name}/release"
 
 
 @dataclass
@@ -327,7 +330,7 @@ class DependencyManager(QObject):
         if strategy == "download":
             if spec.key == "ytdlp":
                 return self._install_ytdlp
-            return self._install_ffmpeg_download
+            return self._install_ffmpeg
         if strategy in ("pip", "package"):
             cmd = self._command_for(spec)
             if not cmd:
@@ -377,7 +380,7 @@ class DependencyManager(QObject):
                     terminate_tree(proc)
                     break
                 self.installOutput.emit(line.rstrip("\n"))
-            rc = proc.wait()
+            rc = wait_or_kill(proc, timeout=10)
             if rc == 0:
                 # A ferramenta pode ter sido instalada em pasta nova: reflete
                 # no PATH e nas pastas conhecidas antes de re-detectar.
@@ -465,6 +468,38 @@ class DependencyManager(QObject):
                         found.add(base)
         return found
 
+    @staticmethod
+    def _mac_ffmpeg_url(name: str) -> str:
+        """URL atual do ZIP de release no evermeet.cx (endpoint antigo: 410)."""
+        req = urllib.request.Request(
+            FFMPEG_MAC_INFO.format(name=name),
+            headers={"User-Agent": USER_AGENT},
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        url = str((data.get("download") or {}).get("zip", {}).get("url") or "")
+        if not url:
+            raise RuntimeError(f"URL de download ausente para {name}")
+        return url
+
+    def _install_ffmpeg(self) -> bool:
+        """Tenta o download estático e, se falhar, o gerenciador de pacotes."""
+        try:
+            if self._install_ffmpeg_download():
+                return True
+            self.installOutput.emit(
+                "download estático do ffmpeg falhou; tentando gerenciador de pacotes"
+            )
+        except Exception as exc:
+            log.warning("download estático do ffmpeg falhou: %s", exc)
+            self.installOutput.emit(f"download estático falhou: {exc}")
+
+        cmd = _ffmpeg_package_command()
+        if not cmd:
+            return False
+        self.installOutput.emit(f"$ {' '.join(cmd)}")
+        return self._run_install(cmd)
+
     def _install_ffmpeg_download(self) -> bool:
         target_dir = config.tools_dir()
         tmp_dir = tempfile.mkdtemp(prefix="hlsdl-ffmpeg-")
@@ -478,7 +513,7 @@ class DependencyManager(QObject):
                 found = set()
                 for name in ("ffmpeg", "ffprobe"):
                     archive = os.path.join(tmp_dir, f"{name}.zip")
-                    self._download(FFMPEG_MAC.format(name=name), archive)
+                    self._download(self._mac_ffmpeg_url(name), archive)
                     found |= self._extract_members(archive, {name}, target_dir)
                 needed = "ffmpeg"
             else:

@@ -34,6 +34,50 @@ ApplicationWindow {
     property string depsLog: ""
     property string queueFilterText: ""
     property int playlistSelCount: 0
+    property string pendingDepKey: ""
+    property string pendingDepName: ""
+    property string pendingDepAction: ""
+    property bool pendingDepUpdate: false
+    property int normalX: 0
+    property int normalY: 0
+    property int normalW: 0
+    property int normalH: 0
+
+    function rememberNormalGeometry() {
+        if (root.visibility !== Window.Maximized) {
+            root.normalX = root.x
+            root.normalY = root.y
+            root.normalW = root.width
+            root.normalH = root.height
+        }
+    }
+    onXChanged: rememberNormalGeometry()
+    onYChanged: rememberNormalGeometry()
+    onWidthChanged: rememberNormalGeometry()
+    onHeightChanged: rememberNormalGeometry()
+    function toggleMaximize() {
+        if (root.visibility === Window.Maximized) {
+            root.showNormal()
+        } else {
+            rememberNormalGeometry()
+            root.showMaximized()
+        }
+    }
+
+    function askInstallDependency(key, name, update) {
+        root.pendingDepAction = "one"
+        root.pendingDepKey = key
+        root.pendingDepName = name
+        root.pendingDepUpdate = update
+        confirmDeps.open()
+    }
+    function askUpdateAllDependencies() {
+        root.pendingDepAction = "all"
+        root.pendingDepKey = ""
+        root.pendingDepName = ""
+        root.pendingDepUpdate = true
+        confirmDeps.open()
+    }
 
     function retranslate() {
         I18n.setLang(bridge.language)
@@ -59,8 +103,10 @@ ApplicationWindow {
         var value = singleUrl.text.trim()
         if (value.length === 0)
             return
-        bridge.downloadSingle(value)
-        singleUrl.clear()
+        // Só limpa quando o link foi realmente aceito; em erro/duplicado o
+        // usuário mantém o texto para corrigir ou copiar.
+        if (bridge.downloadSingle(value))
+            singleUrl.clear()
     }
 
     // ------------------------------------------------------------- playlists
@@ -428,6 +474,9 @@ ApplicationWindow {
         }
         onActivated: bridge.setCodec(currentValue)
         Layout.preferredWidth: 210
+        ToolTip.text: strings.codec_keep_original
+        ToolTip.visible: hovered
+        ToolTip.delay: 500
     }
 
     // Nível de compressão (quanto menor a CRF, maior a qualidade/tamanho).
@@ -478,7 +527,10 @@ ApplicationWindow {
     property int compSkip: 0
 
     onClosing: bridge.saveGeometry(
-        root.x, root.y, root.width, root.height,
+        root.visibility === Window.Maximized && root.normalW > 0 ? root.normalX : root.x,
+        root.visibility === Window.Maximized && root.normalH > 0 ? root.normalY : root.y,
+        root.visibility === Window.Maximized && root.normalW > 0 ? root.normalW : root.width,
+        root.visibility === Window.Maximized && root.normalH > 0 ? root.normalH : root.height,
         root.visibility === Window.Maximized
     )
 
@@ -602,10 +654,7 @@ ApplicationWindow {
                 dragTimer.stop()
                 if (dragArea.moveStarted)
                     return
-                if (root.visibility === Window.Maximized)
-                    root.showNormal()
-                else
-                    root.showMaximized()
+                root.toggleMaximize()
             }
         }
 
@@ -645,7 +694,7 @@ ApplicationWindow {
                 Label { anchors.centerIn: parent; text: root.visibility === Window.Maximized ? "❐" : "▢"; font.pixelSize: 14; color: root.dark ? "#dfe3e8" : "#3c4043" }
                 MouseArea {
                     id: maxHov; anchors.fill: parent; hoverEnabled: true
-                    onClicked: if (root.visibility === Window.Maximized) root.showNormal(); else root.showMaximized()
+                    onClicked: root.toggleMaximize()
                 }
             }
             Rectangle {
@@ -879,6 +928,14 @@ ApplicationWindow {
                                 color: root.dark ? "#ff8a80" : "#c62828"
                                 wrapMode: Text.Wrap
                                 font.pixelSize: 12
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        root.errorText = bridge.lastItem.error
+                                        errorDialog.open()
+                                    }
+                                }
                             }
 
                             RowLayout {
@@ -887,6 +944,18 @@ ApplicationWindow {
                                     visible: bridge.lastItem.status === "done"
                                     text: strings.btn_open
                                     onClicked: bridge.openDownloadPath(bridge.lastItem.path)
+                                }
+                                HandButton {
+                                    visible: bridge.lastItem.status === "waiting"
+                                             || root.isActive(bridge.lastItem.status)
+                                    text: strings.tip_cancel
+                                    onClicked: bridge.cancelSingle()
+                                }
+                                HandButton {
+                                    visible: bridge.lastItem.status === "error"
+                                             || bridge.lastItem.status === "cancelled"
+                                    text: strings.ctx_retry
+                                    onClicked: bridge.retrySingle()
                                 }
                                 Item { Layout.fillWidth: true }
                             }
@@ -2276,7 +2345,7 @@ ApplicationWindow {
                                 HandButton {
                                     text: strings.dep_update_all
                                     enabled: !bridge.depsBusy
-                                    onClicked: bridge.updateDependencies()
+                                    onClicked: root.askUpdateAllDependencies()
                                 }
                                 HandButton {
                                     text: strings.dep_recheck
@@ -2357,7 +2426,9 @@ ApplicationWindow {
                                         visible: modelData.installable
                                         enabled: !bridge.depsBusy
                                         text: modelData.found ? strings.dep_update : strings.dep_install
-                                        onClicked: bridge.installDependency(modelData.key)
+                                        onClicked: root.askInstallDependency(
+                                            modelData.key, modelData.name, modelData.found
+                                        )
                                     }
                                 }
                             }
@@ -2990,6 +3061,53 @@ ApplicationWindow {
                     bridge.dismissDepsPrompt()
                     depsDialog.close()
                 }
+            }
+        }
+    }
+
+    // ------------------------------------------- confirmação de dependência
+    Dialog {
+        id: confirmDeps
+        parent: root.contentItem
+        modal: true
+        title: strings.cfg_deps_title
+        width: 520
+        x: (root.width - width) / 2
+        y: (root.height - height) / 2
+        standardButtons: Dialog.NoButton
+        contentItem: ColumnLayout {
+            spacing: 10
+            Label {
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                text: root.pendingDepAction === "all"
+                      ? strings.dep_confirm_all
+                      : strings.dep_confirm_task.replace("{name}", root.pendingDepName)
+            }
+            Label {
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                font.pixelSize: 11
+                color: Material.secondaryTextColor
+                text: strings.dep_confirm_detail
+            }
+        }
+        footer: DialogButtonBox {
+            HandButton {
+                text: root.pendingDepUpdate ? strings.dep_update : strings.dep_install
+                DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
+                onClicked: {
+                    if (root.pendingDepAction === "all")
+                        bridge.updateDependencies()
+                    else if (root.pendingDepKey.length > 0)
+                        bridge.installDependency(root.pendingDepKey)
+                    confirmDeps.close()
+                }
+            }
+            HandButton {
+                text: strings.confirm_cancel
+                DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
+                onClicked: confirmDeps.close()
             }
         }
     }

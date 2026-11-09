@@ -42,18 +42,41 @@ def spawn_kwargs() -> dict:
     return kwargs
 
 
+def wait_or_kill(proc, timeout: float = 10.0) -> int:
+    """Espera um processo com limite e garante que ele não fique eterno."""
+    try:
+        return proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        terminate_tree(proc)
+    try:
+        return proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        try:
+            proc.kill()
+        except OSError:
+            pass
+        try:
+            return proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            log.error("processo %s não terminou após kill", getattr(proc, "pid", "?"))
+            return -1
+
+
 def terminate_tree(proc) -> None:
     """Encerra o processo e seus filhos (yt-dlp pode ter iniciado o ffmpeg)."""
     if proc is None or proc.poll() is not None:
         return
     if os.name == "nt":
         try:
-            subprocess.run(
+            result = subprocess.run(
                 ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
                 capture_output=True,
                 **popen_kwargs(),
             )
-            return
+            # taskkill pode retornar != 0 (processo já morto, acesso negado,
+            # etc.). Nesse caso ainda tentamos o terminate abaixo.
+            if result.returncode == 0:
+                return
         except Exception:
             pass
     else:

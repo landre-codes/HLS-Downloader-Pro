@@ -16,6 +16,7 @@ from PySide6.QtCore import Property, QObject, QThread, QUrl, Signal, Slot
 from .downloader import DownloadWorker
 from .formats import FORMAT_MODES
 from .i18n import translator
+from .lifecycle import note_stuck_qthread
 from .model import DownloadModel, make_item
 from .status import ACTIVE, FINAL, Status
 from .urlutils import extract_urls, normalize_url
@@ -23,6 +24,16 @@ from .urlutils import extract_urls, normalize_url
 log = logging.getLogger("hlsdl")
 
 WorkerFactory = Callable[..., DownloadWorker]
+
+
+def human_size(value: int) -> str:
+    """Formata bytes para exibição (mesma base usada pelo QML)."""
+    n = float(max(0, int(value)))
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if n < 1024 or unit == "TB":
+            return f"{n:.1f} {unit}" if unit != "B" else f"{int(n)} B"
+        n /= 1024
+    return f"{n:.1f} TB"
 
 
 class QueueManager(QObject):
@@ -45,7 +56,10 @@ class QueueManager(QObject):
         self.model = model
         self.items: list[dict] = model.items()  # lista única e compartilhada
         self._outdir = os.path.abspath(os.path.expanduser(outdir))
-        self._concurrency = max(1, int(concurrency))
+        try:
+            self._concurrency = max(1, int(concurrency))
+        except (TypeError, ValueError):
+            self._concurrency = 1
         self._active = False
         self._paused = False
         self._running = 0
@@ -64,6 +78,11 @@ class QueueManager(QObject):
         self._translate: Callable[..., str] = translator("pt")
 
     # ------------------------------------------------------------ propriedades
+    @property
+    def worker_factory(self) -> WorkerFactory:
+        """Fábrica usada pela fila (também reaproveitada pela fila individual)."""
+        return self._worker_factory
+
     @Property(str, notify=outdirChanged)
     def outdir(self) -> str:
         return self._outdir
@@ -164,6 +183,11 @@ class QueueManager(QObject):
             self.itemUpdated.emit(item)
             added += 1
         if added:
+            # A fila pode estar ativa com vagas livres (menos itens que a
+            # concorrência); sem isto, novos links só começariam quando um
+            # download antigo terminasse.
+            if self._active and not self._paused:
+                self._pump()
             self._emit_stats()
         return [added, skipped]
 
@@ -290,6 +314,8 @@ class QueueManager(QObject):
         item.pop("path", None)
         item.pop("thumb", None)
         self._touch(item)
+        if self._active and not self._paused:
+            self._pump()
         self._emit_stats()
         return True
 
@@ -301,21 +327,48 @@ class QueueManager(QObject):
             self.model.remove_rows(rows)
             self._emit_stats()
 
-    def shutdown(self, timeout: float = 8.0) -> None:
-        """Cancela tudo e aguarda as threads terminarem (chamado ao fechar)."""
+    def shutdown(self, timeout: float = 6.0) -> None:
+        """Cancela tudo e aguarda as threads terminarem (chamado ao fechar).
+
+        Nunca descartamos a referência de uma ``QThread`` ainda em execução:
+        destruir um QThread rodando faz o Qt abortar o processo com
+        ``0xC0000409``. Se o cancelamento cooperativo não bastar dentro do
+        prazo, encerramos a thread como último recurso e esperamos.
+        """
         self.cancelAll()
         import time as _time
 
         deadline = _time.time() + timeout
-        for thread, _worker, _item in list(self._threads.values()):
+        for thread, worker, _item in list(self._threads.values()):
             remaining = max(0.0, deadline - _time.time())
             try:
                 thread.quit()
-                thread.wait(int(remaining * 1000))
+                if thread.wait(int(remaining * 1000)):
+                    continue
+                log.warning(
+                    "thread %s não terminou em %.1fs; encerrando à força",
+                    thread.objectName() or thread,
+                    timeout,
+                )
+                worker.cancel()
+                thread.terminate()
+                if not thread.wait(2000):
+                    log.critical(
+                        "thread %s continua viva após terminate; "
+                        "registrando saída de emergência",
+                        thread,
+                    )
+                    note_stuck_qthread(thread)
             except RuntimeError:
+                # Objeto C++ já destruído: nada a fazer.
                 pass
-        self._threads.clear()
-        self._running = 0
+        # Só removemos quem realmente terminou. Threads teimosas continuam
+        # referenciadas e serão contabilizadas em _running.
+        self._threads = {
+            key: entry for key, entry in self._threads.items()
+            if not entry[0].isFinished()
+        }
+        self._running = len(self._threads)
 
     # ------------------------------------------------------------- agendador
     def _pump(self) -> None:
@@ -351,13 +404,18 @@ class QueueManager(QObject):
         )
         worker.moveToThread(thread)
 
-        worker.progressChanged.connect(lambda pct, sp, sz, it=item: self._on_progress(it, pct, sp, sz))
-        worker.statusChanged.connect(lambda st, it=item: self._on_status(it, st))
-        worker.titleChanged.connect(lambda title, it=item: self._on_title(it, title))
-        worker.succeeded.connect(lambda url, path, it=item: self._on_success(it, path))
-        worker.failed.connect(lambda url, err, it=item: self._on_failure(it, err))
-        worker.cancelled.connect(lambda url, it=item: self._on_cancelled(it))
-        worker.thumbnailReady.connect(lambda path, it=item: self._on_thumb(it, path))
+        # O worker guarda o item para que os slots do manager (que vive na
+        # thread da GUI) saibam a qual linha o sinal pertence. Conectar a
+        # métodos QObject — em vez de lambdas — garante entrega enfileirada
+        # quando o sinal é emitido de outra thread.
+        worker._queue_item = item
+        worker.progressChanged.connect(self._worker_progress)
+        worker.statusChanged.connect(self._worker_status)
+        worker.titleChanged.connect(self._worker_title)
+        worker.succeeded.connect(self._worker_success)
+        worker.failed.connect(self._worker_failure)
+        worker.cancelled.connect(self._worker_cancelled)
+        worker.thumbnailReady.connect(self._worker_thumb)
 
         # Ciclo de vida da thread. NÃO usar deleteLater (padrão deleteLater +
         # GC do PySide6 pode deixar o wrapper apontando para o C++ deletado e
@@ -372,6 +430,59 @@ class QueueManager(QObject):
         thread.start()
 
     # ----------------------------------------------------- callbacks (main)
+    def _sender_item(self) -> dict | None:
+        """Item associado ao worker que emitiu o sinal.
+
+        Os slots abaixo são chamados na thread da GUI porque o receptor é o
+        próprio ``QueueManager``. ``sender()`` identifica o worker; o item é
+        guardado nele em ``_launch``.
+        """
+        worker = self.sender()
+        item = getattr(worker, "_queue_item", None)
+        return item if isinstance(item, dict) else None
+
+    @Slot(float, str, str)
+    def _worker_progress(self, pct: float, speed: str, size: str) -> None:
+        item = self._sender_item()
+        if item is not None:
+            self._on_progress(item, pct, speed, size)
+
+    @Slot(str)
+    def _worker_status(self, status: str) -> None:
+        item = self._sender_item()
+        if item is not None:
+            self._on_status(item, status)
+
+    @Slot(str)
+    def _worker_title(self, title: str) -> None:
+        item = self._sender_item()
+        if item is not None:
+            self._on_title(item, title)
+
+    @Slot(str, str)
+    def _worker_success(self, url: str, path: str) -> None:
+        item = self._sender_item()
+        if item is not None:
+            self._on_success(item, path)
+
+    @Slot(str, str)
+    def _worker_failure(self, url: str, error: str) -> None:
+        item = self._sender_item()
+        if item is not None:
+            self._on_failure(item, error)
+
+    @Slot(str)
+    def _worker_cancelled(self, url: str) -> None:
+        item = self._sender_item()
+        if item is not None:
+            self._on_cancelled(item)
+
+    @Slot(str)
+    def _worker_thumb(self, path: str) -> None:
+        item = self._sender_item()
+        if item is not None:
+            self._on_thumb(item, path)
+
     def _on_progress(self, item: dict, pct: float, speed: str, size: str) -> None:
         item["progress"] = pct
         item["speed"] = speed
@@ -396,12 +507,17 @@ class QueueManager(QObject):
         item["speed"] = "—"
         item["path"] = path
         item["title"] = item.get("title") or os.path.basename(path)
+        try:
+            item["size"] = human_size(os.path.getsize(path))
+        except OSError:
+            pass
         self._touch(item)
         self._emit_stats()
 
     def _on_failure(self, item: dict, error: str) -> None:
         item["status"] = Status.ERROR
         item["error"] = error
+        item["speed"] = "—"
         self._touch(item)
         self._emit_stats()
 

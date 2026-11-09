@@ -45,9 +45,11 @@ from .formats import (
     VIDEO_CONTAINERS,
 )
 from .i18n import LANGUAGE_NAMES, LANGUAGES, tr
+from .model import DownloadModel
 from .playlist import PlaylistLoader
 from .queue import QueueManager
 from .services.procutils import spawn_kwargs
+from .status import FINAL as FINAL_STATUSES
 from .updater import Updater
 from .urlutils import normalize_url
 
@@ -104,18 +106,21 @@ class Bridge(QObject):
         )
 
         # -------------------------------------------------- carrega o estado
-        self._dark = self._settings.value("theme/dark", True, type=bool)
-        self._concurrency = self._clamp(int(self._settings.value("download/concurrency", 3)), 1, 8)
-        self._limit_rate_mb = self._clamp(int(self._settings.value("download/limit_rate", 0)), 0, 1000)
-        self._fragments = self._clamp(int(self._settings.value("download/fragments", 1)), 1, 8)
-        self._output_folder = str(self._settings.value("download/folder", default_outdir))
-        self._cookies_enabled = self._settings.value("cookies/enabled", False, type=bool)
-        self._cookies_browser_index = self._clamp(
-            int(self._settings.value("cookies/browser_index", 0)), 0, len(BROWSERS) - 1
+        self._dark = self._setting_bool("theme/dark", True)
+        self._concurrency = self._setting_int("download/concurrency", 3, 1, 8)
+        self._limit_rate_mb = self._setting_int("download/limit_rate", 0, 0, 1000)
+        self._fragments = self._setting_int("download/fragments", 1, 1, 8)
+        folder = str(self._settings.value("download/folder", default_outdir) or "").strip()
+        self._output_folder = os.path.abspath(
+            os.path.expanduser(folder or default_outdir)
         )
-        self._cookies_file = str(self._settings.value("cookies/file", ""))
-        self._deps_prompt_dismissed = self._settings.value(
-            "deps/prompt_dismissed", False, type=bool
+        self._cookies_enabled = self._setting_bool("cookies/enabled", False)
+        self._cookies_browser_index = self._setting_int(
+            "cookies/browser_index", 0, 0, len(BROWSERS) - 1
+        )
+        self._cookies_file = str(self._settings.value("cookies/file", "") or "").strip()
+        self._deps_prompt_dismissed = self._setting_bool(
+            "deps/prompt_dismissed", False
         )
         self._lang = str(self._settings.value("i18n/language", "pt"))
         if self._lang not in LANGUAGES:
@@ -157,6 +162,15 @@ class Bridge(QObject):
         self._comp_active = False
         self._comp_paused = False
 
+        # Fila própria do Download Individual. Antes, um clique em "Baixar
+        # agora" iniciava também todos os itens pendentes do lote.
+        self.single_manager = QueueManager(
+            DownloadModel([]),
+            outdir=self._output_folder,
+            concurrency=1,
+            worker_factory=manager.worker_factory,
+        )
+
         # ------------------------------------------------------ compressão
         self.compression = CompressionManager(CompressionModel([]), self)
         self.compression.set_translator(self._translator())
@@ -167,19 +181,17 @@ class Bridge(QObject):
             encoder=str(self._settings.value("compress/encoder", "auto")),
             codec=str(self._settings.value("compress/codec", "hevc")),
             container=str(self._settings.value("compress/container", "mp4")),
-            quality=self._clamp(int(self._settings.value("compress/quality", 24)), 1, 51),
+            quality=self._setting_int("compress/quality", 24, 1, 51),
             speed=str(self._settings.value("compress/speed", "balanced")),
-            parallel=self._clamp(int(self._settings.value("compress/parallel", 1)), 1, 8),
-            min_size_mb=self._clamp(int(self._settings.value("compress/min_size_mb", 0)), 0, 100000),
-            only_if_smaller=self._settings.value("compress/only_if_smaller", True, type=bool),
-            replace_original=self._settings.value("compress/replace_original", False, type=bool),
-            reencode_hevc=self._settings.value("compress/reencode_hevc", False, type=bool),
-            skip_hdr=self._settings.value("compress/skip_hdr", True, type=bool),
-            qsv_device=self._clamp(
-                int(self._settings.value("compress/qsv_device", -1)), -1, 15
-            ),
-            ten_bit=self._settings.value("compress/ten_bit", False, type=bool),
-            x265_tuning=self._settings.value("compress/x265_tuning", False, type=bool),
+            parallel=self._setting_int("compress/parallel", 1, 1, 8),
+            min_size_mb=self._setting_int("compress/min_size_mb", 0, 0, 100000),
+            only_if_smaller=self._setting_bool("compress/only_if_smaller", True),
+            replace_original=self._setting_bool("compress/replace_original", False),
+            reencode_hevc=self._setting_bool("compress/reencode_hevc", False),
+            skip_hdr=self._setting_bool("compress/skip_hdr", True),
+            qsv_device=self._setting_int("compress/qsv_device", -1, -1, 15),
+            ten_bit=self._setting_bool("compress/ten_bit", False),
+            x265_tuning=self._setting_bool("compress/x265_tuning", False),
         )
         if self._comp_settings.encoder == "x265":
             self._comp_settings.encoder = "software"
@@ -223,20 +235,23 @@ class Bridge(QObject):
         # ------------------------------------------------------- aplica tudo
         manager.statsChanged.connect(self.statsChanged.emit)
         manager.outdirChanged.connect(self.outputFolderChanged.emit)
-        manager.itemUpdated.connect(self._on_item_updated)
         manager.queueStateChanged.connect(self._on_queue_state)
-        manager.outdir = self._output_folder
+        # Só a fila individual alimenta o card "Último download".
+        self.single_manager.itemUpdated.connect(self._on_item_updated)
+
         manager.setConcurrency(self._concurrency)
-        manager.set_translator(self._translator())
-        manager.setCookies(self._build_cookies_arg())
-        manager.setLimitRate(self._limit_rate_arg())
-        manager.setFragments(self._fragments)
-        manager.setFormatMode(self._format_mode)
-        manager.setQuality(self._quality)
-        manager.setContainer(self._container)
-        manager.setCodec(self._codec)
-        manager.setCompressLevel(self._compress_level)
-        manager.setNamingMode(self._naming_mode)
+        for target in (manager, self.single_manager):
+            target.outdir = self._output_folder
+            target.set_translator(self._translator())
+            target.setCookies(self._build_cookies_arg())
+            target.setLimitRate(self._limit_rate_arg())
+            target.setFragments(self._fragments)
+            target.setFormatMode(self._format_mode)
+            target.setQuality(self._quality)
+            target.setContainer(self._container)
+            target.setCodec(self._codec)
+            target.setCompressLevel(self._compress_level)
+            target.setNamingMode(self._naming_mode)
 
         self.deps.check_all()
 
@@ -244,6 +259,23 @@ class Bridge(QObject):
     @staticmethod
     def _clamp(value: int, low: int, high: int) -> int:
         return max(low, min(high, value))
+
+    def _setting_int(self, key: str, default: int, low: int, high: int) -> int:
+        """Lê um inteiro do QSettings sem deixar um INI corrompido derrubar o app."""
+        raw = self._settings.value(key, default)
+        try:
+            value = int(raw)
+        except (TypeError, ValueError):
+            value = default
+        return self._clamp(value, low, high)
+
+    def _setting_bool(self, key: str, default: bool) -> bool:
+        raw = self._settings.value(key, default)
+        if isinstance(raw, bool):
+            return raw
+        if raw is None:
+            return default
+        return str(raw).strip().lower() in ("1", "true", "yes", "on")
 
     def _save(self, key: str, value) -> None:
         self._settings.setValue(key, value)
@@ -272,6 +304,7 @@ class Bridge(QObject):
         self._lang = lang
         self._save("i18n/language", lang)
         self.manager.set_translator(self._translator())
+        self.single_manager.set_translator(self._translator())
         self._playlist.set_translator(self._translator())
         self.compression.set_translator(self._translator())
         self.languageChanged.emit(lang)
@@ -343,6 +376,7 @@ class Bridge(QObject):
             return
         self._format_mode = mode
         self.manager.setFormatMode(mode)
+        self.single_manager.setFormatMode(mode)
         self._save("download/format_mode", mode)
         # Ajusta o contêiner se ele não fizer sentido no novo modo.
         valid = AUDIO_CONTAINERS if mode == "audio_only" else VIDEO_CONTAINERS
@@ -363,6 +397,7 @@ class Bridge(QObject):
             return
         self._quality = quality
         self.manager.setQuality(quality)
+        self.single_manager.setQuality(quality)
         self._save("download/quality", quality)
         self.qualityChanged.emit(quality)
 
@@ -378,6 +413,7 @@ class Bridge(QObject):
             return
         self._container = container
         self.manager.setContainer(container)
+        self.single_manager.setContainer(container)
         self._save("download/container", container)
         self.containerChanged.emit(container)
 
@@ -392,6 +428,7 @@ class Bridge(QObject):
             return
         self._codec = codec
         self.manager.setCodec(codec)
+        self.single_manager.setCodec(codec)
         self._save("encode/codec", codec)
         self.codecChanged.emit(codec)
 
@@ -406,6 +443,7 @@ class Bridge(QObject):
             return
         self._compress_level = level
         self.manager.setCompressLevel(level)
+        self.single_manager.setCompressLevel(level)
         self._save("encode/level", level)
         self.compressLevelChanged.emit(level)
 
@@ -420,6 +458,7 @@ class Bridge(QObject):
             return
         self._naming_mode = mode
         self.manager.setNamingMode(mode)
+        self.single_manager.setNamingMode(mode)
         self._save("naming/mode", mode)
         self.namingModeChanged.emit(mode)
 
@@ -462,14 +501,22 @@ class Bridge(QObject):
         self.lastItemChanged.emit()
 
     def _sync_single_item(self) -> None:
-        """Limpa o card individual se o item saiu da fila."""
+        """Limpa o card individual se o item saiu da fila individual."""
         if self._single_item_id is None:
             return
-        if any(i["id"] == self._single_item_id for i in self.manager.items):
+        if any(i["id"] == self._single_item_id for i in self.single_manager.items):
             return
         self._single_item_id = None
         self._last_item = {}
         self.lastItemChanged.emit()
+
+    def _single_row(self) -> int:
+        if self._single_item_id is None:
+            return -1
+        for row, item in enumerate(self.single_manager.items):
+            if item.get("id") == self._single_item_id:
+                return row
+        return -1
 
     # ----------------------------------------------------------- compressão
     @Property(str, notify=compressionConfigChanged)
@@ -1037,8 +1084,10 @@ class Bridge(QObject):
             None, self._tr("dlg_outdir"), self._output_folder
         )
         if path:
+            path = os.path.abspath(os.path.expanduser(path))
             self._output_folder = path
             self.manager.setOutdir(path)
+            self.single_manager.setOutdir(path)
             self._save("download/folder", path)
             self.outputFolderChanged.emit(path)
             self.notifyText.emit(self._tr("output_folder", path=path))
@@ -1066,6 +1115,7 @@ class Bridge(QObject):
             return
         self._limit_rate_mb = mb
         self.manager.setLimitRate(self._limit_rate_arg())
+        self.single_manager.setLimitRate(self._limit_rate_arg())
         self._save("download/limit_rate", mb)
         self.limitRateChanged.emit(mb)
 
@@ -1076,6 +1126,7 @@ class Bridge(QObject):
             return
         self._fragments = n
         self.manager.setFragments(n)
+        self.single_manager.setFragments(n)
         self._save("download/fragments", n)
         self.fragmentsChanged.emit(n)
 
@@ -1099,7 +1150,9 @@ class Bridge(QObject):
         return ""
 
     def _push_cookies(self) -> None:
-        self.manager.setCookies(self._build_cookies_arg())
+        arg = self._build_cookies_arg()
+        self.manager.setCookies(arg)
+        self.single_manager.setCookies(arg)
 
     @Slot(bool)
     def setCookiesEnabled(self, value: bool) -> None:
@@ -1149,31 +1202,77 @@ class Bridge(QObject):
         self._save("window/maximized", maximized)
 
     # ------------------------------------------------------------ fila
-    @Slot(str)
-    def downloadSingle(self, url: str) -> None:
-        """Adiciona um único link e inicia a fila (aba Download Individual)."""
+    @Slot(str, result=bool)
+    def downloadSingle(self, url: str) -> bool:
+        """Adiciona um único link à fila individual e a inicia.
+
+        Retorna True apenas quando um link válido foi adicionado; o QML usa
+        esse retorno para limpar o campo somente em caso de sucesso.
+        """
         url = (url or "").strip()
         if not url:
             self.notifyText.emit(self._tr("no_links"))
-            return
-        before = len(self.manager.items)
-        added, _skipped = self.manager.addText(url)
+            return False
+        normalized = normalize_url(url)
+        # Evita baixar de novo algo que já está ativo no lote. Itens
+        # finalizados podem ser reenfileirados.
+        if any(
+            normalize_url(item["url"]) == normalized
+            and item["status"] not in FINAL_STATUSES
+            for item in self.manager.items
+        ):
+            self.notifyText.emit(self._tr("links_skipped", s=1))
+            return False
+
+        current_row = self._single_row()
+        if current_row >= 0:
+            current = self.single_manager.items[current_row]
+            if current["status"] not in FINAL_STATUSES:
+                if normalize_url(current["url"]) == normalized:
+                    self._on_item_updated(current)
+                    self.notifyText.emit(self._tr("links_skipped", s=1))
+                else:
+                    self.notifyText.emit(self._tr("single_busy"))
+                return False
+
+        self.single_manager.clearFinished()
+        self._sync_single_item()
+        before = len(self.single_manager.items)
+        added, skipped = self.single_manager.addText(url)
         if added:
-            item = self.manager.items[before]
+            item = self.single_manager.items[before]
             self._single_item_id = item["id"]
             self._on_item_updated(item)
-        else:
-            # Duplicado: foca o item existente com a mesma URL.
-            normalized = normalize_url(url)
+            self.single_manager.start()
+            return True
+        if skipped:
+            # Duplicado ativo na fila individual: foca o item existente.
             match = next(
-                (i for i in reversed(self.manager.items)
+                (i for i in reversed(self.single_manager.items)
                  if normalize_url(i["url"]) == normalized),
                 None,
             )
             if match is not None:
                 self._single_item_id = match["id"]
                 self._on_item_updated(match)
-        self.manager.start()
+            self.notifyText.emit(self._tr("links_skipped", s=1))
+        else:
+            self.notifyText.emit(self._tr("no_links"))
+        return False
+
+    @Slot()
+    def cancelSingle(self) -> None:
+        row = self._single_row()
+        if row >= 0:
+            self.single_manager.cancelItem(row)
+            self.notifyText.emit(self._tr("item_cancelled"))
+
+    @Slot()
+    def retrySingle(self) -> None:
+        row = self._single_row()
+        if row >= 0:
+            self.single_manager.retryItem(row)
+            self.single_manager.start()
 
     @Slot()
     def startQueue(self) -> None:
@@ -1229,6 +1328,7 @@ class Bridge(QObject):
     @Slot()
     def clearAll(self) -> None:
         self.manager.clearAll()
+        self.single_manager.clearAll()
         self._single_item_id = None
         self._last_item = {}
         self.lastItemChanged.emit()
@@ -1246,6 +1346,7 @@ class Bridge(QObject):
             except Exception:
                 pass
         self.compression.shutdown()
+        self.single_manager.shutdown()
         self.manager.shutdown()
 
     @Slot(str)
