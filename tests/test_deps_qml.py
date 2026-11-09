@@ -45,6 +45,32 @@ def test_qml_loads(qapp, fake_deps):
     assert engine.rootObjects(), "main.qml não carregou"
 
 
+def test_settings_scrollbar_is_on_the_right(qapp, fake_deps):
+    model = DownloadModel([])
+    manager = QueueManager(model, outdir="out")
+    bridge = Bridge(manager, "out", deps=fake_deps)
+    engine = QQmlApplicationEngine()
+    engine.rootContext().setContextProperty("downloadModel", model)
+    engine.rootContext().setContextProperty("compressionModel", bridge.compression.model)
+    engine.rootContext().setContextProperty("bridge", bridge)
+    engine.load(QUrl.fromLocalFile(qml_path()))
+    root = engine.rootObjects()[0]
+    ctx = engine.contextForObject(root)
+
+    def ev(expr):
+        return QQmlExpression(ctx, root, expr).evaluate()[0]
+
+    ev("tabBar.currentIndex = 4")
+    qapp.processEvents()
+    x = ev("settingsScroll.ScrollBar.vertical.x")
+    width = ev("settingsScroll.ScrollBar.vertical.width")
+    horizontal = ev("settingsScroll.ScrollBar.horizontal.visible")
+    assert x > 0, "scrollbar vertical ficou no canto esquerdo"
+    assert width > 4
+    assert horizontal is False
+    bridge.shutdown()
+
+
 class _NoopWorker(DownloadWorker):
     def run(self) -> None:  # type: ignore[override]
         self.statusChanged.emit("analyzing")

@@ -6,10 +6,12 @@ preferências em ``settings.ini`` e expõe o estado das dependências externas.
 
 from __future__ import annotations
 
+import logging
 import os
 import subprocess
+import threading
 
-from PySide6.QtCore import Property, QObject, QSettings, QUrl, Signal, Slot
+from PySide6.QtCore import Property, QLocale, QObject, QSettings, Qt, QUrl, Signal, Slot
 from PySide6.QtGui import QDesktopServices, QGuiApplication
 from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox
 
@@ -26,6 +28,7 @@ from .compress import (
     CompressionSettings,
     available_vendors,
     estimate_saving,
+    resolve_encoder,
 )
 from .compress import (
     CODECS as COMPRESSION_CODECS,
@@ -57,7 +60,7 @@ from .urlutils import normalize_url
 class Bridge(QObject):
     """Ponte entre o QML e o backend (``QueueManager``/``DependencyManager``)."""
 
-    statsChanged = Signal(int, int, int, int)   # aguardando, baixando, ok, erro
+    statsChanged = Signal(int, int, int, int, int)  # aguardando, baixando, ok, erro, cancelado
     notifyText = Signal(str)                    # toast no QML
     outputFolderChanged = Signal(str)
     darkChanged = Signal(bool)
@@ -84,6 +87,7 @@ class Bridge(QObject):
     compressionStateChanged = Signal(bool, bool)
     compressionConfigChanged = Signal()
     compressionEncodersChanged = Signal()
+    compressionEffectiveEncoderChanged = Signal()
     compressionQsvDevicesChanged = Signal()
     updateChanged = Signal()
     updateProgressChanged = Signal(int)
@@ -98,6 +102,7 @@ class Bridge(QObject):
         parent: QObject | None = None,
         settings_path: str | None = None,
         deps: DependencyManager | None = None,
+        defer_detection: bool = False,
     ):
         super().__init__(parent)
         self.manager = manager
@@ -106,7 +111,14 @@ class Bridge(QObject):
         )
 
         # -------------------------------------------------- carrega o estado
-        self._dark = self._setting_bool("theme/dark", True)
+        dark_default = True
+        try:
+            scheme = QGuiApplication.styleHints().colorScheme()
+            if scheme == Qt.ColorScheme.Light:
+                dark_default = False
+        except Exception:
+            pass
+        self._dark = self._setting_bool("theme/dark", dark_default)
         self._concurrency = self._setting_int("download/concurrency", 3, 1, 8)
         self._limit_rate_mb = self._setting_int("download/limit_rate", 0, 0, 1000)
         self._fragments = self._setting_int("download/fragments", 1, 1, 8)
@@ -122,9 +134,12 @@ class Bridge(QObject):
         self._deps_prompt_dismissed = self._setting_bool(
             "deps/prompt_dismissed", False
         )
-        self._lang = str(self._settings.value("i18n/language", "pt"))
-        if self._lang not in LANGUAGES:
-            self._lang = "pt"
+        stored_lang = str(self._settings.value("i18n/language", "") or "").strip()
+        if stored_lang in LANGUAGES:
+            self._lang = stored_lang
+        else:
+            system_lang = QLocale.system().name().split("_", 1)[0].lower()
+            self._lang = system_lang if system_lang in LANGUAGES else "pt"
         self._format_mode = str(self._settings.value("download/format_mode", "video_audio"))
         if self._format_mode not in FORMAT_MODES:
             self._format_mode = "video_audio"
@@ -172,7 +187,9 @@ class Bridge(QObject):
         )
 
         # ------------------------------------------------------ compressão
-        self.compression = CompressionManager(CompressionModel([]), self)
+        self.compression = CompressionManager(
+            CompressionModel([]), self, defer_detection=defer_detection
+        )
         self.compression.set_translator(self._translator())
         self.compression.statsChanged.connect(self.compressionStatsChanged.emit)
         self.compression.stateChanged.connect(self._on_comp_state)
@@ -253,7 +270,25 @@ class Bridge(QObject):
             target.setCompressLevel(self._compress_level)
             target.setNamingMode(self._naming_mode)
 
-        self.deps.check_all()
+        if defer_detection:
+            threading.Thread(
+                target=self._detect_initial_environment, daemon=True
+            ).start()
+        else:
+            self.deps.check_all()
+
+    def _detect_initial_environment(self) -> None:
+        """Detecta encoders/dependências fora da thread da GUI no startup."""
+        try:
+            self.compression.refresh_encoders()
+            self.compressionEncodersChanged.emit()
+            self.compressionEffectiveEncoderChanged.emit()
+        except Exception:
+            logging.getLogger("hlsdl").exception("falha ao detectar encoders")
+        try:
+            self.deps.check_all()
+        except Exception:
+            logging.getLogger("hlsdl").exception("falha ao detectar dependências")
 
     # ------------------------------------------------------------- utilidades
     @staticmethod
@@ -532,6 +567,7 @@ class Bridge(QObject):
         self._save("compress/encoder", key)
         self.compression.apply_settings(self._comp_settings)
         self.compressionConfigChanged.emit()
+        self.compressionEffectiveEncoderChanged.emit()
 
     @Property(list, constant=True)
     def compressionCodecs(self) -> list:
@@ -554,6 +590,7 @@ class Bridge(QObject):
         self.compression.apply_settings(self._comp_settings)
         self.compressionConfigChanged.emit()
         self.compressionEncodersChanged.emit()
+        self.compressionEffectiveEncoderChanged.emit()
 
     @Property(list, notify=compressionConfigChanged)
     def compressionContainers(self) -> list:
@@ -709,6 +746,11 @@ class Bridge(QObject):
             })
         return items
 
+    @Property(str, notify=compressionEffectiveEncoderChanged)
+    def compressionEffectiveEncoder(self) -> str:
+        """Encoder concreto que o modo Auto/fornecedor escolheria agora."""
+        return resolve_encoder(self._comp_settings, self.compression.available)
+
     @Property(list, notify=compressionQsvDevicesChanged)
     def compressionQsvDevices(self) -> list:
         items = [{"index": -1, "name": "Auto (dedicada)"}]
@@ -737,6 +779,7 @@ class Bridge(QObject):
     def refreshCompressionEncoders(self) -> None:
         self.compression.refresh_encoders()
         self.compressionEncodersChanged.emit()
+        self.compressionEffectiveEncoderChanged.emit()
 
     @Property(bool, notify=compressionStateChanged)
     def compressionActive(self) -> bool:
@@ -781,7 +824,7 @@ class Bridge(QObject):
             None,
             self._tr("compress_add_files"),
             "",
-            "Vídeos (*.mp4 *.mkv *.mov *.avi *.webm *.m4v *.ts);;Todos os arquivos (*.*)",
+            self._tr("filter_videos"),
         )
         if paths:
             added = self.compression.add_paths(paths, recursive=False)
@@ -970,6 +1013,12 @@ class Bridge(QObject):
         self._playlist.load(url, int(limit), self._build_cookies_arg())
 
     @Slot()
+    def cancelPlaylist(self) -> None:
+        if self._playlist_loading:
+            self._playlist.cancel()
+            self.notifyText.emit(self._tr("playlist_cancelled"))
+
+    @Slot()
     def clearPlaylist(self) -> None:
         self._playlist_items = []
         self.playlistChanged.emit()
@@ -1060,7 +1109,7 @@ class Bridge(QObject):
             None,
             self._tr("dlg_links"),
             "",
-            "Arquivos de texto (*.txt);;Todos os arquivos (*.*)",
+            self._tr("filter_text"),
         )
         if path:
             self.importTxtPath(path)
@@ -1190,7 +1239,7 @@ class Bridge(QObject):
             None,
             self._tr("dlg_cookies"),
             "",
-            "Arquivos de cookie (*.txt);;Todos os arquivos (*.*)",
+            self._tr("filter_cookies"),
         )
         if path:
             self.setCookiesFile(path)
@@ -1395,6 +1444,12 @@ class Bridge(QObject):
         else:
             self.notifyText.emit(self._tr("dep_install_failed", name=name))
         self.depsInstallFinished.emit(key, ok, name)
+        if ok and key == "ffmpeg":
+            # A lista de encoders foi detectada antes da instalação; sem
+            # este refresh a compressão continuaria dizendo "manual".
+            self.compression.refresh_encoders()
+            self.compressionEncodersChanged.emit()
+            self.compressionEffectiveEncoderChanged.emit()
         self.depsChanged.emit()
 
     @Slot()

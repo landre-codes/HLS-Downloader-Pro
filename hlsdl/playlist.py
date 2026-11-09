@@ -124,7 +124,9 @@ class PlaylistLoader(QObject):
             for i, entry in enumerate(entries):
                 if not entry:
                     continue
-                items.append(self._to_item(entry, i))
+                item = self._to_item(entry, i)
+                if item["url"]:
+                    items.append(item)
             if not items:
                 self.failed.emit(self._t("playlist_empty"))
                 return
@@ -149,8 +151,16 @@ class PlaylistLoader(QObject):
         url = entry.get("webpage_url") or entry.get("url") or ""
         video_id = entry.get("id") or ""
         if not str(url).startswith("http"):
-            # Em modo --flat-playlist o YouTube traz apenas o ID.
-            url = f"https://www.youtube.com/watch?v={video_id}" if video_id else ""
+            # Em modo --flat-playlist o YouTube traz apenas o ID. Outros
+            # extractores também podem trazer só o ID; nesse caso não
+            # inventamos uma URL do YouTube.
+            extractor = str(
+                entry.get("ie_key") or entry.get("extractor_key") or ""
+            ).lower()
+            if video_id and ("youtube" in extractor or not extractor):
+                url = f"https://www.youtube.com/watch?v={video_id}"
+            else:
+                url = ""
         thumbs = entry.get("thumbnails") or []
         thumb = thumbs[-1].get("url", "") if thumbs else ""
         return {

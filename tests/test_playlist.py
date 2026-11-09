@@ -15,6 +15,13 @@ def test_to_item_youtube_id_becomes_watch_url():
     assert item["index"] == 1
 
 
+def test_to_item_non_youtube_id_is_not_forced_to_youtube():
+    item = PlaylistLoader._to_item(
+        {"id": "abc", "title": "V", "url": "abc", "ie_key": "Vimeo"}, 0
+    )
+    assert item["url"] == ""
+
+
 def test_to_item_full_url_and_thumb():
     entry = {
         "id": "x", "title": "T", "webpage_url": "https://site/v/1",

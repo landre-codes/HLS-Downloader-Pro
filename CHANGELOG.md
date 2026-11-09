@@ -1,8 +1,10 @@
 # Changelog
 
 Todas as mudanças relevantes deste projeto são documentadas aqui.
+O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/)
+e o versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 
-## [Não lançado] — correções P0 da auditoria
+## [Não lançado] — correções P0/P1 da auditoria
 
 ### Corrigido
 - **Threading**: sinais de download/compressão agora são entregues por slots
@@ -26,8 +28,26 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 - **Janela inicial**: é limitada à área disponível da tela; geometria normal
   é preservada ao maximizar.
 - **Dependências**: instalar/atualizar agora pede confirmação.
-O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/)
-e o versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
+
+### Alterado (P1/P2)
+- **Tema e contraste**: tokens semânticos para claro/escuro; textos, botões
+  flat/preenchidos, badges de status, erros e diálogos agora mantêm contraste
+  AA; o corpo dos diálogos é opaco (não herda fundo claro no tema escuro).
+- **Layout**: aba Compressão com rolagem nas opções e fila mínima visível;
+  linhas de ações usam `Flow` (sem cortar botões em PT/RU); Configurações com
+  scrollbar vertical correta e sem barra horizontal.
+- **Atalhos**: detecção de foco em campos corrigida (`root.activeFocusItem`);
+  `Ctrl+Enter` e `Delete` são escopados e não agem durante a digitação.
+- **Fechamento**: confirmação quando há downloads/compressões ativos.
+- **Playlists**: cancelar carregamento, filtro com contagem e proteção contra
+  IDs de outros sites virarem URLs do YouTube.
+- **Compressão/ffmpeg**: detecção de `ffprobe`, fallback ffmpeg respeitando
+  modo/contêiner/referer/cookies, encoder efetivo para 10-bit/x265 e GPU QSV
+  detectada no startup; refresh de encoders após instalar ffmpeg.
+- **Startup**: detecção de dependências/encoders fora da thread da GUI.
+- **Alto DPI**: escala automática não multiplica o scaling do Windows.
+- **i18n/acessibilidade**: filtros de arquivo, terminal, dicas e botões da
+  janela traduzidos nos 8 idiomas; nomes acessíveis nos controles do título.
 
 ## [1.3.0] — 2026-11-02
 

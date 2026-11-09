@@ -820,13 +820,14 @@ class CompressionManager(QObject):
         model: CompressionModel,
         parent: QObject | None = None,
         worker_factory: Callable[..., CompressionWorker] = CompressionWorker,
+        defer_detection: bool = False,
     ):
         super().__init__(parent)
         self.model = model
         self.items: list[dict] = model.items()
         self.settings = CompressionSettings()
         self._worker_factory = worker_factory
-        self.available = detect_encoders()
+        self.available = set() if defer_detection else detect_encoders()
         self.qsv_devices: list[dict] = []
         self._qsv_device = 0
         self._active = False
@@ -838,6 +839,12 @@ class CompressionManager(QObject):
         self._encoder = ""
         self._t = translator("pt")
         self._emit_stats()
+        if not defer_detection and any(
+            name.endswith("_qsv") for name in self.available
+        ):
+            # Evita a lista de GPU vazia no primeiro uso, sem bloquear o
+            # startup da janela.
+            threading.Thread(target=self._detect_qsv_devices, daemon=True).start()
 
     def _detect_qsv_devices(self) -> None:
         devices = detect_qsv_devices()
