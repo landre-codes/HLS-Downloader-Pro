@@ -159,15 +159,17 @@ def qml_path() -> str:
 
 def icon_path() -> str:
     """Ícone da janela/bandeja (bundled em ``hlsdl/assets`` ou no repo)."""
-    candidates = [
-        os.path.join(_PKG_DIR, "assets", "icon.ico"),
-        os.path.join(_dev_root(), "assets", "icon.ico"),
-        os.path.join(app_dir(), "assets", "icon.ico"),
-        os.path.join(getattr(sys, "_MEIPASS", _PKG_DIR), "assets", "icon.ico"),
+    bases = [
+        _PKG_DIR,
+        _dev_root(),
+        app_dir(),
+        getattr(sys, "_MEIPASS", _PKG_DIR),
     ]
-    for candidate in candidates:
-        if os.path.isfile(candidate):
-            return candidate
+    for name in ("icon.ico", "icon.png"):
+        for base in bases:
+            candidate = os.path.join(base, "assets", name)
+            if os.path.isfile(candidate):
+                return candidate
     return ""
 
 

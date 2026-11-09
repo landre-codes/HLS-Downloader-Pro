@@ -72,6 +72,8 @@ jobs:
           pyinstaller --noconfirm --clean --onefile --windowed \
             --name "HLS-Downloader-Pro" \
             --add-data "hlsdl/ui:hlsdl/ui" \
+            --add-data "assets/icon.ico:hlsdl/assets" \
+            --add-data "assets/icon.png:hlsdl/assets" \
             --exclude-module yt_dlp \
             --noupx \
             main.py
@@ -129,7 +131,7 @@ jobs:
       - name: Generate version metadata
         run: python scripts/gen_version_info.py
       - name: Build binary (onedir + icon + version info)
-        run: pyinstaller --noconfirm --clean --onedir --windowed --name "HLS-Downloader-Pro" --icon "assets/icon.ico" --version-file "build/version_info.txt" --add-data "hlsdl/ui;hlsdl/ui" --exclude-module yt_dlp --noupx main.py
+        run: pyinstaller --noconfirm --clean --onedir --windowed --name "HLS-Downloader-Pro" --icon "assets/icon.ico" --version-file "build/version_info.txt" --add-data "hlsdl/ui;hlsdl/ui" --add-data "assets/icon.ico;hlsdl/assets" --add-data "assets/icon.png;hlsdl/assets" --exclude-module yt_dlp --noupx main.py
       - name: Verify binary (offscreen)
         shell: pwsh
         run: |
