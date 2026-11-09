@@ -24,6 +24,20 @@ LANGUAGE_NAMES = {
 
 DEFAULT_LANG = "pt"
 
+
+def detect_language(stored: str | None = None) -> str:
+    """Idioma salvo ou o do sistema, com fallback para português."""
+    if stored in LANGUAGES:
+        return str(stored)
+    try:
+        from PySide6.QtCore import QLocale
+
+        system = QLocale.system().name().split("_", 1)[0].lower()
+    except Exception:
+        system = ""
+    return system if system in LANGUAGES else DEFAULT_LANG
+
+
 BACKEND: dict[str, dict[str, str]] = {
     "pt": {
         "links_added_skipped": "{a} link(s) adicionados, {s} duplicado(s) ignorado(s).",
@@ -701,6 +715,60 @@ UPDATE_MESSAGES: dict[str, dict[str, str]] = {
 }
 
 for _lang, _messages in UPDATE_MESSAGES.items():
+    BACKEND.setdefault(_lang, {}).update(_messages)
+
+NATIVE_MESSAGES: dict[str, dict[str, str]] = {
+    "pt": {
+        "btn_ok": "OK",
+        "qml_load_failed": "Falha ao carregar a interface (main.qml).",
+        "tray_show": "Mostrar janela",
+        "tray_quit": "Sair",
+    },
+    "en": {
+        "btn_ok": "OK",
+        "qml_load_failed": "Failed to load the interface (main.qml).",
+        "tray_show": "Show window",
+        "tray_quit": "Quit",
+    },
+    "es": {
+        "btn_ok": "Aceptar",
+        "qml_load_failed": "No se pudo cargar la interfaz (main.qml).",
+        "tray_show": "Mostrar ventana",
+        "tray_quit": "Salir",
+    },
+    "it": {
+        "btn_ok": "OK",
+        "qml_load_failed": "Impossibile caricare l'interfaccia (main.qml).",
+        "tray_show": "Mostra finestra",
+        "tray_quit": "Esci",
+    },
+    "fr": {
+        "btn_ok": "OK",
+        "qml_load_failed": "Échec du chargement de l'interface (main.qml).",
+        "tray_show": "Afficher la fenêtre",
+        "tray_quit": "Quitter",
+    },
+    "ru": {
+        "btn_ok": "ОК",
+        "qml_load_failed": "Не удалось загрузить интерфейс (main.qml).",
+        "tray_show": "Показать окно",
+        "tray_quit": "Выход",
+    },
+    "ja": {
+        "btn_ok": "OK",
+        "qml_load_failed": "インターフェース (main.qml) の読み込みに失敗しました。",
+        "tray_show": "ウィンドウを表示",
+        "tray_quit": "終了",
+    },
+    "zh": {
+        "btn_ok": "确定",
+        "qml_load_failed": "无法加载界面（main.qml）。",
+        "tray_show": "显示窗口",
+        "tray_quit": "退出",
+    },
+}
+
+for _lang, _messages in NATIVE_MESSAGES.items():
     BACKEND.setdefault(_lang, {}).update(_messages)
 
 

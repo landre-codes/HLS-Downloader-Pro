@@ -7,7 +7,6 @@ afetavam apenas uma das duas listas.
 
 from __future__ import annotations
 
-import logging
 import os
 from collections.abc import Callable
 
@@ -16,12 +15,10 @@ from PySide6.QtCore import Property, QObject, QThread, QUrl, Signal, Slot
 from .downloader import DownloadWorker
 from .formats import FORMAT_MODES
 from .i18n import translator
-from .lifecycle import note_stuck_qthread
+from .lifecycle import shutdown_threads
 from .model import DownloadModel, make_item
 from .status import ACTIVE, FINAL, Status
 from .urlutils import extract_urls, normalize_url
-
-log = logging.getLogger("hlsdl")
 
 WorkerFactory = Callable[..., DownloadWorker]
 
@@ -330,44 +327,15 @@ class QueueManager(QObject):
     def shutdown(self, timeout: float = 6.0) -> None:
         """Cancela tudo e aguarda as threads terminarem (chamado ao fechar).
 
-        Nunca descartamos a referência de uma ``QThread`` ainda em execução:
-        destruir um QThread rodando faz o Qt abortar o processo com
-        ``0xC0000409``. Se o cancelamento cooperativo não bastar dentro do
-        prazo, encerramos a thread como último recurso e esperamos.
+        A proteção contra ``QThread`` viva (``0xC0000409``) e a espera ficam
+        em :func:`hlsdl.lifecycle.shutdown_threads`.
         """
-        self.cancelAll()
-        import time as _time
-
-        deadline = _time.time() + timeout
-        for thread, worker, _item in list(self._threads.values()):
-            remaining = max(0.0, deadline - _time.time())
-            try:
-                thread.quit()
-                if thread.wait(int(remaining * 1000)):
-                    continue
-                log.warning(
-                    "thread %s não terminou em %.1fs; encerrando à força",
-                    thread.objectName() or thread,
-                    timeout,
-                )
-                worker.cancel()
-                thread.terminate()
-                if not thread.wait(2000):
-                    log.critical(
-                        "thread %s continua viva após terminate; "
-                        "registrando saída de emergência",
-                        thread,
-                    )
-                    note_stuck_qthread(thread)
-            except RuntimeError:
-                # Objeto C++ já destruído: nada a fazer.
-                pass
-        # Só removemos quem realmente terminou. Threads teimosas continuam
-        # referenciadas e serão contabilizadas em _running.
-        self._threads = {
-            key: entry for key, entry in self._threads.items()
-            if not entry[0].isFinished()
-        }
+        self._threads = shutdown_threads(
+            self._threads,
+            timeout=timeout,
+            label="thread de download",
+            cancel=self.cancelAll,
+        )
         self._running = len(self._threads)
 
     # ------------------------------------------------------------- agendador

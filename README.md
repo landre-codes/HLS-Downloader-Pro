@@ -220,7 +220,26 @@ O diagnóstico **não abre a janela principal nem altera arquivos do usuário**.
   o mesmo log — inclusive no build `--windowed`, sem console.
 - **Exceções não tratadas** na thread principal e nas threads de
   download/compressão são registradas com traceback.
+- **Dados sensíveis**: URLs assinadas (query/fragmento), credenciais embutidas,
+  cabeçalhos `Authorization`/`Cookie` e caminhos de cookies são redigidos antes
+  de serem gravados no log.
 - Use `--verbose` para elevar o nível para `DEBUG`.
+
+## Integridade das ferramentas
+
+As ferramentas baixadas pelo próprio app são conferidas antes da instalação:
+
+| Ferramenta | Verificação |
+|---|---|
+| yt-dlp (stable/nightly/master) | SHA-256 do `SHA2-256SUMS` oficial |
+| ffmpeg Windows (Gyan) | SHA-256 do `.sha256` publicado |
+| ffmpeg Linux (johnvansickle) | MD5 do `.md5` publicado |
+| ffmpeg macOS (evermeet) | tamanho exato informado pela API (o site não publica hash) |
+
+Se o sidecar não estiver disponível, o digest for inválido ou o arquivo não
+conferir, a instalação é abortada e o binário temporário é removido. No Windows
+e no Linux, o ffmpeg ainda pode ser instalado pelo gerenciador de pacotes do
+sistema como alternativa.
 
 ## Exportar
 

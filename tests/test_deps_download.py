@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import hashlib
 import io
 import os
 import sys
 import tarfile
 import zipfile
+
+import pytest
 
 from hlsdl import config, deps
 
@@ -70,6 +73,10 @@ def test_install_ytdlp_from_file_url(tmp_path, monkeypatch):
         asset = "yt-dlp"
     payload = tmp_path / asset
     payload.write_bytes(b"binary-payload")
+    digest = hashlib.sha256(b"binary-payload").hexdigest()
+    (tmp_path / deps.YTDLP_CHECKSUMS).write_text(
+        f"{digest}  {asset}\n", encoding="utf-8"
+    )
     monkeypatch.setattr(
         deps, "YTDLP_CHANNELS",
         {**deps.YTDLP_CHANNELS, "stable": tmp_path.as_uri() + "/"},
@@ -83,6 +90,99 @@ def test_install_ytdlp_from_file_url(tmp_path, monkeypatch):
     target = tools / ("yt-dlp.exe" if os.name == "nt" else "yt-dlp")
     assert target.exists() and target.read_bytes() == b"binary-payload"
     assert any("yt-dlp instalado" in line for line in output)
+    assert any("checksum SHA256 verificado" in line for line in output)
+
+
+def test_parse_checksum_uses_exact_asset():
+    text = (
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  yt-dlp\n"
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb  yt-dlp.exe\n"
+    )
+    expected = "b" * 64
+    assert deps.parse_checksum(text, "yt-dlp.exe") == expected
+    assert deps.parse_checksum(text, "yt-dlp") == "a" * 64
+
+
+def test_parse_checksum_accepts_bare_hash_and_md5sum_star():
+    assert deps.parse_checksum("c" * 64 + "\n") == "c" * 64
+    assert deps.parse_checksum(
+        "d" * 32 + " *ffmpeg-release-amd64-static.tar.xz\n",
+        "ffmpeg-release-amd64-static.tar.xz",
+    ) == "d" * 32
+
+
+def test_parse_checksum_missing_or_ambiguous_raises():
+    with pytest.raises(ValueError):
+        deps.parse_checksum("", "yt-dlp.exe")
+    with pytest.raises(ValueError):
+        deps.parse_checksum("nada aqui\n", "yt-dlp.exe")
+    with pytest.raises(ValueError):
+        deps.parse_checksum(f"{'a' * 64}\n{'b' * 64}\n")
+
+
+def test_verify_checksum_rejects_corruption(tmp_path):
+    archive = tmp_path / "ffmpeg.zip"
+    archive.write_bytes(b"conteudo")
+    digest = hashlib.sha256(b"outro conteudo").hexdigest()
+    with pytest.raises(ValueError):
+        deps.verify_checksum(str(archive), digest)
+
+
+def test_install_ytdlp_requires_checksum_sidecar(tmp_path, monkeypatch):
+    tools = tmp_path / "tools"
+    tools.mkdir()
+    monkeypatch.setattr(config, "tools_dir", lambda: str(tools))
+    monkeypatch.setattr(config, "ensure_tools_on_path", lambda: None)
+
+    if os.name == "nt":
+        asset = "yt-dlp.exe"
+    elif sys.platform == "darwin":
+        asset = "yt-dlp_macos"
+    else:
+        asset = "yt-dlp"
+    (tmp_path / asset).write_bytes(b"binary-payload")
+    monkeypatch.setattr(
+        deps, "YTDLP_CHANNELS",
+        {**deps.YTDLP_CHANNELS, "stable": tmp_path.as_uri() + "/"},
+    )
+
+    manager = deps.DependencyManager()
+    with pytest.raises(OSError):
+        manager._install_ytdlp()
+    target = tools / ("yt-dlp.exe" if os.name == "nt" else "yt-dlp")
+    assert not target.exists()
+    assert not (tools / (target.name + ".download")).exists()
+
+
+def test_install_ytdlp_removes_binary_when_checksum_mismatches(
+    tmp_path, monkeypatch
+):
+    tools = tmp_path / "tools"
+    tools.mkdir()
+    monkeypatch.setattr(config, "tools_dir", lambda: str(tools))
+    monkeypatch.setattr(config, "ensure_tools_on_path", lambda: None)
+
+    if os.name == "nt":
+        asset = "yt-dlp.exe"
+    elif sys.platform == "darwin":
+        asset = "yt-dlp_macos"
+    else:
+        asset = "yt-dlp"
+    (tmp_path / asset).write_bytes(b"binary-payload")
+    (tmp_path / deps.YTDLP_CHECKSUMS).write_text(
+        f"{'0' * 64}  {asset}\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        deps, "YTDLP_CHANNELS",
+        {**deps.YTDLP_CHANNELS, "stable": tmp_path.as_uri() + "/"},
+    )
+
+    manager = deps.DependencyManager()
+    with pytest.raises(RuntimeError):
+        manager._install_ytdlp()
+    target = tools / ("yt-dlp.exe" if os.name == "nt" else "yt-dlp")
+    assert not target.exists()
+    assert not (tools / (target.name + ".download")).exists()
 
 
 def test_strategy_frozen_prefers_download(monkeypatch):
