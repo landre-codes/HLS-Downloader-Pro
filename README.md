@@ -13,7 +13,7 @@ Downloader de vídeos (HLS / m3u8) com interface **Qt Quick (QML) + Material Des
 - **HandBrake-like**: além de presets/filtros/tone mapping, inclui **decodificação por hardware** (`-hwaccel auto`), metadados HDR10 (`master-display`/`max-cll`) no x265 e validação de frames/áudio/legendas.
 - **Preservação do original**: a compressão grava em `.part` único, usa journal de transação e backup por hard link/cópia. Em erro, hash divergente, perda de energia ou falha de áudio, o original é mantido/restaurado; “Apagar original” só ocorre após validação e deixa um backup recuperável.
 - **Busca de similares (VDF/Czkawka-inspired)**: assinatura multi-frame dHash + aHash + envelope RMS de áudio, com fallbacks por hash amostral, metadados, duração/resolução e nome. Disponível na aba Compressão → “Mídias similares”.
-- **Atualizações**: verifica a última release, baixa o instalador e **valida o SHA-256** antes de executar (Windows; no portátil abre a página da release)
+- **Atualizações**: verifica a última release, baixa o instalador, valida o **SHA-256** e a **assinatura Ed25519** do manifesto antes de executar (Windows; no portátil abre a página da release)
 - **Modo de extração** (Individual e Lote): **Vídeo + áudio**, **Apenas vídeo** ou **Somente áudio**
 - **Qualidade de 144p a 4K** (2160p) e **escolha do arquivo** de saída: **mp4, mkv, webm, avi, mov** (ou **mp3, m4a, wav, flac, opus** no modo áudio)
 - **Compressão de vídeo**: mantenha o original (sem reencode) ou recomprima para **H.264** ou **H.265 (HEVC)**, com nível **Leve / Média / Forte**. O arquivo recomprimido ganha sufixo `_h264`/`_h265` e o original é preservado; se a compressão falhar, o original permanece intacto
@@ -287,7 +287,30 @@ Saída em `dist/`:
 - `HLS-Downloader-Pro-<versão>-source.zip` — código, testes e documentação;
 - `HLS-Downloader-Pro-<versão>-portable-win64.zip` — build `onedir` com
   `portable.flag` e documentação (quando `dist/HLS-Downloader-Pro` existe);
-- `SHA256SUMS.txt` — hashes dos pacotes e do instalador, quando presente.
+- `SHA256SUMS.txt` e `SHA256SUMS-windows.txt` — hashes dos pacotes e do instalador, quando presente.
+
+## Assinatura de atualizações
+
+O manifesto `SHA256SUMS-windows.txt` é assinado com Ed25519. O app embute a
+chave pública em `hlsdl/update_trust.py` e recusa atualizações sem assinatura
+válida.
+
+Gere a chave uma única vez e guarde o PEM fora do repositório:
+
+```powershell
+python scripts/gen_update_key.py --out C:\caminho\seguro\update_signing_key.pem
+```
+
+No GitHub, configure o segredo `UPDATE_SIGNING_KEY` com o conteúdo do PEM. O CI
+assina o manifesto automaticamente em releases; localmente:
+
+```powershell
+python scripts/sign_release.py SHA256SUMS-windows.txt --key C:\caminho\seguro\update_signing_key.pem
+```
+
+O `constraints.txt` fixa as versões usadas no CI e nos builds de release.
+O workflow `Hardware encoders` roda o teste QSV em um runner self-hosted com os
+labels `self-hosted`, `windows`, `x64` e `qsv`.
 
 No dia a dia de desenvolvimento, `iniciar.cmd` abre o app usando o `.venv`
 (ou `py -3`/`python` como fallback).
@@ -327,7 +350,8 @@ python layout_debug.py       # dump da geometria do layout
 | `hlsdl/queue.py` | `QueueManager` — escalonador de threads/concorrência |
 | `hlsdl/downloader.py` | `DownloadWorker` — yt-dlp, ffmpeg e progresso |
 | `hlsdl/compress.py` | Fila/worker de compressão local (QSV/NVENC/AMF/Kvazaar/x265) |
-| `hlsdl/updater.py` | Verificação/download de atualizações com SHA-256 |
+| `hlsdl/updater.py` | Verificação/download de atualizações com SHA-256 e assinatura Ed25519 |
+| `hlsdl/update_trust.py` | Chave pública e verificação do manifesto de atualizações |
 | `hlsdl/playlist.py` | Carregador de itens de playlist (YouTube/site) |
 | `hlsdl/formats.py` | Modos, qualidades e contêineres suportados |
 | `hlsdl/deps.py` | Detecção/instalação/atualização de dependências |

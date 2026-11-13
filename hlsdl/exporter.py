@@ -168,6 +168,10 @@ def export(
     checksums = dist / "SHA256SUMS.txt"
     checksums.write_text("\n".join(lines) + "\n", encoding="utf-8")
     artifacts["checksums"] = checksums
+    # O atualizador Windows procura este nome de manifesto no release.
+    windows_checksums = dist / "SHA256SUMS-windows.txt"
+    windows_checksums.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    artifacts["windows_checksums"] = windows_checksums
     return artifacts
 
 

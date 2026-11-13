@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
+
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from hlsdl import __version__
 from hlsdl import updater as updater_module
+from hlsdl.update_trust import verify_update_manifest
 from hlsdl.updater import Updater, version_tuple
 
 
@@ -29,6 +34,10 @@ def test_check_detects_new_version(qapp, monkeypatch):
                 "name": "SHA256SUMS-windows.txt",
                 "browser_download_url": "https://example/SHA256SUMS.txt",
             },
+            {
+                "name": "SHA256SUMS-windows.txt.sig",
+                "browser_download_url": "https://example/SHA256SUMS.txt.sig",
+            },
         ],
     }
     monkeypatch.setattr(updater_module, "_get_json", lambda url: payload)
@@ -42,6 +51,7 @@ def test_check_detects_new_version(qapp, monkeypatch):
     assert got[0]["latest"] == "99.0.0"
     assert got[0]["installer_name"].endswith("-setup.exe")
     assert got[0]["checksums_url"].endswith("SHA256SUMS.txt")
+    assert got[0]["signature_url"].endswith("SHA256SUMS.txt.sig")
 
 
 def test_check_detects_latest(qapp, monkeypatch):
@@ -105,7 +115,8 @@ def test_download_instala_apenas_apos_hash(qapp, monkeypatch, tmp_path):
         lambda request, timeout: _Response(payload),
     )
     monkeypatch.setattr(
-        Updater, "_expected_hash", staticmethod(lambda url, name: digest)
+        Updater, "_verified_expected_hash",
+        classmethod(lambda cls, info, name: digest),
     )
     updater = Updater()
     ready: list[str] = []
@@ -115,6 +126,7 @@ def test_download_instala_apenas_apos_hash(qapp, monkeypatch, tmp_path):
         "installer_url": "https://example/setup.exe",
         "installer_name": "HLS-Downloader-Pro-setup.exe",
         "checksums_url": "https://example/SHA256SUMS.txt",
+        "signature_url": "https://example/SHA256SUMS.txt.sig",
     })
 
     destination = tmp_path / "updates" / "HLS-Downloader-Pro-setup.exe"
@@ -131,7 +143,8 @@ def test_download_descarta_parcial_quando_hash_falha(qapp, monkeypatch, tmp_path
         lambda request, timeout: _Response(payload),
     )
     monkeypatch.setattr(
-        Updater, "_expected_hash", staticmethod(lambda url, name: "0" * 64)
+        Updater, "_verified_expected_hash",
+        classmethod(lambda cls, info, name: "0" * 64),
     )
     updater = Updater()
     failed: list[str] = []
@@ -141,9 +154,60 @@ def test_download_descarta_parcial_quando_hash_falha(qapp, monkeypatch, tmp_path
         "installer_url": "https://example/setup.exe",
         "installer_name": "HLS-Downloader-Pro-setup.exe",
         "checksums_url": "https://example/SHA256SUMS.txt",
+        "signature_url": "https://example/SHA256SUMS.txt.sig",
     })
 
     assert failed == ["checksum_mismatch"]
     updates = tmp_path / "updates"
     assert not (updates / "HLS-Downloader-Pro-setup.exe").exists()
     assert not list(updates.glob("*.part"))
+
+
+def test_verify_update_manifest_ed25519():
+    key = Ed25519PrivateKey.generate()
+    public_raw = key.public_key().public_bytes(
+        serialization.Encoding.Raw, serialization.PublicFormat.Raw
+    )
+    public_b64 = base64.b64encode(public_raw).decode("ascii")
+    data = b"abc123  HLS-Downloader-Pro-1.4.0-setup.exe\n"
+    signature = base64.b64encode(key.sign(data)).decode("ascii")
+    assert verify_update_manifest(data, signature, public_b64) == (True, "ok")
+    assert verify_update_manifest(data + b"x", signature, public_b64) == (
+        False, "invalid_signature"
+    )
+    assert verify_update_manifest(data, "", public_b64) == (
+        False, "missing_signature"
+    )
+
+
+def test_verified_hash_rejeita_assinatura_invalida(monkeypatch):
+    data = b"abc123  HLS-Downloader-Pro-1.4.0-setup.exe\n"
+    monkeypatch.setattr(updater_module, "_get_bytes", lambda url: data)
+    monkeypatch.setattr(updater_module, "_get_text", lambda url: "assinatura")
+    monkeypatch.setattr(
+        updater_module, "verify_update_manifest",
+        lambda manifest, signature: (False, "invalid_signature"),
+    )
+    try:
+        Updater._verified_expected_hash({
+            "checksums_url": "https://example/SHA256SUMS.txt",
+            "signature_url": "https://example/SHA256SUMS.txt.sig",
+        }, "HLS-Downloader-Pro-1.4.0-setup.exe")
+    except RuntimeError as exc:
+        assert str(exc) == "invalid_signature"
+    else:
+        raise AssertionError("assinatura inv?lida foi aceita")
+
+
+def test_verified_hash_aceita_manifesto_assinado(monkeypatch):
+    data = b"abc123  HLS-Downloader-Pro-1.4.0-setup.exe\n"
+    monkeypatch.setattr(updater_module, "_get_bytes", lambda url: data)
+    monkeypatch.setattr(updater_module, "_get_text", lambda url: "assinatura")
+    monkeypatch.setattr(
+        updater_module, "verify_update_manifest",
+        lambda manifest, signature: (True, "ok"),
+    )
+    assert Updater._verified_expected_hash({
+        "checksums_url": "https://example/SHA256SUMS.txt",
+        "signature_url": "https://example/SHA256SUMS.txt.sig",
+    }, "HLS-Downloader-Pro-1.4.0-setup.exe") == "abc123"

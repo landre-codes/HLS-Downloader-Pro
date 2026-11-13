@@ -17,6 +17,9 @@ e o versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 - **Fila persistente** (`queue.json`): restaura downloads e compressão ao abrir, omitindo concluídos.
 - **CLI `hlsdl`** com `probe`, `verify`, `similar`, `compress` e `download`.
 - **Arquitetura modular**: `bridge.py` dividido em mixins (`hlsdl/bridge_parts/`), páginas QML em `hlsdl/ui/pages/`, componentes compartilhados em `hlsdl/ui/components/` e todos os diálogos globais (erro, confirmações, dependências, lote, sugestões, similaridade e recuperação) em `hlsdl/ui/dialogs/`; `main.qml` ficou só com o shell da janela.
+- **Atualizações assinadas**: o manifesto `SHA256SUMS-windows.txt` é assinado com Ed25519; o app valida a assinatura com a chave pública embutida antes de aceitar o instalador. Inclui `scripts/gen_update_key.py` e `scripts/sign_release.py`.
+- **Build fixado**: `constraints.txt` pina PySide6, yt-dlp, requests, cryptography, PyInstaller e ferramentas de teste; Actions e o fallback do Inno Setup foram fixados/detectados.
+- **Teste de hardware**: workflow semanal/manual roda encode QSV real em runner self-hosted; CI Linux instala ffmpeg para executar os testes reais de software.
 - **QML no CI**: `pyside6-qmllint` bloqueia erros de sintaxe/tipo em todas as telas.
 - **Teste Windows no CI** e testes de catálogo/CLI/persistência/SSIM/HDR.
 - **SBOM CycloneDX em todas as plataformas** (`*-sbom.json`), com hash incluído nos `SHA256SUMS` de Windows e Linux.

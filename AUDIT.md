@@ -154,3 +154,19 @@ O projeto está em um nível **bom e acima da média para um app desktop Python/
 ## Conclusão
 
 A base é sólida e a evolução recente foi grande. O que separa o projeto do “padrão-ouro” agora **não é a linguagem** (Python/Qt continua adequado), mas **processo de release, assinatura, testes reais de hardware e automação de qualidade visual**.
+
+## Status de remedia??o desta rodada
+
+- **P1-01 (assinatura de atualiza??o):** implementado esquema Ed25519 no c?digo
+  (`hlsdl/update_trust.py`, `scripts/sign_release.py`, `scripts/gen_update_key.py`)
+  e verifica??o do manifesto antes do SHA-256 do instalador. A chave privada foi
+  gerada fora do reposit?rio; falta configurar o segredo `UPDATE_SIGNING_KEY` no
+  GitHub antes da pr?xima release assinada.
+- **P1-02 (reprodutibilidade/CI):** adicionado `constraints.txt`, A??es fixadas
+  por SHA, fallback do Inno Setup fixado em 6.7.1 e detec??o de Inno 6/7.
+- **P1-03 (hardware real):** adicionado workflow `Hardware encoders` para runner
+  self-hosted QSV e ffmpeg instalado no job Linux para encodes reais de software.
+  Ainda ? necess?rio provisionar um runner com GPU e manter a matriz de fixtures.
+- **P2-03 (sidecars no POSIX):** o atributo oculto continua espec?fico do Windows;
+  a migra??o para pasta oculta `.hlsdl/` fica como pr?ximo passo.
+

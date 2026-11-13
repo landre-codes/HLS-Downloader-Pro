@@ -97,7 +97,10 @@ class UpdatesMixin(BridgeSignals):
 
     def _on_update_failed(self, err: str) -> None:
         self._update_busy = False
-        if err in ("missing_assets", "missing_checksum", "checksum_mismatch"):
+        if err in (
+            "missing_assets", "missing_checksum", "checksum_mismatch",
+            "missing_signature", "invalid_signature", "cryptography_missing",
+        ):
             message = (
                 self._tr("update_no_assets") if err == "missing_assets"
                 else self._tr("update_download_failed", err=err)

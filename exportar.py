@@ -7,6 +7,7 @@ Saída em ``dist/``:
     HLS-Downloader-Pro-<versao>-source.zip
     HLS-Downloader-Pro-<versao>-portable-win64.zip   (quando o build existe)
     SHA256SUMS.txt
+    SHA256SUMS-windows.txt (manifesto lido pelo atualizador)
 
 O ZIP portátil inclui ``portable.flag``: settings, logs e ferramentas ficam
 ao lado do executável, sem gravar em %APPDATA%.

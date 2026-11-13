@@ -4,6 +4,7 @@ yt-dlp>=2024.4.9
 requests>=2.31.0
 beautifulsoup4>=4.12.0
 blake3>=0.4.0
+cryptography>=42.0.0
 
 # Ferramentas de desenvolvimento (instale com: pip install -e ".[dev]"):
 #   pytest, ruff, mypy  — ver pyproject.toml

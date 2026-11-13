@@ -17,6 +17,7 @@ import urllib.request
 from PySide6.QtCore import QObject, Signal
 
 from . import __version__, config
+from .update_trust import verify_update_manifest
 
 log = logging.getLogger("hlsdl")
 
@@ -44,10 +45,14 @@ def _get_json(url: str) -> dict:
         return json.loads(response.read().decode("utf-8"))
 
 
-def _get_text(url: str) -> str:
+def _get_bytes(url: str) -> bytes:
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     with urllib.request.urlopen(request, timeout=60) as response:
-        return response.read().decode("utf-8", errors="replace")
+        return response.read()
+
+
+def _get_text(url: str) -> str:
+    return _get_bytes(url).decode("utf-8", errors="replace")
 
 
 class Updater(QObject):
@@ -82,6 +87,10 @@ class Updater(QObject):
                 (a for a in assets if a.get("name") == "SHA256SUMS-windows.txt"),
                 None,
             )
+            signature = next(
+                (a for a in assets if a.get("name") == "SHA256SUMS-windows.txt.sig"),
+                None,
+            )
             info = {
                 "available": version_tuple(latest) > version_tuple(__version__),
                 "latest": latest,
@@ -91,6 +100,7 @@ class Updater(QObject):
                 "installer_url": str((installer or {}).get("browser_download_url") or ""),
                 "installer_name": str((installer or {}).get("name") or ""),
                 "checksums_url": str((checksums or {}).get("browser_download_url") or ""),
+                "signature_url": str((signature or {}).get("browser_download_url") or ""),
             }
             self.checked.emit(info)
         except Exception as exc:
@@ -107,6 +117,9 @@ class Updater(QObject):
         if not info.get("installer_url") or not info.get("checksums_url"):
             self.failed.emit("missing_assets")
             return
+        if not info.get("signature_url"):
+            self.failed.emit("missing_signature")
+            return
         self._busy = True
         self.checkingChanged.emit(True)
         threading.Thread(target=self._download, args=(info,), daemon=True).start()
@@ -122,6 +135,10 @@ class Updater(QObject):
                 name = "HLS-Downloader-Pro-setup.exe"
             destination = os.path.join(folder, name)
             partial = destination + ".part"
+            expected = self._verified_expected_hash(info, name)
+            if not expected:
+                self.failed.emit("missing_checksum")
+                return
             request = urllib.request.Request(
                 info["installer_url"], headers={"User-Agent": USER_AGENT}
             )
@@ -142,11 +159,6 @@ class Updater(QObject):
                                 last = pct
                                 self.downloadProgress.emit(pct)
 
-                expected = self._expected_hash(info["checksums_url"], name)
-                if not expected:
-                    self._remove_quiet(partial)
-                    self.failed.emit("missing_checksum")
-                    return
                 actual = self._sha256(partial)
                 if actual.lower() != expected.lower():
                     self._remove_quiet(partial)
@@ -171,13 +183,31 @@ class Updater(QObject):
         except OSError:
             pass
 
+    @classmethod
+    def _verified_expected_hash(cls, info: dict, name: str) -> str:
+        """Valida a assinatura do manifesto e extrai o hash do instalador."""
+        checksums_url = str(info.get("checksums_url") or "")
+        signature_url = str(info.get("signature_url") or "")
+        if not checksums_url or not signature_url:
+            raise RuntimeError("missing_signature")
+        data = _get_bytes(checksums_url)
+        signature = _get_text(signature_url).strip()
+        ok, reason = verify_update_manifest(data, signature)
+        if not ok:
+            raise RuntimeError(reason)
+        return cls._hash_from_text(data.decode("utf-8", errors="replace"), name)
+
     @staticmethod
-    def _expected_hash(checksums_url: str, name: str) -> str:
-        for line in _get_text(checksums_url).splitlines():
+    def _hash_from_text(text: str, name: str) -> str:
+        for line in text.splitlines():
             parts = line.split()
             if len(parts) >= 2 and parts[-1].lstrip("*") == name:
                 return parts[0]
         return ""
+
+    @staticmethod
+    def _expected_hash(checksums_url: str, name: str) -> str:
+        return Updater._hash_from_text(_get_text(checksums_url), name)
 
     @staticmethod
     def _sha256(path: str) -> str:
