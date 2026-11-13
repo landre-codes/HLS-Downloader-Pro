@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from PySide6.QtCore import QThread
+
 from hlsdl.downloader import DownloadWorker
 from hlsdl.model import DownloadModel
 from hlsdl.queue import QueueManager
@@ -15,7 +17,9 @@ class FakeWorker(DownloadWorker):
     def run(self) -> None:  # type: ignore[override]
         self.statusChanged.emit(Status.DOWNLOADING.value)
         self.progressChanged.emit(42.0, "1MiB/s", "2MiB")
-        self._succeed("/caminho/inexistente/fake.mp4")
+        # Bypass the real post-download validation for this scheduler-only fake.
+        self.succeeded.emit(self.url, "/caminho/inexistente/fake.mp4")
+        self.finished.emit()
 
 
 def test_full_queue_finishes(qapp):
@@ -48,6 +52,24 @@ def test_stats_signal(qapp):
     process_until(qapp, lambda: all(i["status"].is_final for i in manager.items), timeout=15)
     assert received  # houve atualizações de estatística
     assert received[-1][2] == 1  # 1 concluído
+
+
+def test_finished_threads_are_released(qapp):
+    """Every finished job must release its QThread child and item closure."""
+    model = DownloadModel([])
+    manager = QueueManager(
+        model, outdir="out", concurrency=4, worker_factory=FakeWorker
+    )
+    manager.addText("\n".join(f"https://a.com/{i}" for i in range(20)))
+    manager.start()
+    assert process_until(
+        qapp, lambda: all(i["status"].is_final for i in manager.items),
+        timeout=15,
+    )
+    for _ in range(20):
+        qapp.processEvents()
+    assert manager._threads == {}
+    assert len(manager.findChildren(QThread)) == 0
 
 
 def test_shutdown_cancels_and_joins(qapp):

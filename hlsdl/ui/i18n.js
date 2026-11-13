@@ -2465,6 +2465,347 @@ var extraEncoder = {
     }
 }
 
+// Textos de integridade, recuperação e busca de similares.
+var extraIntegrity = {
+    "pt": {
+        similar_title: "Mídias similares",
+        similar_subtitle: "Compara identidade, quadros e áudio (dHash + aHash + envelope RMS), com fallback por metadados.",
+        similar_hint: "Analisa os arquivos da fila de compressão ou uma pasta. O resultado é apenas uma triagem: revise antes de remover algo.",
+        similar_scan_queue: "Buscar na fila",
+        similar_scan_folder: "Buscar em pasta",
+        similar_cancel: "Cancelar busca",
+        similar_clear: "Limpar resultados",
+        similar_close: "Fechar",
+        similar_score: "Similaridade",
+        similar_method: "Método",
+        similar_files: "Arquivos",
+        similar_open: "Abrir pasta",
+        similar_threshold: "Limite:",
+        similar_threshold_tip: "Percentual mínimo de similaridade. 85% é um bom começo; 70% encontra reencodes mais agressivos.",
+        similar_empty: "Nenhuma busca realizada ainda.",
+        similar_count: "{n} grupo(s)",
+        compress_retry: "Tentar novamente",
+        compress_backup_kept: "Original preservado em",
+        compress_hash: "SHA-256",
+        compress_verified: "Integridade verificada",
+        compress_integrity_tip: "O arquivo foi validado por ffprobe e hash antes de ser marcado como concluído.",
+        compress_detecting_ui: "Detectando encoders…",
+        recovery_title: "Jobs recuperados",
+        recovery_hint: "A compressão anterior foi interrompida. Os originais foram preservados ou restaurados.",
+        recovery_dismiss: "Dispensar"
+    },
+    "en": {
+        similar_title: "Similar media",
+        similar_subtitle: "Compares identity, frames and audio (dHash + aHash + RMS envelope), with metadata fallback.",
+        similar_hint: "Scans the compression queue or a folder. Treat results as triage: review before deleting anything.",
+        similar_scan_queue: "Scan queue",
+        similar_scan_folder: "Scan folder",
+        similar_cancel: "Cancel scan",
+        similar_clear: "Clear results",
+        similar_close: "Close",
+        similar_score: "Similarity",
+        similar_method: "Method",
+        similar_files: "Files",
+        similar_open: "Open folder",
+        similar_threshold: "Threshold:",
+        similar_threshold_tip: "Minimum similarity percentage. 85% is a good start; 70% finds more aggressive re-encodes.",
+        similar_empty: "No scan yet.",
+        similar_count: "{n} group(s)",
+        compress_retry: "Retry",
+        compress_backup_kept: "Original preserved at",
+        compress_hash: "SHA-256",
+        compress_verified: "Integrity verified",
+        compress_integrity_tip: "The file was validated with ffprobe and hashed before being marked done.",
+        compress_detecting_ui: "Detecting encoders…",
+        recovery_title: "Recovered jobs",
+        recovery_hint: "A previous compression was interrupted. Originals were preserved or restored.",
+        recovery_dismiss: "Dismiss"
+    },
+    "es": {
+        similar_title: "Medios similares",
+        similar_subtitle: "Compara identidad, fotogramas y audio (dHash + aHash + envolvente RMS), con respaldo por metadatos.",
+        similar_hint: "Analiza la cola de compresión o una carpeta. Revisa antes de borrar algo.",
+        similar_scan_queue: "Buscar en cola",
+        similar_scan_folder: "Buscar en carpeta",
+        similar_cancel: "Cancelar búsqueda",
+        similar_clear: "Limpiar resultados",
+        similar_close: "Cerrar",
+        similar_score: "Similitud",
+        similar_method: "Método",
+        similar_files: "Archivos",
+        similar_open: "Abrir carpeta",
+        similar_threshold: "Límite:",
+        similar_threshold_tip: "Porcentaje mínimo de similitud. 85% es un buen inicio; 70% encuentra recodificaciones más agresivas.",
+        similar_empty: "Aún no hay búsqueda.",
+        similar_count: "{n} grupo(s)",
+        compress_retry: "Reintentar",
+        compress_backup_kept: "Original conservado en",
+        compress_hash: "SHA-256",
+        compress_verified: "Integridad verificada",
+        compress_integrity_tip: "El archivo se validó con ffprobe y hash antes de marcarse como completado.",
+        compress_detecting_ui: "Detectando codificadores…",
+        recovery_title: "Trabajos recuperados",
+        recovery_hint: "Una compresión anterior se interrumpió. Los originales se conservaron o restauraron.",
+        recovery_dismiss: "Descartar"
+    },
+    "it": {
+        similar_title: "Media simili",
+        similar_subtitle: "Confronta identità, fotogrammi e audio (dHash + aHash + envelope RMS), con fallback sui metadati.",
+        similar_hint: "Analizza la coda di compressione o una cartella. Controlla prima di eliminare qualcosa.",
+        similar_scan_queue: "Cerca in coda",
+        similar_scan_folder: "Cerca in cartella",
+        similar_cancel: "Annulla ricerca",
+        similar_clear: "Pulisci risultati",
+        similar_close: "Chiudi",
+        similar_score: "Somiglianza",
+        similar_method: "Metodo",
+        similar_files: "File",
+        similar_open: "Apri cartella",
+        similar_threshold: "Soglia:",
+        similar_threshold_tip: "Percentuale minima di somiglianza. 85% è un buon inizio; 70% trova ricodifiche più aggressive.",
+        similar_empty: "Nessuna ricerca ancora.",
+        similar_count: "{n} gruppo/i",
+        compress_retry: "Riprova",
+        compress_backup_kept: "Originale conservato in",
+        compress_hash: "SHA-256",
+        compress_verified: "Integrità verificata",
+        compress_integrity_tip: "Il file è stato validato con ffprobe e hash prima di essere segnato come completato.",
+        compress_detecting_ui: "Rilevamento encoder…",
+        recovery_title: "Job recuperati",
+        recovery_hint: "Una compressione precedente è stata interrotta. Gli originali sono stati conservati o ripristinati.",
+        recovery_dismiss: "Ignora"
+    },
+    "fr": {
+        similar_title: "Médias similaires",
+        similar_subtitle: "Compare l'identité, les images et l'audio (dHash + aHash + enveloppe RMS), avec repli sur les métadonnées.",
+        similar_hint: "Analyse la file de compression ou un dossier. Vérifiez avant de supprimer quoi que ce soit.",
+        similar_scan_queue: "Analyser la file",
+        similar_scan_folder: "Analyser un dossier",
+        similar_cancel: "Annuler l'analyse",
+        similar_clear: "Effacer les résultats",
+        similar_close: "Fermer",
+        similar_score: "Similarité",
+        similar_method: "Méthode",
+        similar_files: "Fichiers",
+        similar_open: "Ouvrir le dossier",
+        similar_threshold: "Seuil :",
+        similar_threshold_tip: "Pourcentage minimal de similarité. 85 % est un bon départ ; 70 % trouve des réencodages plus agressifs.",
+        similar_empty: "Aucune analyse pour l'instant.",
+        similar_count: "{n} groupe(s)",
+        compress_retry: "Réessayer",
+        compress_backup_kept: "Original conservé dans",
+        compress_hash: "SHA-256",
+        compress_verified: "Intégrité vérifiée",
+        compress_integrity_tip: "Le fichier a été validé avec ffprobe et haché avant d'être marqué terminé.",
+        compress_detecting_ui: "Détection des encodeurs…",
+        recovery_title: "Jobs récupérés",
+        recovery_hint: "Une compression précédente a été interrompue. Les originaux ont été conservés ou restaurés.",
+        recovery_dismiss: "Ignorer"
+    },
+    "ru": {
+        similar_title: "Похожие медиа",
+        similar_subtitle: "Сравнивает идентичность, кадры и аудио (dHash + aHash + RMS-огибающая) с резервом по метаданным.",
+        similar_hint: "Анализирует очередь сжатия или папку. Проверяйте перед удалением.",
+        similar_scan_queue: "Сканировать очередь",
+        similar_scan_folder: "Сканировать папку",
+        similar_cancel: "Отменить поиск",
+        similar_clear: "Очистить результаты",
+        similar_close: "Закрыть",
+        similar_score: "Сходство",
+        similar_method: "Метод",
+        similar_files: "Файлы",
+        similar_open: "Открыть папку",
+        similar_threshold: "Порог:",
+        similar_threshold_tip: "Минимальный процент сходства. 85% — хорошее начало; 70% находит более агрессивные перекодирования.",
+        similar_empty: "Поиск ещё не выполнялся.",
+        similar_count: "Групп: {n}",
+        compress_retry: "Повторить",
+        compress_backup_kept: "Оригинал сохранён в",
+        compress_hash: "SHA-256",
+        compress_verified: "Целостность проверена",
+        compress_integrity_tip: "Файл проверен через ffprobe и хеш перед отметкой о завершении.",
+        compress_detecting_ui: "Определение кодировщиков…",
+        recovery_title: "Восстановленные задачи",
+        recovery_hint: "Предыдущее сжатие было прервано. Оригиналы сохранены или восстановлены.",
+        recovery_dismiss: "Скрыть"
+    },
+    "ja": {
+        similar_title: "類似メディア",
+        similar_subtitle: "識別情報・フレーム・音声 (dHash + aHash + RMS エンベロープ) を比較し、メタデータにフォールバックします。",
+        similar_hint: "圧縮キューまたはフォルダーを解析します。削除前に必ず確認してください。",
+        similar_scan_queue: "キューを検索",
+        similar_scan_folder: "フォルダーを検索",
+        similar_cancel: "検索をキャンセル",
+        similar_clear: "結果をクリア",
+        similar_close: "閉じる",
+        similar_score: "類似度",
+        similar_method: "方法",
+        similar_files: "ファイル",
+        similar_open: "フォルダーを開く",
+        similar_threshold: "しきい値:",
+        similar_threshold_tip: "最小類似度です。85% から始め、70% でより強い再エンコードも見つかります。",
+        similar_empty: "まだ検索していません。",
+        similar_count: "{n} グループ",
+        compress_retry: "再試行",
+        compress_backup_kept: "元ファイルの保存先",
+        compress_hash: "SHA-256",
+        compress_verified: "整合性を検証済み",
+        compress_integrity_tip: "完了前に ffprobe とハッシュで検証されました。",
+        compress_detecting_ui: "エンコーダーを検出中…",
+        recovery_title: "復元されたジョブ",
+        recovery_hint: "前回の圧縮は中断されました。元ファイルは保持または復元されています。",
+        recovery_dismiss: "閉じる"
+    },
+    "zh": {
+        similar_title: "相似媒体",
+        similar_subtitle: "比较身份、画面和音频（dHash + aHash + RMS 包络），并以元数据作为回退。",
+        similar_hint: "分析压缩队列或文件夹。删除前请先确认。",
+        similar_scan_queue: "扫描队列",
+        similar_scan_folder: "扫描文件夹",
+        similar_cancel: "取消扫描",
+        similar_clear: "清除结果",
+        similar_close: "关闭",
+        similar_score: "相似度",
+        similar_method: "方法",
+        similar_files: "文件",
+        similar_open: "打开文件夹",
+        similar_threshold: "阈值：",
+        similar_threshold_tip: "最低相似度百分比。85% 是好的起点；70% 能找到更强度的重编码。",
+        similar_empty: "尚未扫描。",
+        similar_count: "{n} 组",
+        compress_retry: "重试",
+        compress_backup_kept: "原文件保留于",
+        compress_hash: "SHA-256",
+        compress_verified: "完整性已验证",
+        compress_integrity_tip: "标记完成前已使用 ffprobe 和哈希验证。",
+        compress_detecting_ui: "正在检测编码器…",
+        recovery_title: "已恢复的任务",
+        recovery_hint: "之前的压缩被中断。原文件已保留或恢复。",
+        recovery_dismiss: "关闭"
+    }
+}
+
+var extraGeometry = {
+    "pt": {
+        compress_scale: "Escala:",
+        compress_scale_tip: "0 mantém o tamanho original. Defina largura, altura ou ambos.",
+        compress_crop: "Crop:",
+        compress_crop_tip: "Formato w:h:x:y. Aplicado antes da escala.",
+        compress_rotate: "Rotação:",
+        compress_fps: "FPS:",
+        compress_fps_tip: "0 mantém o framerate original."
+    },
+    "en": {
+        compress_scale: "Scale:",
+        compress_scale_tip: "0 keeps the original size. Set width, height or both.",
+        compress_crop: "Crop:",
+        compress_crop_tip: "Format w:h:x:y. Applied before scaling.",
+        compress_rotate: "Rotate:",
+        compress_fps: "FPS:",
+        compress_fps_tip: "0 keeps the original frame rate."
+    },
+    "es": {
+        compress_scale: "Escala:",
+        compress_scale_tip: "0 mantiene el tamaño original. Define ancho, alto o ambos.",
+        compress_crop: "Recorte:",
+        compress_crop_tip: "Formato w:h:x:y. Se aplica antes de la escala.",
+        compress_rotate: "Rotación:",
+        compress_fps: "FPS:",
+        compress_fps_tip: "0 mantiene la tasa de fotogramas original."
+    },
+    "it": {
+        compress_scale: "Scala:",
+        compress_scale_tip: "0 mantiene la dimensione originale. Imposta larghezza, altezza o entrambe.",
+        compress_crop: "Ritaglio:",
+        compress_crop_tip: "Formato w:h:x:y. Applicato prima della scala.",
+        compress_rotate: "Rotazione:",
+        compress_fps: "FPS:",
+        compress_fps_tip: "0 mantiene il frame rate originale."
+    },
+    "fr": {
+        compress_scale: "Échelle :",
+        compress_scale_tip: "0 conserve la taille d'origine. Définissez largeur, hauteur ou les deux.",
+        compress_crop: "Recadrage :",
+        compress_crop_tip: "Format w:h:x:y. Appliqué avant la mise à l'échelle.",
+        compress_rotate: "Rotation :",
+        compress_fps: "FPS :",
+        compress_fps_tip: "0 conserve la fréquence d'images d'origine."
+    },
+    "ru": {
+        compress_scale: "Масштаб:",
+        compress_scale_tip: "0 сохраняет исходный размер. Задайте ширину, высоту или оба.",
+        compress_crop: "Обрезка:",
+        compress_crop_tip: "Формат w:h:x:y. Применяется до масштабирования.",
+        compress_rotate: "Поворот:",
+        compress_fps: "FPS:",
+        compress_fps_tip: "0 сохраняет исходную частоту кадров."
+    },
+    "ja": {
+        compress_scale: "スケール:",
+        compress_scale_tip: "0 で元のサイズを維持。幅・高さ・両方を指定できます。",
+        compress_crop: "クロップ:",
+        compress_crop_tip: "形式 w:h:x:y。スケール前に適用されます。",
+        compress_rotate: "回転:",
+        compress_fps: "FPS:",
+        compress_fps_tip: "0 で元のフレームレートを維持します。"
+    },
+    "zh": {
+        compress_scale: "缩放：",
+        compress_scale_tip: "0 保持原始尺寸。可设置宽度、高度或两者。",
+        compress_crop: "裁剪：",
+        compress_crop_tip: "格式 w:h:x:y。在缩放前应用。",
+        compress_rotate: "旋转：",
+        compress_fps: "帧率：",
+        compress_fps_tip: "0 保持原始帧率。"
+    }
+}
+
+var extraHw = {
+    "pt": {
+        compress_hw_decode: "Decodificação por hardware",
+        compress_hw_decode_tip: "Usa -hwaccel auto. Pode acelerar 4K; se o driver falhar, o ffmpeg cai para software."
+    },
+    "en": {
+        compress_hw_decode: "Hardware decoding",
+        compress_hw_decode_tip: "Uses -hwaccel auto. Can speed up 4K; ffmpeg falls back to software if the driver fails."
+    },
+    "es": {
+        compress_hw_decode: "Decodificación por hardware",
+        compress_hw_decode_tip: "Usa -hwaccel auto. Puede acelerar 4K; si el controlador falla, ffmpeg usa software."
+    },
+    "it": {
+        compress_hw_decode: "Decodifica hardware",
+        compress_hw_decode_tip: "Usa -hwaccel auto. Può accelerare il 4K; se il driver fallisce, ffmpeg usa il software."
+    },
+    "fr": {
+        compress_hw_decode: "Décodage matériel",
+        compress_hw_decode_tip: "Utilise -hwaccel auto. Peut accélérer la 4K ; ffmpeg revient au logiciel si le pilote échoue."
+    },
+    "ru": {
+        compress_hw_decode: "Аппаратное декодирование",
+        compress_hw_decode_tip: "Использует -hwaccel auto. Может ускорить 4K; при сбое драйвера ffmpeg переходит на программное декодирование."
+    },
+    "ja": {
+        compress_hw_decode: "ハードウェアデコード",
+        compress_hw_decode_tip: "-hwaccel auto を使用します。4K を高速化できますが、ドライバー失敗時はソフトウェアに戻ります。"
+    },
+    "zh": {
+        compress_hw_decode: "硬件解码",
+        compress_hw_decode_tip: "使用 -hwaccel auto。可加速 4K；驱动失败时 ffmpeg 回退到软件。"
+    }
+}
+
+var extraStatus = {
+    "pt": { s_verifying: "Verificando" },
+    "en": { s_verifying: "Verifying" },
+    "es": { s_verifying: "Verificando" },
+    "it": { s_verifying: "Verifica" },
+    "fr": { s_verifying: "Vérification" },
+    "ru": { s_verifying: "Проверка" },
+    "ja": { s_verifying: "検証中" },
+    "zh": { s_verifying: "校验中" }
+}
+
 function getAll() {
     var out = {}
     var base = dict["pt"]
@@ -2491,6 +2832,18 @@ function getAll() {
     var n = extraEncoder[lang] || {}
     for (var k8 in n)
         out[k8] = n[k8]
+    var q = extraIntegrity[lang] || {}
+    for (var k9 in q)
+        out[k9] = q[k9]
+    var st = extraStatus[lang] || {}
+    for (var k10 in st)
+        out[k10] = st[k10]
+    var hw = extraHw[lang] || {}
+    for (var k11 in hw)
+        out[k11] = hw[k11]
+    var geo = extraGeometry[lang] || {}
+    for (var k12 in geo)
+        out[k12] = geo[k12]
     return out
 }
 

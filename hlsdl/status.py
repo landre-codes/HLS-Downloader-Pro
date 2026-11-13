@@ -14,6 +14,7 @@ class Status(str, Enum):
     ANALYZING = "analyzing"
     DOWNLOADING = "downloading"
     ENCODING = "encoding"
+    VERIFYING = "verifying"
     DONE = "done"
     ERROR = "error"
     CANCELLED = "cancelled"
@@ -26,4 +27,6 @@ class Status(str, Enum):
 FINAL = frozenset({Status.DONE, Status.ERROR, Status.CANCELLED})
 
 # Estados que representam um worker ativo (ocupando uma vaga de concorrência).
-ACTIVE = frozenset({Status.ANALYZING, Status.DOWNLOADING, Status.ENCODING})
+ACTIVE = frozenset({
+    Status.ANALYZING, Status.DOWNLOADING, Status.ENCODING, Status.VERIFYING
+})

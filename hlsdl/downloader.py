@@ -21,19 +21,23 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
+from collections import deque
 from collections.abc import Callable
+from urllib.parse import urlsplit
 
 from PySide6.QtCore import QObject, Signal
 
 from . import config
+from .catalog import Catalog
 from .compress import (
     CompressionSettings,
     analyze,
     build_args,
-    output_path,
     probe_media,
     skip_reason,
-    validate_output,
+    validate_output_quality,
+    validate_visual_quality,
 )
 from .config import USER_AGENT
 from .formats import (
@@ -46,6 +50,19 @@ from .formats import (
     NAMING_MODES,
 )
 from .i18n import translator
+from .integrity import (
+    FileGuard,
+    atomic_replace,
+    build_completion,
+    find_completion_by_source,
+    read_completion,
+    release_output_path,
+    reserve_output_path,
+    sha256_file,
+    verify_completion,
+    write_completion,
+)
+from .media import fetch_manifest_text, identity_with_manifest
 from .naming import resolve_existing_file, shorten_name, url_digest
 from .services.procutils import (
     extract_thumbnail,
@@ -65,6 +82,7 @@ PROGRESS_RE = re.compile(
 )
 FFMPEG_TIME_RE = re.compile(r"time=(\d+):(\d+):([\d.]+)")
 FFMPEG_SIZE_RE = re.compile(r"size=\s*([\d.]+\w+)")
+FFMPEG_SPEED_RE = re.compile(r"speed=\s*([\d.]+x)")
 TITLE_PREFIX = "__HSLDL_TITLE__"
 
 # Tempo (s) sem nenhuma linha nova do ffmpeg antes de considerá-lo travado.
@@ -98,6 +116,7 @@ class DownloadWorker(QObject):
         compress_level: str = "medium",
         naming_mode: str = "id",
         translate: Callable[..., str] | None = None,
+        catalog_path: str | None = None,
         parent: QObject | None = None,
     ):
         super().__init__(parent)
@@ -115,11 +134,13 @@ class DownloadWorker(QObject):
         self.codec = codec if codec in CODECS else "copy"
         self.compress_level = compress_level if compress_level in COMPRESS_LEVELS else "medium"
         self.naming_mode = naming_mode if naming_mode in NAMING_MODES else "id"
+        self.catalog_path = catalog_path
         self._t = translate or translator("pt")
         self._cancel = False
         self._proc: subprocess.Popen | None = None
         self._stdout_tail: list[str] = []
         self._metadata_title = False
+        self._identity: dict | None = None
 
     # ------------------------------------------------------------------ API
     def cancel(self) -> None:
@@ -138,6 +159,25 @@ class DownloadWorker(QObject):
             log.info("INICIO url=%s outdir=%s", self.url, self.outdir)
 
             if not self._cancel:
+                identity = self._source_identity()
+                source_key = str(identity.get("key") or "")
+                existing = ""
+                if self.catalog_path and source_key:
+                    entry = Catalog(self.catalog_path).find_by_source(
+                        source_key, kind="download"
+                    )
+                    if entry and os.path.isfile(entry.path):
+                        existing = entry.path
+                if not existing:
+                    existing = find_completion_by_source(
+                        self.outdir, source_key, kind="download"
+                    )
+                if existing:
+                    ok, _reason = verify_completion(existing, full_hash=True)
+                    if ok:
+                        log.info("identidade já baixada; reutilizando %s", existing)
+                        self._succeed(existing)
+                        return
                 ok, result = self._run_ytdlp(self.url)
                 log.info("yt-dlp direto: ok=%s result=%r", ok, result)
                 if ok:
@@ -251,6 +291,79 @@ class DownloadWorker(QObject):
     def _find_media_in_html(self) -> str | None:
         """Compat: raspa o HTML da URL original (usado por scripts/testes)."""
         return HtmlMediaScraper(USER_AGENT).find(self.url)
+
+    # --------------------------------------------------------- identity/integrity
+    def _source_identity(self, media_url: str | None = None) -> dict:
+        """Stable identity for the original URL or the discovered manifest."""
+        if self._identity is not None and media_url is None:
+            return self._identity
+        target = media_url or self.url
+        manifest = None
+        if ".m3u8" in target.lower():
+            manifest = fetch_manifest_text(target)
+        identity = identity_with_manifest(target, manifest)
+        if media_url is None:
+            self._identity = identity
+        return identity
+
+    def _finalize_download(self, path: str, *, media_url: str | None = None) -> str:
+        """Validate a finished download and write its completion sidecar.
+
+        An unreadable file is preserved for inspection under ``*.invalid`` but
+        is not reported as a successful download.  A valid sidecar makes a
+        later retry idempotent.
+        """
+        if not path or not os.path.isfile(path):
+            return ""
+        self.statusChanged.emit(Status.VERIFYING.value)
+        self.progressChanged.emit(99.0, "—", "—")
+        existing = read_completion(path)
+        if existing is not None:
+            ok, reason = verify_completion(path, full_hash=True)
+            if ok:
+                return path
+            if reason in ("hash_mismatch", "size_mismatch"):
+                invalid = path + ".hash-mismatch"
+                try:
+                    atomic_replace(path, invalid)
+                except OSError:
+                    invalid = path
+                log.error(
+                    "hash/tamanho do download não confere (%s); preservado em %s",
+                    reason, invalid,
+                )
+                return ""
+        probe = probe_media(path)
+        videos, audios, _subs, duration = analyze(probe or {})
+        if not videos and not audios:
+            invalid = path + ".invalid"
+            try:
+                os.replace(path, invalid)
+            except OSError:
+                invalid = path
+            log.warning("download inválido preservado em %s", invalid)
+            return ""
+        identity = self._source_identity(media_url)
+        try:
+            record = build_completion(
+                path,
+                source_key=str(identity.get("key") or ""),
+                # Never persist signed query tokens in a sidecar next to media.
+                source_url=str(identity.get("canonical_url") or ""),
+                settings={
+                    "format_mode": self.format_mode,
+                    "quality": self.quality,
+                    "container": self.container,
+                    "codec": self.codec,
+                },
+                extra={"identity": identity, "duration": duration, "kind": "download"},
+            )
+            write_completion(path, record)
+            if self.catalog_path:
+                Catalog(self.catalog_path).register(record, kind="download")
+        except Exception:
+            log.exception("não foi possível gravar o sidecar de %s", path)
+        return path
 
     def _ytdlp_argv(self) -> list[str] | None:
         """Escolhe como executar o yt-dlp.
@@ -366,25 +479,91 @@ class DownloadWorker(QObject):
         return []
 
     # ---------------------------------------------------- download via ffmpeg
-    def _ffmpeg_cookie_header(self) -> str:
-        """Converte cookies.txt Netscape em ``name=value; ...`` para ffmpeg."""
+    def _ffmpeg_cookie_header(self, media_url: str) -> str:
+        """Convert Netscape ``cookies.txt`` to an ffmpeg Cookie header.
+
+        Cookies are scoped by domain/path/secure/expiry.  Sending every line
+        (the previous behavior) leaked cookies for unrelated sites to the media
+        host and dropped ``#HttpOnly_`` cookies -- exactly the ones used by
+        authenticated HLS.  Windows CRLF is stripped as well.
+        """
         if not self.cookies.startswith("file:"):
             return ""
         path = self.cookies[len("file:"):].strip()
         if not path or not os.path.isfile(path):
             return ""
+        try:
+            target = urlsplit(media_url)
+        except ValueError:
+            return ""
+        host = (target.hostname or "").lower()
+        request_path = target.path or "/"
+        secure_request = target.scheme.lower() == "https"
+        now = time.time()
         pairs: list[str] = []
         try:
             with open(path, encoding="utf-8", errors="ignore") as handle:
-                for line in handle:
-                    if not line.strip() or line.startswith("#"):
+                for raw in handle:
+                    line = raw.rstrip("\r\n")
+                    if not line.strip():
                         continue
-                    parts = line.rstrip("\n").split("\t")
-                    if len(parts) >= 7 and parts[5] and parts[6]:
-                        pairs.append(f"{parts[5]}={parts[6]}")
+                    http_only = line.startswith("#HttpOnly_")
+                    if line.startswith("#") and not http_only:
+                        continue
+                    if http_only:
+                        line = line[len("#HttpOnly_"):]
+                    parts = line.split("\t")
+                    if len(parts) < 7:
+                        continue
+                    domain, include_sub, cookie_path, secure, expires, name, value = parts[:7]
+                    domain = domain.strip().lower().lstrip(".")
+                    if not domain or not name:
+                        continue
+                    if not (
+                        host == domain
+                        or (include_sub.strip().upper() == "TRUE" and host.endswith("." + domain))
+                    ):
+                        continue
+                    cookie_path = cookie_path or "/"
+                    if cookie_path != "/":
+                        prefix = cookie_path.rstrip("/") + "/"
+                        if not (
+                            request_path == cookie_path.rstrip("/")
+                            or request_path.startswith(prefix)
+                        ):
+                            continue
+                    if secure.strip().upper() == "TRUE" and not secure_request:
+                        continue
+                    try:
+                        expiry = float(expires or 0)
+                    except ValueError:
+                        expiry = 0.0
+                    if expiry and expiry < now:
+                        continue
+                    pairs.append(f"{name.strip()}={value.strip()}")
         except OSError:
             return ""
         return "; ".join(pairs)
+
+    def _install_ffmpeg_output(self, temp: str, out_path: str,
+                               media_url: str) -> str:
+        """Validate temp, atomically install it and write the sidecar."""
+        if not temp or not os.path.isfile(temp) or os.path.getsize(temp) <= 0:
+            self._safe_remove(temp)
+            return ""
+        probe = probe_media(temp)
+        videos, audios, _subs, _duration = analyze(probe or {})
+        if not videos and not audios:
+            self._safe_remove(temp)
+            return ""
+        try:
+            atomic_replace(temp, out_path)
+        except OSError:
+            self._safe_remove(temp)
+            return ""
+        # Sidecar/hash are written once by ``_succeed`` after the fallback
+        # returns; do not hash the same large file twice here.
+        return out_path
 
     def _run_ffmpeg(self, media_url: str) -> tuple[bool, str]:
         """Fallback final via ffmpeg, respeitando modo/contêiner/referer."""
@@ -405,17 +584,23 @@ class DownloadWorker(QObject):
                 container = "mp4"
         prefix = "vid" if self.naming_mode == "id" else "hls"
         out_path = os.path.join(self.outdir, f"{prefix}_{digest}.{container}")
-        if os.path.exists(out_path) and os.path.getsize(out_path) > 0:
-            return True, out_path  # já baixado antes
+        if os.path.exists(out_path) and read_completion(out_path) is not None:
+            # Reuse only a file with a sidecar whose hash still matches.  A
+            # legacy/partial file is left in place and replaced atomically only
+            # after the new fallback output validates.
+            ok, _reason = verify_completion(out_path, full_hash=True)
+            if ok:
+                return True, out_path
 
         duration = probe_duration(media_url)
         http_args = ["-user_agent", USER_AGENT]
         if self.url.startswith(("http://", "https://")):
             http_args += ["-referer", self.url]
-        cookie_header = self._ffmpeg_cookie_header()
+        cookie_header = self._ffmpeg_cookie_header(media_url)
         if cookie_header:
             http_args += ["-cookies", cookie_header]
 
+        temp = out_path + f".part.{uuid.uuid4().hex[:10]}.{container}"
         last_error = "desconhecido"
         if audio_only:
             codec = {
@@ -423,24 +608,29 @@ class DownloadWorker(QObject):
                 "flac": "flac", "opus": "libopus",
             }.get(container, "aac")
             cmd = (
-                [ffmpeg, "-y", "-hide_banner", "-loglevel", "error"]
+                [ffmpeg, "-y", "-hide_banner", "-loglevel", "info"]
                 + http_args
-                + ["-i", media_url, "-vn", "-c:a", codec, out_path]
+                + ["-i", media_url, "-vn", "-c:a", codec, temp]
             )
             ok, last_error = self._run_process(
                 cmd, duration=duration, is_ffmpeg=True
             )
             if not ok:
-                try:
-                    os.remove(out_path)
-                except OSError:
-                    pass
-            return ok, out_path if ok else last_error
+                self._safe_remove(temp)
+                return False, last_error
+            finalized = self._install_ffmpeg_output(temp, out_path, media_url)
+            return (True, finalized) if finalized else (False, last_error)
 
         # Copiar direto; recodificar áudio; recodificar tudo. Em "apenas
         # vídeo" todas as receitas usam -an.
         video_codec = "libvpx-vp9" if container == "webm" else "libx264"
-        audio_codec = "libopus" if container == "webm" else "aac"
+        if container == "webm":
+            audio_codec = "libopus"
+        elif container == "avi":
+            # AAC in AVI is poorly supported by players; MP3 is the safe path.
+            audio_codec = "libmp3lame"
+        else:
+            audio_codec = "aac"
         if self.format_mode == "video_only":
             recipes = [
                 ["-c", "copy", "-an"],
@@ -448,7 +638,7 @@ class DownloadWorker(QObject):
                 ["-c:v", video_codec, "-preset", "veryfast", "-an"],
             ]
         else:
-            bsf = ["-bsf:a", "aac_adtstoasc"] if container != "webm" else []
+            bsf = ["-bsf:a", "aac_adtstoasc"] if container in ("mp4", "mov") else []
             recipes = [
                 ["-c", "copy"] + bsf,
                 ["-c:v", "copy", "-c:a", audio_codec] + bsf,
@@ -456,23 +646,24 @@ class DownloadWorker(QObject):
             ]
         for recipe in recipes:
             if self._cancel:
+                self._safe_remove(temp)
                 return False, self._t("err_cancelled")
             cmd = (
-                [ffmpeg, "-y", "-hide_banner", "-loglevel", "error"]
+                [ffmpeg, "-y", "-hide_banner", "-loglevel", "info"]
                 + http_args
                 + ["-i", media_url]
                 + recipe
-                + [out_path]
+                + [temp]
             )
             ok, last_error = self._run_process(cmd, duration=duration, is_ffmpeg=True)
             if ok:
-                return True, out_path
+                finalized = self._install_ffmpeg_output(temp, out_path, media_url)
+                if finalized:
+                    return True, finalized
             if self._cancel:
+                self._safe_remove(temp)
                 return False, self._t("err_cancelled")
-            try:
-                os.remove(out_path)
-            except OSError:
-                pass
+            self._safe_remove(temp)
         return False, last_error
 
     # ----------------------------------------------------- executor genérico
@@ -494,7 +685,7 @@ class DownloadWorker(QObject):
             **spawn_kwargs(),
         )
 
-        stderr_lines: list[str] = []
+        stderr_lines: deque[str] = deque(maxlen=400)
         line_queue: queue.Queue[str] = queue.Queue()
 
         def _drain_stderr() -> None:
@@ -526,7 +717,7 @@ class DownloadWorker(QObject):
 
         if rc != 0:
             if stderr_lines:
-                log.error("rc=%s | stderr:\n%s", rc, "\n".join(stderr_lines[-15:]))
+                log.error("rc=%s | stderr:\n%s", rc, "\n".join(list(stderr_lines)[-15:]))
             else:
                 log.error("rc=%s | stdout final: %r", rc, result_msg[-500:])
             if is_ffmpeg:
@@ -545,7 +736,7 @@ class DownloadWorker(QObject):
         if is_ffmpeg:
             if os.path.exists(cmd[-1]):
                 return True, cmd[-1]
-            log.warning("ffmpeg rc=0 sem arquivo; stderr:\n%s", "\n".join(stderr_lines[-12:]))
+            log.warning("ffmpeg rc=0 sem arquivo; stderr:\n%s", "\n".join(list(stderr_lines)[-12:]))
             return False, self._t("err_ffmpeg_no_output")
         if result_msg:
             real = resolve_existing_file(result_msg)
@@ -703,8 +894,11 @@ class DownloadWorker(QObject):
                 last_time = t
             pct = (last_time / duration * 100.0) if duration else 0.0
             sm = FFMPEG_SIZE_RE.search(line)
+            speed = FFMPEG_SPEED_RE.search(line)
             self.progressChanged.emit(
-                min(99.0, pct), f"{last_time:.1f}s", sm.group(1) if sm else "—"
+                min(99.0, pct),
+                speed.group(1) if speed else "—",
+                sm.group(1) if sm else "—",
             )
 
     # -------------------------------------------------- conclusão e miniatura
@@ -751,11 +945,12 @@ class DownloadWorker(QObject):
             log.info("compressão ignorada (%s): %s", reason, path)
             return path
 
-        final = output_path(
+        guard = FileGuard.capture(path)
+        final = reserve_output_path(
             path, codec, container,
             suffix="h265" if codec == "hevc" else "h264",
         )
-        tmp = final + ".part." + container
+        tmp = f"{final}.part.{uuid.uuid4().hex[:10]}.{container}"
         encoder = "libx264" if codec == "h264" else "libx265"
         # Sem -progress pipe:1 aqui: _run_process() lê o progresso do stderr
         # do ffmpeg, como faz no fallback de download.
@@ -765,39 +960,72 @@ class DownloadWorker(QObject):
         )
         duration = analyze(source_probe)[3] or probe_duration(path)
         self.statusChanged.emit(Status.ENCODING.value)
-        ok, err = self._run_process(cmd, duration=duration, is_ffmpeg=True)
-        if self._cancel:
-            self._safe_remove(tmp)
-            return None
-        if not ok:
-            log.warning("compressão falhou (%s) — mantendo original", err)
-            self._safe_remove(tmp)
-            return path
-
-        out_probe = probe_media(tmp)
-        invalid = validate_output(source_probe, out_probe, tmp)
-        if invalid:
-            log.warning("compressão inválida (%s) — mantendo original", invalid)
-            self._safe_remove(tmp)
-            return path
-        # A compressão durante o download nunca deve piorar o tamanho.
-        if os.path.getsize(tmp) >= os.path.getsize(path):
-            log.info("compressão não reduziu o tamanho — mantendo original")
-            self._safe_remove(tmp)
-            return path
         try:
-            os.replace(tmp, final)
-        except OSError as exc:
-            log.warning("não foi possível finalizar a compressão: %s", exc)
-            self._safe_remove(tmp)
-            return path
-        log.info(
-            "comprimido (%s/%s): %s -> %s (original mantido)",
-            self.codec, self.compress_level, path, final,
-        )
-        return final
+            ok, err = self._run_process(cmd, duration=duration, is_ffmpeg=True)
+            if self._cancel:
+                self._safe_remove(tmp)
+                return None
+            if not ok:
+                log.warning("compressão falhou (%s) — mantendo original", err)
+                self._safe_remove(tmp)
+                return path
+
+            out_probe = probe_media(tmp)
+            invalid = validate_output_quality(
+                source_probe, out_probe, tmp, settings, duration,
+                encoder="libx265" if codec == "hevc" else "libx264",
+            )
+            if invalid:
+                log.warning("compressão inválida (%s) — mantendo original", invalid)
+                self._safe_remove(tmp)
+                return path
+            visual = validate_visual_quality(path, tmp, settings, source_probe)
+            if visual:
+                log.warning("qualidade visual insuficiente (%s) — mantendo original", visual)
+                self._safe_remove(tmp)
+                return path
+            # A compressão durante o download nunca deve piorar o tamanho.
+            if os.path.getsize(tmp) >= os.path.getsize(path):
+                log.info("compressão não reduziu o tamanho — mantendo original")
+                self._safe_remove(tmp)
+                return path
+            unchanged, reason = guard.unchanged()
+            if not unchanged:
+                log.warning("original mudou durante a compressão (%s) — mantendo", reason)
+                self._safe_remove(tmp)
+                return path
+            expected_hash = sha256_file(tmp)
+            try:
+                atomic_replace(tmp, final)
+            except OSError as exc:
+                log.warning("não foi possível finalizar a compressão: %s", exc)
+                self._safe_remove(tmp)
+                return path
+            if sha256_file(final).lower() != expected_hash.lower():
+                log.error("hash do arquivo final não confere — removendo saída")
+                self._safe_remove(final)
+                return path
+            finalized = self._finalize_download(final, media_url=self.url)
+            if not finalized:
+                return path
+            log.info(
+                "comprimido (%s/%s): %s -> %s (original mantido)",
+                self.codec, self.compress_level, path, final,
+            )
+            return final
+        finally:
+            release_output_path(final)
 
     def _succeed(self, path: str) -> None:
+        validated = self._finalize_download(path)
+        if not validated:
+            self.failed.emit(
+                self.url,
+                self._t("err_invalid_download", path=path),
+            )
+            self.finished.emit()
+            return
+        path = validated
         compressed = self._maybe_compress(path)
         if compressed is None:  # cancelado durante a compressão
             self.cancelled.emit(self.url)

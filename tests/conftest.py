@@ -8,10 +8,16 @@ from __future__ import annotations
 
 import os
 import sys
+import tempfile
 import time
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+# Never restore/save the developer's real queue during tests.
+os.environ.setdefault(
+    "HLSDL_QUEUE_STATE",
+    str(Path(tempfile.gettempdir()) / "hlsdlp-test-queue.json"),
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:

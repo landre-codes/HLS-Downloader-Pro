@@ -4,6 +4,59 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/)
 e o versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 
+## [Não lançado] — padrão-ouro: catálogo, SSIM, HDR, fila e CLI
+
+### Adicionado
+- **Catálogo SQLite** (`catalog.sqlite3`) indexando source key, SHA-256/BLAKE3, probe/validação, arquivos e jobs; consulta por identidade/hash e `prune_missing`.
+- **BLAKE3 opcional** ao lado do SHA-256 obrigatório, no sidecar e na verificação.
+- **SSIM amostral** source × output em trechos (10%/50%/90%) para reencodes sem filtros que mudam pixels.
+- **HDR10 estático**: extração de mastering display/content light do `ffprobe` e emissão de `master-display`/`max-cll`/`hdr10-opt` no x265.
+- **Decodificação por hardware** (`-hwaccel auto`) como opção na UI.
+- **Geometria**: crop (`w:h:x:y`), escala (largura/altura), rotação 0/90/180/270 e FPS, com validação das dimensões esperadas.
+- **Status `verifying`** para hash/validação, no download e na compressão.
+- **Fila persistente** (`queue.json`): restaura downloads e compressão ao abrir, omitindo concluídos.
+- **CLI `hlsdl`** com `probe`, `verify`, `similar`, `compress` e `download`.
+- **Arquitetura modular**: `bridge.py` dividido em mixins (`hlsdl/bridge_parts/`), páginas QML em `hlsdl/ui/pages/`, componentes compartilhados em `hlsdl/ui/components/` e todos os diálogos globais (erro, confirmações, dependências, lote, sugestões, similaridade e recuperação) em `hlsdl/ui/dialogs/`; `main.qml` ficou só com o shell da janela.
+- **QML no CI**: `pyside6-qmllint` bloqueia erros de sintaxe/tipo em todas as telas.
+- **Teste Windows no CI** e testes de catálogo/CLI/persistência/SSIM/HDR.
+- **SBOM CycloneDX em todas as plataformas** (`*-sbom.json`), com hash incluído nos `SHA256SUMS` de Windows e Linux.
+- **CI valida o wheel** instalável: `bridge_parts/` e as subpastas QML (`pages/`, `components/`, `dialogs/`) precisam estar presentes.
+
+### Alterado
+- Ciclo de vida de QThreads centralizado em `hlsdl/jobs.py`.
+- `detect_encoders` passou a considerar apenas encoders de vídeo.
+- Presets agora resetam filtros/políticas e permanecem selecionados; alterações individuais marcam “Personalizado”.
+- Atualização de dependências bloqueada com jobs ativos e PySide6 não é mais atualizado in-process.
+- Extração de ffmpeg/ffprobe e downloads de ferramentas agora são atômicas.
+- `pyproject.toml` inclui `hlsdl.bridge_parts` e todo o QML modular no pacote instalável.
+
+### Corrigido
+- **Ícones após a extração QML**: `iconPath()` agora devolve URL absoluta; páginas e componentes não procuram mais `pages/icons` ou `components/icons`.
+- **Probes QSV concorrentes**: a detecção de dispositivos QSV usa cache global e lock, evitando vários `ffmpeg` simultâneos ao criar múltiplos managers; `refresh_encoders` invalida o cache.
+- **Mapeamento QSV**: o regex aceita o BDF completo (`0000:00:02.0`), então GPUs Intel Arc/UHD voltam a ser associadas ao índice `-qsv_device` correto.
+- **Download de atualização atômico**: o instalador é gravado em `.part`, verificado por SHA-256 e só então movido para o nome final; falhas removem o parcial.
+
+## [Não lançado] — integridade, similares e recuperação
+
+### Adicionado
+- **Identidade de mídia** por ID de extractor, hash de manifesto HLS ou URL canônica sem tokens, com sidecar `.hlsdl.json` contendo `ffprobe` + SHA-256.
+- **Validação profunda de saída**: resolução, bit depth, cor/HDR, áudio (contagem/canais/duração), legendas e frames; arquivos inválidos não substituem o original.
+- **Pipeline transacional de compressão**: `.part` único, journal, backup do original por hard link/cópia, rollback em hash/tamanho inválido e recuperação na inicialização.
+- **Busca de mídias similares (VDF/Czkawka-inspired)**: dHash multi-frame + aHash + envelope RMS, com fallbacks por hash amostral, metadados e nome.
+- **Extração de cookies escopada** por domínio/path/secure, incluindo `#HttpOnly_`.
+- **Importação de .txt** UTF-8/UTF-16/ANSI e validação do arquivo de cookies.
+- **Retry de compressão** e bloqueio de retry enquanto a thread anterior ainda está viva.
+
+### Corrigido
+- **Fallback ffmpeg**: `-loglevel info` elimina o falso “travamento” de 180 s e volta a mostrar progresso/velocidade.
+- **Vazamento de QThread**: threads concluídas e os itens capturados pelas closures são liberados.
+- **Corrida de detecção**: iniciar compressão antes da detecção de encoders não marca mais todos os itens como erro.
+- **Duplicata entre Download Individual e Lote**: o lote ignora URLs ativas na fila individual.
+- **Perda de texto no lote**: campo só é limpo quando algo foi realmente adicionado.
+- **Atalhos**: focar um botão não desabilita mais Ctrl+V/Delete.
+- **Pasta de logs** correta em modo portátil/dev.
+- **`single_busy`** traduzido nos 8 idiomas.
+
 ## [Não lançado] — compressor inspirado no HandBrake
 
 ### Adicionado

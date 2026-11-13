@@ -34,6 +34,18 @@ def _fake_ffmpeg_process(cmd, duration=None, is_ffmpeg=False):
     return True, cmd[-1]
 
 
+def _valid_probe() -> dict:
+    return {
+        "streams": [
+            {"codec_type": "video", "codec_name": "h264", "width": 320,
+             "height": 240, "pix_fmt": "yuv420p", "duration": "10"},
+            {"codec_type": "audio", "codec_name": "aac", "channels": 2,
+             "duration": "10"},
+        ],
+        "format": {"duration": "10"},
+    }
+
+
 def test_ffmpeg_fallback_audio_respects_mode_and_headers(
     monkeypatch, tmp_path
 ):
@@ -46,6 +58,7 @@ def test_ffmpeg_fallback_audio_respects_mode_and_headers(
         lambda name: "/usr/bin/ffmpeg" if name == "ffmpeg" else None,
     )
     monkeypatch.setattr("hlsdl.downloader.probe_duration", lambda url: 10.0)
+    monkeypatch.setattr("hlsdl.downloader.probe_media", lambda path: _valid_probe())
     captured = {}
 
     def fake_run(cmd, duration=None, is_ffmpeg=False):
@@ -59,6 +72,8 @@ def test_ffmpeg_fallback_audio_respects_mode_and_headers(
     assert "-vn" in cmd and "libmp3lame" in cmd
     assert "-referer" in cmd and "https://site/page" in cmd
     assert "-i" in cmd
+    # -loglevel info is what keeps the stall watchdog fed with time= lines.
+    assert "-loglevel" in cmd and "info" in cmd
 
 
 def test_ffmpeg_fallback_video_only_removes_audio(
@@ -70,6 +85,7 @@ def test_ffmpeg_fallback_video_only_removes_audio(
     )
     monkeypatch.setattr("hlsdl.downloader.which", lambda name: "/usr/bin/ffmpeg")
     monkeypatch.setattr("hlsdl.downloader.probe_duration", lambda url: 10.0)
+    monkeypatch.setattr("hlsdl.downloader.probe_media", lambda path: _valid_probe())
     captured = {}
 
     def fake_run(cmd, duration=None, is_ffmpeg=False):
@@ -80,6 +96,29 @@ def test_ffmpeg_fallback_video_only_removes_audio(
     ok, path = worker._run_ffmpeg("https://cdn/site/master.m3u8")
     assert ok and path.endswith(".mkv")
     assert "-an" in captured["cmd"]
+
+
+def test_ffmpeg_fallback_avi_uses_mp3_audio(monkeypatch, tmp_path):
+    worker = DownloadWorker(
+        "https://site/page", str(tmp_path),
+        format_mode="video_audio", container="avi",
+    )
+    monkeypatch.setattr("hlsdl.downloader.which", lambda name: "/usr/bin/ffmpeg")
+    monkeypatch.setattr("hlsdl.downloader.probe_duration", lambda url: 10.0)
+    monkeypatch.setattr("hlsdl.downloader.probe_media", lambda path: _valid_probe())
+    captured = {}
+
+    def fake_run(cmd, duration=None, is_ffmpeg=False):
+        captured["cmd"] = list(cmd)
+        if "libmp3lame" not in cmd:
+            return False, "copy failed"
+        return _fake_ffmpeg_process(cmd, duration, is_ffmpeg)
+
+    monkeypatch.setattr(worker, "_run_process", fake_run)
+    ok, path = worker._run_ffmpeg("https://cdn/site/master.m3u8")
+    assert ok and path.endswith(".avi")
+    assert "libmp3lame" in captured["cmd"]
+    assert "aac" not in captured["cmd"]
 
 
 def test_ffmpeg_detect_requires_ffprobe(monkeypatch):

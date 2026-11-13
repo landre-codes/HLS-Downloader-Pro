@@ -11,35 +11,37 @@ import os
 import subprocess
 import threading
 
-from PySide6.QtCore import Property, QObject, QSettings, Qt, QUrl, Signal, Slot
-from PySide6.QtGui import QDesktopServices, QGuiApplication
-from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox
-
-from . import __version__
-from .compress import (
-    AUDIO_MODES,
-    CODEC_NAMES,
-    COMPRESSION_PRESETS,
-    CONTAINERS,
-    DEFAULT_CONTAINERS,
-    DEINTERLACE_MODES,
-    DENOISE_MODES,
-    ENCODER_NAMES,
-    ENCODER_ORDER,
-    SPEEDS,
-    SUBTITLE_MODES,
-    CompressionManager,
-    CompressionModel,
-    CompressionSettings,
-    available_vendors,
-    estimate_saving,
-    quality_max_for_codec,
-    resolve_encoder,
+from PySide6.QtCore import (
+    Property,
+    QObject,
+    QSettings,
+    Qt,
+    QTimer,
+    Slot,
 )
+from PySide6.QtGui import QGuiApplication
+
+from . import __version__, config, persistence
+from .bridge_parts.compression import CompressionMixin
+from .bridge_parts.dependencies import DependenciesMixin
+from .bridge_parts.downloads import DownloadsMixin
+from .bridge_parts.playlist import PlaylistMixin
+from .bridge_parts.settings import SettingsMixin
+from .bridge_parts.similarity import SimilarityMixin
+from .bridge_parts.updates import UpdatesMixin
 from .compress import (
     CODECS as COMPRESSION_CODECS,
 )
-from .config import BROWSERS, is_portable, user_config_dir
+from .compress import (
+    CONTAINERS,
+    DEFAULT_CONTAINERS,
+    ENCODER_ORDER,
+    SPEEDS,
+    CompressionManager,
+    CompressionModel,
+    CompressionSettings,
+)
+from .config import BROWSERS, journals_dir, queue_state_path, user_config_dir
 from .config import settings_path as default_settings_path
 from .deps import YTDLP_VARIANTS, DependencyManager
 from .formats import (
@@ -53,54 +55,27 @@ from .formats import (
     QUALITIES,
     VIDEO_CONTAINERS,
 )
-from .i18n import LANGUAGE_NAMES, LANGUAGES, detect_language, tr
+from .i18n import detect_language, tr
+from .integrity import recover_journals, verify_completion
 from .model import DownloadModel
-from .nativeui import show_message
 from .playlist import PlaylistLoader
 from .queue import QueueManager
-from .services.procutils import spawn_kwargs
-from .status import FINAL as FINAL_STATUSES
+from .similarity import SimilarityScanner
 from .updater import Updater
-from .urlutils import normalize_url
 
 
-class Bridge(QObject):
+class Bridge(
+    SettingsMixin,
+    DownloadsMixin,
+    CompressionMixin,
+    SimilarityMixin,
+    UpdatesMixin,
+    PlaylistMixin,
+    DependenciesMixin,
+    QObject,
+):
     """Ponte entre o QML e o backend (``QueueManager``/``DependencyManager``)."""
 
-    statsChanged = Signal(int, int, int, int, int)  # aguardando, baixando, ok, erro, cancelado
-    notifyText = Signal(str)                    # toast no QML
-    outputFolderChanged = Signal(str)
-    darkChanged = Signal(bool)
-    concurrencyChanged = Signal(int)
-    limitRateChanged = Signal(int)
-    fragmentsChanged = Signal(int)
-    cookiesEnabledChanged = Signal(bool)
-    cookiesBrowserIndexChanged = Signal(int)
-    cookiesFileChanged = Signal(str)
-    languageChanged = Signal(str)
-    queueActiveChanged = Signal(bool)
-    queuePausedChanged = Signal(bool)
-    formatModeChanged = Signal(str)
-    qualityChanged = Signal(str)
-    containerChanged = Signal(str)
-    codecChanged = Signal(str)
-    compressLevelChanged = Signal(str)
-    namingModeChanged = Signal(str)
-    ytdlpVariantChanged = Signal(str)
-    lastItemChanged = Signal()
-    playlistChanged = Signal()
-    playlistLoadingChanged = Signal(bool)
-    compressionStatsChanged = Signal(int, int, int, int, int)
-    compressionStateChanged = Signal(bool, bool)
-    compressionConfigChanged = Signal()
-    compressionEncodersChanged = Signal()
-    compressionEffectiveEncoderChanged = Signal()
-    compressionQsvDevicesChanged = Signal()
-    updateChanged = Signal()
-    updateProgressChanged = Signal(int)
-    depsChanged = Signal()
-    depsOutput = Signal(str)
-    depsInstallFinished = Signal(str, bool, str)
 
     def __init__(
         self,
@@ -110,6 +85,7 @@ class Bridge(QObject):
         settings_path: str | None = None,
         deps: DependencyManager | None = None,
         defer_detection: bool = False,
+        state_path: str | None = None,
     ):
         super().__init__(parent)
         self.manager = manager
@@ -179,6 +155,34 @@ class Bridge(QObject):
         self._playlist_loading = False
         self._comp_active = False
         self._comp_paused = False
+        self._similar_groups: list = []
+        self._similar_busy = False
+        self._similar_progress = 0
+        self._similar_total = 0
+        self._similar_status = ""
+        self._similar_threshold = 85
+        self._recovery_messages: list = []
+        self._encoder_refresh_busy = False
+        if state_path:
+            self._queue_state_path = state_path
+        else:
+            # Keep tests/custom settings isolated: only the default app
+            # settings use the global queue snapshot.
+            effective = settings_path or default_settings_path()
+            try:
+                is_default = os.path.normcase(os.path.abspath(effective)) == os.path.normcase(
+                    os.path.abspath(default_settings_path())
+                )
+            except OSError:
+                is_default = False
+            self._queue_state_path = (
+                queue_state_path() if is_default
+                else os.path.join(os.path.dirname(os.path.abspath(effective)), "queue.json")
+            )
+        self._persist_timer = QTimer(self)
+        self._persist_timer.setSingleShot(True)
+        self._persist_timer.setInterval(800)
+        self._persist_timer.timeout.connect(self._persist_state)
 
         # Fila própria do Download Individual. Antes, um clique em "Baixar
         # agora" iniciava também todos os itens pendentes do lote.
@@ -187,11 +191,13 @@ class Bridge(QObject):
             outdir=self._output_folder,
             concurrency=1,
             worker_factory=manager.worker_factory,
+            catalog_path=getattr(manager, "catalog_path", None),
         )
 
         # ------------------------------------------------------ compressão
         self.compression = CompressionManager(
-            CompressionModel([]), self, defer_detection=defer_detection
+            CompressionModel([]), self, defer_detection=defer_detection,
+            catalog_path=config.catalog_path(),
         )
         self.compression.set_translator(self._translator())
         self.compression.statsChanged.connect(self.compressionStatsChanged.emit)
@@ -212,6 +218,12 @@ class Bridge(QObject):
             qsv_device=self._setting_int("compress/qsv_device", -1, -1, 15),
             ten_bit=self._setting_bool("compress/ten_bit", False),
             x265_tuning=self._setting_bool("compress/x265_tuning", False),
+            hw_decode=self._setting_bool("compress/hw_decode", False),
+            crop=str(self._settings.value("compress/crop", "") or ""),
+            scale_width=self._setting_int("compress/scale_width", 0, 0, 7680),
+            scale_height=self._setting_int("compress/scale_height", 0, 0, 4320),
+            rotate=self._setting_int("compress/rotate", 0, 0, 270),
+            fps=self._setting_float("compress/fps", 0.0, 0.0, 240.0),
             preset=str(self._settings.value("compress/preset", "custom")),
             hdr_tonemap=self._setting_bool("compress/hdr_tonemap", False),
             deinterlace=str(self._settings.value("compress/deinterlace", "auto")),
@@ -231,6 +243,15 @@ class Bridge(QObject):
             self._comp_settings.speed = "balanced"
         self.compression.apply_settings(self._comp_settings)
         self.compression.finishedAll.connect(self._on_comp_finished)
+
+        # ------------------------------------------------ similaridade local
+        self.similarity = SimilarityScanner(self)
+        self.similarity.stateChanged.connect(self._on_similar_state)
+        self.similarity.progress.connect(self._on_similar_progress)
+        self.similarity.finished.connect(self._on_similar_finished)
+        self.similarity.failed.connect(self._on_similar_failed)
+
+        threading.Thread(target=self._recover_interrupted_jobs, daemon=True).start()
 
         # ------------------------------------------------------ atualizações
         self._update_info: dict = {}
@@ -279,6 +300,11 @@ class Bridge(QObject):
             target.setCompressLevel(self._compress_level)
             target.setNamingMode(self._naming_mode)
 
+        # Restore only after every stats/state signal is connected.
+        self._restore_queue_state()
+        manager.itemsChanged.connect(self._schedule_persist)
+        self.compression.itemsChanged.connect(self._schedule_persist)
+
         if defer_detection:
             threading.Thread(
                 target=self._detect_initial_environment, daemon=True
@@ -299,6 +325,57 @@ class Bridge(QObject):
         except Exception:
             logging.getLogger("hlsdl").exception("falha ao detectar dependências")
 
+    def _recover_interrupted_jobs(self) -> None:
+        """Replay compression journals after a crash/power loss."""
+        try:
+            results = recover_journals(
+                journals_dir(),
+                verify_cb=lambda path: verify_completion(path, full_hash=True),
+            )
+        except Exception:
+            logging.getLogger("hlsdl").exception("falha ao recuperar jobs interrompidos")
+            return
+        messages = []
+        for result in results:
+            action = result.get("action")
+            final = result.get("final") or result.get("source") or ""
+            if action in ("kept_installed", "completed"):
+                messages.append(self._tr("recovery_kept", path=final))
+            elif action in ("restored_backup", "rolled_back", "discarded_partial"):
+                messages.append(self._tr("recovery_restored", path=result.get("source") or final))
+            else:
+                messages.append(self._tr("recovery_error", path=final))
+        self._recovery_messages = messages
+        if messages:
+            self.recoveryChanged.emit()
+
+    def _restore_queue_state(self) -> None:
+        data = persistence.load(self._queue_state_path)
+        downloads = [
+            item for item in data.get("downloads") or []
+            if str(item.get("status") or "") != "done"
+        ]
+        if downloads:
+            self.manager.restore_items(downloads)
+        paths = [
+            str(item.get("input") or "")
+            for item in data.get("compression") or []
+        ]
+        paths = [path for path in paths if path and os.path.isfile(path)]
+        if paths:
+            self.compression.add_paths(paths, recursive=False)
+
+    def _schedule_persist(self) -> None:
+        if self._persist_timer is not None:
+            self._persist_timer.start()
+
+    def _persist_state(self) -> None:
+        persistence.save(
+            self._queue_state_path,
+            self.manager.items,
+            self.compression.items,
+        )
+
     # ------------------------------------------------------------- utilidades
     @staticmethod
     def _clamp(value: int, low: int, high: int) -> int:
@@ -312,6 +389,15 @@ class Bridge(QObject):
         except (TypeError, ValueError):
             value = default
         return self._clamp(value, low, high)
+
+    def _setting_float(self, key: str, default: float,
+                       low: float, high: float) -> float:
+        raw = self._settings.value(key, default)
+        try:
+            value = float(str(raw).replace(",", "."))
+        except (TypeError, ValueError):
+            value = default
+        return max(low, min(high, value))
 
     def _setting_bool(self, key: str, default: bool) -> bool:
         raw = self._settings.value(key, default)
@@ -336,1180 +422,244 @@ class Bridge(QObject):
     def appVersion(self) -> str:
         return __version__
 
-    @Property(str, notify=languageChanged)
-    def language(self) -> str:
-        return self._lang
 
-    @Slot(str)
-    def setLanguage(self, lang: str) -> None:
-        lang = lang if lang in LANGUAGES else "pt"
-        if lang == self._lang:
-            return
-        self._lang = lang
-        self._save("i18n/language", lang)
-        self.manager.set_translator(self._translator())
-        self.single_manager.set_translator(self._translator())
-        self._playlist.set_translator(self._translator())
-        self.compression.set_translator(self._translator())
-        self.languageChanged.emit(lang)
 
-    @Property(list, constant=True)
-    def languages(self) -> list:
-        """Idiomas disponíveis para o seletor (código + nome)."""
-        return [{"code": code, "name": LANGUAGE_NAMES[code]} for code in LANGUAGES]
 
-    @Property(str, notify=outputFolderChanged)
-    def outputFolder(self) -> str:
-        return self._output_folder
 
-    @Property(bool, notify=darkChanged)
-    def dark(self) -> bool:
-        return self._dark
 
-    @Property(int, notify=concurrencyChanged)
-    def concurrency(self) -> int:
-        return self._concurrency
 
-    @Property(int, notify=limitRateChanged)
-    def limitRateMB(self) -> int:
-        return self._limit_rate_mb
 
-    @Property(int, notify=fragmentsChanged)
-    def fragments(self) -> int:
-        return self._fragments
 
-    @Property(bool, notify=cookiesEnabledChanged)
-    def cookiesEnabled(self) -> bool:
-        return self._cookies_enabled
 
-    @Property(int, notify=cookiesBrowserIndexChanged)
-    def cookiesBrowserIndex(self) -> int:
-        return self._cookies_browser_index
 
-    @Property(str, notify=cookiesFileChanged)
-    def cookiesFile(self) -> str:
-        return self._cookies_file
 
-    @Property(bool, notify=queueActiveChanged)
-    def queueActive(self) -> bool:
-        return self._queue_active
 
-    @Property(bool, notify=queuePausedChanged)
-    def queuePaused(self) -> bool:
-        return self._queue_paused
 
-    def _on_queue_state(self, active: bool, paused: bool) -> None:
-        if active != self._queue_active:
-            self._queue_active = active
-            self.queueActiveChanged.emit(active)
-        if paused != self._queue_paused:
-            self._queue_paused = paused
-            self.queuePausedChanged.emit(paused)
+    @Slot()
+    def refreshStats(self) -> None:
+        """Push initial counters to QML after restored items are in place."""
+        try:
+            self.manager._emit_stats()
+            self.single_manager._emit_stats()
+            self.compression._emit_stats()
+        except Exception:
+            pass
 
-    def _ytdlp_available(self) -> bool:
-        return any(d["key"] == "ytdlp" and d["found"] for d in self._deps_list)
 
-    @Property(str, notify=formatModeChanged)
-    def formatMode(self) -> str:
-        return self._format_mode
 
-    @Slot(str)
-    def setFormatMode(self, mode: str) -> None:
-        mode = mode if mode in FORMAT_MODES else "video_audio"
-        if mode == self._format_mode:
-            return
-        self._format_mode = mode
-        self.manager.setFormatMode(mode)
-        self.single_manager.setFormatMode(mode)
-        self._save("download/format_mode", mode)
-        # Ajusta o contêiner se ele não fizer sentido no novo modo.
-        valid = AUDIO_CONTAINERS if mode == "audio_only" else VIDEO_CONTAINERS
-        if self._container not in valid:
-            self.setContainer(
-                DEFAULT_AUDIO_CONTAINER if mode == "audio_only" else DEFAULT_VIDEO_CONTAINER
-            )
-        self.formatModeChanged.emit(mode)
 
-    @Property(str, notify=qualityChanged)
-    def quality(self) -> str:
-        return self._quality
 
-    @Slot(str)
-    def setQuality(self, quality: str) -> None:
-        quality = quality if quality in QUALITIES else "best"
-        if quality == self._quality:
-            return
-        self._quality = quality
-        self.manager.setQuality(quality)
-        self.single_manager.setQuality(quality)
-        self._save("download/quality", quality)
-        self.qualityChanged.emit(quality)
 
-    @Property(str, notify=containerChanged)
-    def container(self) -> str:
-        return self._container
 
-    @Slot(str)
-    def setContainer(self, container: str) -> None:
-        valid = AUDIO_CONTAINERS if self._format_mode == "audio_only" else VIDEO_CONTAINERS
-        container = container if container in valid else valid[0]
-        if container == self._container:
-            return
-        self._container = container
-        self.manager.setContainer(container)
-        self.single_manager.setContainer(container)
-        self._save("download/container", container)
-        self.containerChanged.emit(container)
 
-    @Property(str, notify=codecChanged)
-    def codec(self) -> str:
-        return self._codec
 
-    @Slot(str)
-    def setCodec(self, codec: str) -> None:
-        codec = codec if codec in CODECS else "copy"
-        if codec == self._codec:
-            return
-        self._codec = codec
-        self.manager.setCodec(codec)
-        self.single_manager.setCodec(codec)
-        self._save("encode/codec", codec)
-        self.codecChanged.emit(codec)
 
-    @Property(str, notify=compressLevelChanged)
-    def compressLevel(self) -> str:
-        return self._compress_level
 
-    @Slot(str)
-    def setCompressLevel(self, level: str) -> None:
-        level = level if level in COMPRESS_LEVELS else "medium"
-        if level == self._compress_level:
-            return
-        self._compress_level = level
-        self.manager.setCompressLevel(level)
-        self.single_manager.setCompressLevel(level)
-        self._save("encode/level", level)
-        self.compressLevelChanged.emit(level)
 
-    @Property(str, notify=namingModeChanged)
-    def namingMode(self) -> str:
-        return self._naming_mode
 
-    @Slot(str)
-    def setNamingMode(self, mode: str) -> None:
-        mode = mode if mode in NAMING_MODES else "id"
-        if mode == self._naming_mode:
-            return
-        self._naming_mode = mode
-        self.manager.setNamingMode(mode)
-        self.single_manager.setNamingMode(mode)
-        self._save("naming/mode", mode)
-        self.namingModeChanged.emit(mode)
 
-    @Property(str, notify=ytdlpVariantChanged)
-    def ytdlpVariant(self) -> str:
-        return self._ytdlp_variant
 
-    @Slot(str)
-    def setYtdlpVariant(self, variant: str) -> None:
-        variant = variant if variant in YTDLP_VARIANTS else "stable"
-        if variant == self._ytdlp_variant:
-            return
-        self._ytdlp_variant = variant
-        self._save("deps/ytdlp_variant", variant)
-        set_variant = getattr(self.deps, "set_variant", None)
-        if callable(set_variant):
-            set_variant(variant)
-        self.ytdlpVariantChanged.emit(variant)
 
-    @Property("QVariantMap", notify=lastItemChanged)
-    def lastItem(self) -> dict:
-        return self._last_item
 
-    def _on_item_updated(self, item: dict) -> None:
-        # A aba Individual só reflete o item iniciado por downloadSingle().
-        if self._single_item_id is None or item.get("id") != self._single_item_id:
-            return
-        status = item.get("status")
-        self._last_item = {
-            "url": item.get("url", ""),
-            "title": item.get("title") or item.get("url", ""),
-            "status": getattr(status, "value", str(status)),
-            "progress": round(float(item.get("progress", 0.0)), 1),
-            "speed": item.get("speed", "—"),
-            "size": item.get("size", "—"),
-            "error": item.get("error", ""),
-            "path": item.get("path", ""),
-            "thumbnail": item.get("thumb", ""),
-        }
-        self.lastItemChanged.emit()
 
-    def _sync_single_item(self) -> None:
-        """Limpa o card individual se o item saiu da fila individual."""
-        if self._single_item_id is None:
-            return
-        if any(i["id"] == self._single_item_id for i in self.single_manager.items):
-            return
-        self._single_item_id = None
-        self._last_item = {}
-        self.lastItemChanged.emit()
 
-    def _single_row(self) -> int:
-        if self._single_item_id is None:
-            return -1
-        for row, item in enumerate(self.single_manager.items):
-            if item.get("id") == self._single_item_id:
-                return row
-        return -1
+
 
     # ----------------------------------------------------------- compressão
-    @Property(str, notify=compressionConfigChanged)
-    def compressionEncoder(self) -> str:
-        return self._comp_settings.encoder
-
-    @Slot(str)
-    def setCompressionEncoder(self, key: str) -> None:
-        key = key if key in ("auto", *ENCODER_ORDER) else "auto"
-        if key == self._comp_settings.encoder:
-            return
-        self._comp_settings.encoder = key
-        self._save("compress/encoder", key)
-        self.compression.apply_settings(self._comp_settings)
-        self.compressionConfigChanged.emit()
-        self.compressionEffectiveEncoderChanged.emit()
-
-    @Property(list, constant=True)
-    def compressionCodecs(self) -> list:
-        return [{"key": key, "name": CODEC_NAMES[key]} for key in COMPRESSION_CODECS]
-
-    @Property(str, notify=compressionConfigChanged)
-    def compressionCodec(self) -> str:
-        return self._comp_settings.codec
-
-    @Slot(str)
-    def setCompressionCodec(self, codec: str) -> None:
-        codec = codec if codec in COMPRESSION_CODECS else "hevc"
-        if codec == self._comp_settings.codec:
-            return
-        self._comp_settings.codec = codec
-        if self._comp_settings.container not in CONTAINERS[codec]:
-            self._comp_settings.container = DEFAULT_CONTAINERS[codec]
-            self._save("compress/container", self._comp_settings.container)
-        self._save("compress/codec", codec)
-        self.compression.apply_settings(self._comp_settings)
-        self.compressionConfigChanged.emit()
-        self.compressionEncodersChanged.emit()
-        self.compressionEffectiveEncoderChanged.emit()
-
-    @Property(list, notify=compressionConfigChanged)
-    def compressionContainers(self) -> list:
-        return list(CONTAINERS[self._comp_settings.codec])
-
-    @Property(str, notify=compressionConfigChanged)
-    def compressionContainer(self) -> str:
-        return self._comp_settings.container
-
-    @Slot(str)
-    def setCompressionContainer(self, container: str) -> None:
-        allowed = CONTAINERS[self._comp_settings.codec]
-        container = container if container in allowed else allowed[0]
-        if container == self._comp_settings.container:
-            return
-        self._comp_settings.container = container
-        self._save("compress/container", container)
-        self.compression.apply_settings(self._comp_settings)
-        self.compressionConfigChanged.emit()
-
-    @Property(int, notify=compressionConfigChanged)
-    def compressionEstimate(self) -> int:
-        return estimate_saving(self._comp_settings.codec,
-                               self._comp_settings.quality)
-
-    @Property(int, notify=compressionConfigChanged)
-    def compressionQuality(self) -> int:
-        return self._comp_settings.quality
-
-    @Property(int, notify=compressionConfigChanged)
-    def compressionQualityMax(self) -> int:
-        """Limite de RF do codec atual (AV1 vai até 63)."""
-        return quality_max_for_codec(self._comp_settings.codec)
-
-    @Slot(int)
-    def setCompressionQuality(self, value: int) -> None:
-        value = self._clamp(
-            int(value), 1, quality_max_for_codec(self._comp_settings.codec)
-        )
-        if value == self._comp_settings.quality:
-            return
-        self._comp_settings.quality = value
-        self._save("compress/quality", value)
-        self.compression.apply_settings(self._comp_settings)
-        self.compressionConfigChanged.emit()
-
-    @Property(str, notify=compressionConfigChanged)
-    def compressionSpeed(self) -> str:
-        return self._comp_settings.speed
-
-    @Slot(str)
-    def setCompressionSpeed(self, speed: str) -> None:
-        speed = speed if speed in SPEEDS else "balanced"
-        if speed == self._comp_settings.speed:
-            return
-        self._comp_settings.speed = speed
-        self._save("compress/speed", speed)
-        self.compression.apply_settings(self._comp_settings)
-        self.compressionConfigChanged.emit()
-
-    @Property(bool, notify=compressionConfigChanged)
-    def compressionHdrTonemap(self) -> bool:
-        return bool(self._comp_settings.hdr_tonemap)
-
-    @Slot(bool)
-    def setCompressionHdrTonemap(self, value: bool) -> None:
-        self._set_comp_bool("hdr_tonemap", value, "hdr_tonemap")
-
-    @Property(str, notify=compressionConfigChanged)
-    def compressionDeinterlace(self) -> str:
-        return self._comp_settings.deinterlace
-
-    @Slot(str)
-    def setCompressionDeinterlace(self, value: str) -> None:
-        self._set_comp_choice(
-            "deinterlace", value, DEINTERLACE_MODES, "deinterlace"
-        )
-
-    @Property(str, notify=compressionConfigChanged)
-    def compressionDenoise(self) -> str:
-        return self._comp_settings.denoise
-
-    @Slot(str)
-    def setCompressionDenoise(self, value: str) -> None:
-        self._set_comp_choice("denoise", value, DENOISE_MODES, "denoise")
-
-    @Property(str, notify=compressionConfigChanged)
-    def compressionAudioMode(self) -> str:
-        return self._comp_settings.audio_mode
-
-    @Slot(str)
-    def setCompressionAudioMode(self, value: str) -> None:
-        self._set_comp_choice("audio_mode", value, AUDIO_MODES, "audio_mode")
-
-    @Property(str, notify=compressionConfigChanged)
-    def compressionSubtitleMode(self) -> str:
-        return self._comp_settings.subtitle_mode
-
-    @Slot(str)
-    def setCompressionSubtitleMode(self, value: str) -> None:
-        self._set_comp_choice(
-            "subtitle_mode", value, SUBTITLE_MODES, "subtitle_mode"
-        )
-
-    @Property(list, constant=True)
-    def compressionPresets(self) -> list:
-        return list(COMPRESSION_PRESETS)
-
-    @Slot(str)
-    def applyCompressionPreset(self, key: str) -> None:
-        """Aplica um preset no estilo HandBrake aos ajustes atuais."""
-        presets = {
-            "fast_h264": {
-                "encoder": "auto", "codec": "h264", "container": "mp4",
-                "quality": 23, "speed": "fast", "ten_bit": False,
-                "x265_tuning": False,
-            },
-            "balanced_hevc": {
-                "encoder": "auto", "codec": "hevc", "container": "mp4",
-                "quality": 24, "speed": "balanced", "ten_bit": False,
-                "x265_tuning": False,
-            },
-            "quality_hevc": {
-                "encoder": "auto", "codec": "hevc", "container": "mp4",
-                "quality": 20, "speed": "slow", "ten_bit": False,
-                "x265_tuning": True,
-            },
-            "archive_hevc": {
-                "encoder": "software", "codec": "hevc", "container": "mkv",
-                "quality": 18, "speed": "slower", "ten_bit": True,
-                "x265_tuning": True,
-            },
-            "av1_balanced": {
-                "encoder": "software", "codec": "av1", "container": "mkv",
-                "quality": 30, "speed": "slow", "ten_bit": False,
-                "x265_tuning": False,
-            },
-        }
-        values = presets.get(key)
-        if values is None:
-            return
-        for attr, value in values.items():
-            setattr(self._comp_settings, attr, value)
-        self._comp_settings.preset = key
-        for attr in (
-            "encoder", "codec", "container", "quality", "speed",
-            "ten_bit", "x265_tuning", "preset",
-        ):
-            self._save(f"compress/{attr}", getattr(self._comp_settings, attr))
-        self.compression.apply_settings(self._comp_settings)
-        self.compressionConfigChanged.emit()
-        self.compressionEncodersChanged.emit()
-        self.compressionEffectiveEncoderChanged.emit()
-
-    @Property(int, notify=compressionConfigChanged)
-    def compressionParallel(self) -> int:
-        return self._comp_settings.parallel
-
-    @Slot(int)
-    def setCompressionParallel(self, value: int) -> None:
-        value = self._clamp(int(value), 1, 8)
-        if value == self._comp_settings.parallel:
-            return
-        self._comp_settings.parallel = value
-        self._save("compress/parallel", value)
-        self.compression.apply_settings(self._comp_settings)
-        self.compressionConfigChanged.emit()
-
-    @Property(int, notify=compressionConfigChanged)
-    def compressionMinSizeMB(self) -> int:
-        return self._comp_settings.min_size_mb
-
-    @Slot(int)
-    def setCompressionMinSizeMB(self, value: int) -> None:
-        value = self._clamp(int(value), 0, 100000)
-        if value == self._comp_settings.min_size_mb:
-            return
-        self._comp_settings.min_size_mb = value
-        self._save("compress/min_size_mb", value)
-        self.compression.apply_settings(self._comp_settings)
-        self.compressionConfigChanged.emit()
-
-    def _set_comp_bool(self, attr: str, value: bool, key: str) -> None:
-        value = bool(value)
-        if getattr(self._comp_settings, attr) == value:
-            return
-        setattr(self._comp_settings, attr, value)
-        self._save(f"compress/{key}", value)
-        self.compression.apply_settings(self._comp_settings)
-        self.compressionConfigChanged.emit()
-
-    def _set_comp_choice(self, attr: str, value: str, allowed: tuple,
-                         key: str) -> None:
-        value = value if value in allowed else allowed[0]
-        if getattr(self._comp_settings, attr) == value:
-            return
-        setattr(self._comp_settings, attr, value)
-        self._save(f"compress/{key}", value)
-        self.compression.apply_settings(self._comp_settings)
-        self.compressionConfigChanged.emit()
-
-    @Property(bool, notify=compressionConfigChanged)
-    def compressionOnlyIfSmaller(self) -> bool:
-        return self._comp_settings.only_if_smaller
-
-    @Slot(bool)
-    def setCompressionOnlyIfSmaller(self, value: bool) -> None:
-        self._set_comp_bool("only_if_smaller", value, "only_if_smaller")
-
-    @Property(bool, notify=compressionConfigChanged)
-    def compressionReplaceOriginal(self) -> bool:
-        return self._comp_settings.replace_original
-
-    @Slot(bool)
-    def setCompressionReplaceOriginal(self, value: bool) -> None:
-        self._set_comp_bool("replace_original", value, "replace_original")
-
-    @Property(bool, notify=compressionConfigChanged)
-    def compressionReencodeHevc(self) -> bool:
-        return self._comp_settings.reencode_hevc
-
-    @Slot(bool)
-    def setCompressionReencodeHevc(self, value: bool) -> None:
-        self._set_comp_bool("reencode_hevc", value, "reencode_hevc")
-
-    @Property(bool, notify=compressionConfigChanged)
-    def compressionSkipHdr(self) -> bool:
-        return self._comp_settings.skip_hdr
-
-    @Slot(bool)
-    def setCompressionSkipHdr(self, value: bool) -> None:
-        self._set_comp_bool("skip_hdr", value, "skip_hdr")
-
-    @Property(bool, notify=compressionConfigChanged)
-    def compressionTenBit(self) -> bool:
-        return self._comp_settings.ten_bit
-
-    @Slot(bool)
-    def setCompressionTenBit(self, value: bool) -> None:
-        self._set_comp_bool("ten_bit", value, "ten_bit")
-
-    @Property(bool, notify=compressionConfigChanged)
-    def compressionX265Tuning(self) -> bool:
-        return self._comp_settings.x265_tuning
-
-    @Slot(bool)
-    def setCompressionX265Tuning(self, value: bool) -> None:
-        self._set_comp_bool("x265_tuning", value, "x265_tuning")
-
-    @Property(list, notify=compressionEncodersChanged)
-    def compressionEncoders(self) -> list:
-        availability = available_vendors(
-            self._comp_settings.codec, self.compression.available
-        )
-        items = [{"key": "auto", "name": "Auto", "available": True}]
-        for key in ENCODER_ORDER:
-            name = ENCODER_NAMES[key]
-            if not availability.get(key):
-                name += " (n/d)"
-            items.append({
-                "key": key,
-                "name": name,
-                "available": bool(availability.get(key)),
-            })
-        return items
-
-    @Property(str, notify=compressionEffectiveEncoderChanged)
-    def compressionEffectiveEncoder(self) -> str:
-        """Encoder concreto que o modo Auto/fornecedor escolheria agora."""
-        return resolve_encoder(self._comp_settings, self.compression.available)
-
-    @Property(list, notify=compressionQsvDevicesChanged)
-    def compressionQsvDevices(self) -> list:
-        items = [{"index": -1, "name": "Auto (dedicada)"}]
-        for device in self.compression.qsv_devices:
-            items.append({
-                "index": int(device["index"]),
-                "name": f"{device['name']} ({device['index']})",
-            })
-        return items
-
-    @Property(int, notify=compressionConfigChanged)
-    def compressionQsvDevice(self) -> int:
-        return self._comp_settings.qsv_device
-
-    @Slot(int)
-    def setCompressionQsvDevice(self, index: int) -> None:
-        index = self._clamp(int(index), -1, 15)
-        if index == self._comp_settings.qsv_device:
-            return
-        self._comp_settings.qsv_device = index
-        self._save("compress/qsv_device", index)
-        self.compression.apply_settings(self._comp_settings)
-        self.compressionConfigChanged.emit()
-
-    @Slot()
-    def refreshCompressionEncoders(self) -> None:
-        self.compression.refresh_encoders()
-        self.compressionEncodersChanged.emit()
-        self.compressionEffectiveEncoderChanged.emit()
-
-    @Property(bool, notify=compressionStateChanged)
-    def compressionActive(self) -> bool:
-        return self._comp_active
-
-    @Property(bool, notify=compressionStateChanged)
-    def compressionPaused(self) -> bool:
-        return self._comp_paused
-
-    def _on_comp_state(self, active: bool, paused: bool) -> None:
-        self._comp_active = active
-        self._comp_paused = paused
-        self.compressionStateChanged.emit(active, paused)
-
-    def _on_comp_finished(self, done: int, errors: int, skipped: int) -> None:
-        message = self._tr(
-            "compress_finished", done=done, errors=errors, skipped=skipped
-        )
-        self.notifyText.emit(message)
-        if errors:
-            details: list[str] = []
-            for item in self.compression.items:
-                status = item.get("status")
-                if getattr(status, "value", status) != "error":
-                    continue
-                error = str(item.get("error") or "").strip()
-                if not error:
-                    continue
-                name = item.get("name") or item.get("input") or ""
-                details.append(f"• {name}: {error}")
-            if details:
-                message += "\n\n" + "\n".join(details[:3])
-                if len(details) > 3:
-                    message += f"\n… (+{len(details) - 3})"
-            show_message(
-                None,
-                QMessageBox.Icon.Warning,
-                self._tr("compress_finished_title"),
-                message,
-                self._lang,
-            )
-
-    @Slot()
-    def addCompressionFiles(self) -> None:
-        paths, _ = QFileDialog.getOpenFileNames(
-            None,
-            self._tr("compress_add_files"),
-            "",
-            self._tr("filter_videos"),
-        )
-        if paths:
-            added = self.compression.add_paths(paths, recursive=False)
-            if added:
-                self.notifyText.emit(self._tr("compress_files_added", n=added))
-
-    @Slot()
-    def addCompressionFolder(self) -> None:
-        path = QFileDialog.getExistingDirectory(
-            None, self._tr("compress_add_folder"), ""
-        )
-        if path:
-            added = self.compression.add_paths([path], recursive=True)
-            if added:
-                self.notifyText.emit(self._tr("compress_files_added", n=added))
-
-    @Slot(list)
-    def addCompressionPaths(self, paths: list) -> None:
-        added = self.compression.add_paths([str(p) for p in paths], recursive=True)
-        if added:
-            self.notifyText.emit(self._tr("compress_files_added", n=added))
-
-    @Slot()
-    def startCompression(self) -> None:
-        if not self.compression.items:
-            self.notifyText.emit(self._tr("compress_no_items"))
-            return
-        self.compression.start()
-        self.notifyText.emit(self._tr("compress_started"))
-
-    @Slot()
-    def pauseCompression(self) -> None:
-        self.compression.pause()
-        self.notifyText.emit(self._tr("compress_paused"))
-
-    @Slot()
-    def resumeCompression(self) -> None:
-        self.compression.resume()
-        self.notifyText.emit(self._tr("compress_resumed"))
-
-    @Slot()
-    def cancelCompression(self) -> None:
-        self.compression.cancelAll()
-        self.notifyText.emit(self._tr("compress_cancelled"))
-
-    @Slot(int)
-    def cancelCompressionItem(self, row: int) -> None:
-        self.compression.cancelItem(row)
-
-    @Slot(int)
-    def removeCompressionItem(self, row: int) -> None:
-        self.compression.removeItem(row)
-        self.notifyText.emit(self._tr("item_removed"))
-
-    @Slot()
-    def clearCompressionFinished(self) -> None:
-        self.compression.clearFinished()
-
-    @Slot(str)
-    def openCompressionOutput(self, path: str) -> None:
-        self.openDownloadPath(path)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    # ------------------------------------------------------- similaridade local
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     # ---------------------------------------------------------- atualizações
-    @Property(bool, notify=updateChanged)
-    def updateAvailable(self) -> bool:
-        return bool(self._update_info.get("available"))
 
-    @Property(str, notify=updateChanged)
-    def updateLatest(self) -> str:
-        return str(self._update_info.get("latest", ""))
 
-    @Property(str, notify=updateChanged)
-    def updateStatus(self) -> str:
-        return self._update_status
 
-    @Property(bool, notify=updateChanged)
-    def updateBusy(self) -> bool:
-        return self._update_busy
 
-    @Property(int, notify=updateProgressChanged)
-    def updateProgress(self) -> int:
-        return self._update_progress
 
-    @Property(str, notify=updateChanged)
-    def updateNotes(self) -> str:
-        return str(self._update_info.get("notes", ""))
 
-    @Property(str, notify=updateChanged)
-    def updateHtmlUrl(self) -> str:
-        return str(self._update_info.get("html_url", ""))
 
-    @Slot()
-    def checkForUpdates(self) -> None:
-        if self._update_busy:
-            return
-        self._update_busy = True
-        self._update_progress = 0
-        self._update_status = self._tr("update_checking")
-        self.updateChanged.emit()
-        self.updater.check()
 
-    @Slot()
-    def downloadUpdate(self) -> None:
-        if not self._update_info.get("available"):
-            return
-        if os.name != "nt" or is_portable():
-            self.openReleasePage()
-            return
-        if not self._update_info.get("installer_url") or not self._update_info.get("checksums_url"):
-            self.notifyText.emit(self._tr("update_no_assets"))
-            return
-        self._update_busy = True
-        self._update_progress = 0
-        self._update_status = self._tr("update_checking")
-        self.updateChanged.emit()
-        self.updater.download_and_verify(self._update_info)
 
-    @Slot()
-    def openReleasePage(self) -> None:
-        url = str(self._update_info.get("html_url") or "")
-        if url:
-            QDesktopServices.openUrl(QUrl(url))
 
-    def _on_update_checking(self, busy: bool) -> None:
-        self._update_busy = busy
-        self.updateChanged.emit()
 
-    def _on_update_checked(self, info: dict) -> None:
-        self._update_info = info
-        self._update_busy = False
-        if info.get("available"):
-            self._update_status = self._tr(
-                "update_available", version=info.get("latest", "")
-            )
-        else:
-            self._update_status = self._tr("update_latest")
-        self.updateChanged.emit()
 
-    def _on_update_progress(self, pct: int) -> None:
-        self._update_progress = int(pct)
-        self.updateProgressChanged.emit(self._update_progress)
 
-    def _on_update_failed(self, err: str) -> None:
-        self._update_busy = False
-        if err in ("missing_assets", "missing_checksum", "checksum_mismatch"):
-            message = (
-                self._tr("update_no_assets") if err == "missing_assets"
-                else self._tr("update_download_failed", err=err)
-            )
-        else:
-            message = self._tr("update_failed", err=err)
-        self._update_status = message
-        self.notifyText.emit(message)
-        self.updateChanged.emit()
 
-    def _on_update_ready(self, path: str) -> None:
-        self._update_busy = False
-        self._update_status = self._tr("update_ready")
-        self.updateChanged.emit()
-        self.notifyText.emit(self._update_status)
-        if os.name == "nt" and not is_portable():
-            try:
-                subprocess.Popen(
-                    [path, "/SILENT", "/CLOSEAPPLICATIONS", "/NORESTART"],
-                    **spawn_kwargs(),
-                )
-            except Exception as exc:
-                self._update_status = self._tr("update_failed", err=exc)
-                self.updateChanged.emit()
-                return
-            QApplication.quit()
-        else:
-            self.openReleasePage()
 
     # ------------------------------------------------------------ playlists
-    @Property(list, notify=playlistChanged)
-    def playlistItems(self) -> list:
-        return self._playlist_items
 
-    @Property(bool, notify=playlistLoadingChanged)
-    def playlistLoading(self) -> bool:
-        return self._playlist_loading
 
-    @Slot(str, int)
-    def loadPlaylist(self, url: str, limit: int) -> None:
-        self._playlist.load(url, int(limit), self._build_cookies_arg())
 
-    @Slot()
-    def cancelPlaylist(self) -> None:
-        if self._playlist_loading:
-            self._playlist.cancel()
-            self.notifyText.emit(self._tr("playlist_cancelled"))
 
-    @Slot()
-    def clearPlaylist(self) -> None:
-        self._playlist_items = []
-        self.playlistChanged.emit()
 
-    @Slot(str)
-    def addLinksAndStart(self, text: str) -> None:
-        """Adiciona links (ex.: selecionados de uma playlist) e inicia a fila."""
-        added, skipped = self.manager.addText(text)
-        if added:
-            self.notifyText.emit(self._tr("links_added", a=added))
-        elif skipped:
-            self.notifyText.emit(self._tr("links_skipped", s=skipped))
-        self.manager.start()
+    def _jobs_active(self) -> bool:
+        return bool(
+            self.manager.isActive
+            or self.single_manager.isActive
+            or self.compressionActive
+        )
+
+
         # O estado (ativo/pausado) vem de manager.queueStateChanged.
 
-    def _on_playlist_loading(self, loading: bool) -> None:
-        self._playlist_loading = loading
-        self.playlistLoadingChanged.emit(loading)
 
-    def _on_playlist_loaded(self, items: list) -> None:
-        self._playlist_items = items
-        self.playlistChanged.emit()
 
-    def _on_playlist_failed(self, message: str) -> None:
-        self.notifyText.emit(message)
 
-    def _ffmpeg_available(self) -> bool:
-        return any(d["key"] == "ffmpeg" and d["found"] for d in self._deps_list)
 
-    @Property(bool, notify=depsChanged)
-    def ytdlpAvailable(self) -> bool:
-        return self._ytdlp_available()
 
-    @Property(bool, notify=depsChanged)
-    def ffmpegAvailable(self) -> bool:
-        return self._ffmpeg_available()
 
-    @Property(bool, notify=depsChanged)
-    def anyEssentialMissing(self) -> bool:
-        if not self._deps_list:
-            return False
-        return any(d["required"] and not d["found"] for d in self._deps_list)
 
-    @Property(list, notify=depsChanged)
-    def dependencies(self) -> list:
-        return self._deps_list
 
-    @Property(bool, notify=depsChanged)
-    def depsBusy(self) -> bool:
-        return self._deps_busy
 
-    @Property(bool, notify=depsChanged)
-    def depsPromptDismissed(self) -> bool:
-        return self._deps_prompt_dismissed
 
-    @Slot()
-    def dismissDepsPrompt(self) -> None:
-        """Não volta a perguntar sobre dependências nesta máquina."""
-        if not self._deps_prompt_dismissed:
-            self._deps_prompt_dismissed = True
-            self._save("deps/prompt_dismissed", True)
-            self.depsChanged.emit()
 
     # ---------------------------------------------------------------- slots
-    @Slot(str)
-    def addLinks(self, text: str) -> None:
-        added, skipped = self.manager.addText(text)
-        if added and skipped:
-            self.notifyText.emit(self._tr("links_added_skipped", a=added, s=skipped))
-        elif added:
-            self.notifyText.emit(self._tr("links_added", a=added))
-        elif skipped:
-            self.notifyText.emit(self._tr("links_skipped", s=skipped))
-        else:
-            self.notifyText.emit(self._tr("no_links"))
 
-    @Slot()
-    def pasteFromClipboard(self) -> None:
-        text = QApplication.clipboard().text()
-        if text.strip():
-            self.addLinks(text)
-        else:
-            self.notifyText.emit(self._tr("clipboard_empty"))
 
-    @Slot()
-    def importTxt(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(
-            None,
-            self._tr("dlg_links"),
-            "",
-            self._tr("filter_text"),
-        )
-        if path:
-            self.importTxtPath(path)
 
-    @Slot(str)
-    def importTxtPath(self, path: str) -> None:
-        """Lê um .txt (usado pelo botão e pelo arrastar-e-soltar)."""
-        if not path:
-            return
-        try:
-            with open(path, encoding="utf-8", errors="ignore") as handle:
-                content = handle.read()
-        except OSError as exc:
-            self.notifyText.emit(self._tr("read_failed", err=exc))
-            return
-        self.addLinks(content)
 
-    @Slot()
-    def chooseOutputFolder(self) -> None:
-        path = QFileDialog.getExistingDirectory(
-            None, self._tr("dlg_outdir"), self._output_folder
-        )
-        if path:
-            path = os.path.abspath(os.path.expanduser(path))
-            self._output_folder = path
-            self.manager.setOutdir(path)
-            self.single_manager.setOutdir(path)
-            self._save("download/folder", path)
-            self.outputFolderChanged.emit(path)
-            self.notifyText.emit(self._tr("output_folder", path=path))
 
-    @Slot(int)
-    def setConcurrency(self, n: int) -> None:
-        n = self._clamp(int(n), 1, 8)
-        if n == self._concurrency:
-            return
-        self._concurrency = n
-        self.manager.setConcurrency(n)
-        self._save("download/concurrency", n)
-        self.concurrencyChanged.emit(n)
+
 
     # -------------------------------------------------------------- rede
-    def _limit_rate_arg(self) -> str:
-        if self._limit_rate_mb <= 0:
-            return ""
-        return f"{self._limit_rate_mb}M"
 
-    @Slot(int)
-    def setLimitRateMB(self, mb: int) -> None:
-        mb = self._clamp(int(mb), 0, 1000)
-        if mb == self._limit_rate_mb:
-            return
-        self._limit_rate_mb = mb
-        self.manager.setLimitRate(self._limit_rate_arg())
-        self.single_manager.setLimitRate(self._limit_rate_arg())
-        self._save("download/limit_rate", mb)
-        self.limitRateChanged.emit(mb)
 
-    @Slot(int)
-    def setFragments(self, n: int) -> None:
-        n = self._clamp(int(n), 1, 8)
-        if n == self._fragments:
-            return
-        self._fragments = n
-        self.manager.setFragments(n)
-        self.single_manager.setFragments(n)
-        self._save("download/fragments", n)
-        self.fragmentsChanged.emit(n)
 
-    @Slot(bool)
-    def setDark(self, value: bool) -> None:
-        value = bool(value)
-        if value == self._dark:
-            return
-        self._dark = value
-        self._save("theme/dark", value)
-        self.darkChanged.emit(value)
 
     # -------------------------------------------------------------- cookies
-    def _build_cookies_arg(self) -> str:
-        if not self._cookies_enabled:
-            return ""
-        if self._cookies_file.strip():
-            return "file:" + self._cookies_file.strip()
-        if 0 <= self._cookies_browser_index < len(BROWSERS):
-            return "browser:" + BROWSERS[self._cookies_browser_index]
-        return ""
 
-    def _push_cookies(self) -> None:
-        arg = self._build_cookies_arg()
-        self.manager.setCookies(arg)
-        self.single_manager.setCookies(arg)
 
-    @Slot(bool)
-    def setCookiesEnabled(self, value: bool) -> None:
-        value = bool(value)
-        if value == self._cookies_enabled:
-            return
-        self._cookies_enabled = value
-        self._save("cookies/enabled", value)
-        self._push_cookies()
-        self.cookiesEnabledChanged.emit(value)
 
-    @Slot(int)
-    def setCookiesBrowserIndex(self, index: int) -> None:
-        index = self._clamp(int(index), 0, len(BROWSERS) - 1)
-        if index == self._cookies_browser_index:
-            return
-        self._cookies_browser_index = index
-        self._save("cookies/browser_index", index)
-        self._push_cookies()
-        self.cookiesBrowserIndexChanged.emit(index)
 
-    @Slot(str)
-    def setCookiesFile(self, path: str) -> None:
-        path = (path or "").strip()
-        if path == self._cookies_file:
-            return
-        self._cookies_file = path
-        self._save("cookies/file", path)
-        self._push_cookies()
-        self.cookiesFileChanged.emit(path)
 
-    @Slot()
-    def chooseCookiesFile(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(
-            None,
-            self._tr("dlg_cookies"),
-            "",
-            self._tr("filter_cookies"),
-        )
-        if path:
-            self.setCookiesFile(path)
+
 
     # -------------------------------------------------------- janela/geometria
-    @Slot(int, int, int, int, bool)
-    def saveGeometry(self, x: int, y: int, w: int, h: int, maximized: bool) -> None:
-        self._save("window/geometry", f"{x},{y},{w},{h}")
-        self._save("window/maximized", maximized)
 
     # ------------------------------------------------------------ fila
-    @Slot(str, result=bool)
-    def downloadSingle(self, url: str) -> bool:
-        """Adiciona um único link à fila individual e a inicia.
 
-        Retorna True apenas quando um link válido foi adicionado; o QML usa
-        esse retorno para limpar o campo somente em caso de sucesso.
-        """
-        url = (url or "").strip()
-        if not url:
-            self.notifyText.emit(self._tr("no_links"))
-            return False
-        normalized = normalize_url(url)
-        # Evita baixar de novo algo que já está ativo no lote. Itens
-        # finalizados podem ser reenfileirados.
-        if any(
-            normalize_url(item["url"]) == normalized
-            and item["status"] not in FINAL_STATUSES
-            for item in self.manager.items
-        ):
-            self.notifyText.emit(self._tr("links_skipped", s=1))
-            return False
 
-        current_row = self._single_row()
-        if current_row >= 0:
-            current = self.single_manager.items[current_row]
-            if current["status"] not in FINAL_STATUSES:
-                if normalize_url(current["url"]) == normalized:
-                    self._on_item_updated(current)
-                    self.notifyText.emit(self._tr("links_skipped", s=1))
-                else:
-                    self.notifyText.emit(self._tr("single_busy"))
-                return False
 
-        self.single_manager.clearFinished()
-        self._sync_single_item()
-        before = len(self.single_manager.items)
-        added, skipped = self.single_manager.addText(url)
-        if added:
-            item = self.single_manager.items[before]
-            self._single_item_id = item["id"]
-            self._on_item_updated(item)
-            self.single_manager.start()
-            return True
-        if skipped:
-            # Duplicado ativo na fila individual: foca o item existente.
-            match = next(
-                (i for i in reversed(self.single_manager.items)
-                 if normalize_url(i["url"]) == normalized),
-                None,
-            )
-            if match is not None:
-                self._single_item_id = match["id"]
-                self._on_item_updated(match)
-            self.notifyText.emit(self._tr("links_skipped", s=1))
-        else:
-            self.notifyText.emit(self._tr("no_links"))
-        return False
 
-    @Slot()
-    def cancelSingle(self) -> None:
-        row = self._single_row()
-        if row >= 0:
-            self.single_manager.cancelItem(row)
-            self.notifyText.emit(self._tr("item_cancelled"))
 
-    @Slot()
-    def retrySingle(self) -> None:
-        row = self._single_row()
-        if row >= 0:
-            self.single_manager.retryItem(row)
-            self.single_manager.start()
 
-    @Slot()
-    def startQueue(self) -> None:
-        self.manager.start()
-        self.notifyText.emit(self._tr("queue_started"))
 
-    @Slot()
-    def pauseQueue(self) -> None:
-        self.manager.pause()
-        self.notifyText.emit(self._tr("queue_paused"))
 
-    @Slot()
-    def resumeQueue(self) -> None:
-        self.manager.resume()
-        self.notifyText.emit(self._tr("queue_resumed"))
 
-    @Slot()
-    def cancelAll(self) -> None:
-        self.manager.cancelAll()
-        self.notifyText.emit(self._tr("downloads_cancelled"))
 
-    @Slot(int)
-    def cancelItem(self, row: int) -> None:
-        self.manager.cancelItem(row)
-        self.notifyText.emit(self._tr("item_cancelled"))
 
-    @Slot(int)
-    def removeItem(self, row: int) -> None:
-        self.manager.removeItem(row)
-        self._sync_single_item()
-        self.notifyText.emit(self._tr("item_removed"))
 
-    @Slot(int)
-    def retryItem(self, row: int) -> None:
-        self.manager.retryItem(row)
 
-    @Slot(int, str)
-    def editUrl(self, row: int, new_url: str) -> bool:
-        ok = self.manager.editUrl(row, new_url)
-        self.notifyText.emit(self._tr("link_updated" if ok else "link_update_failed"))
-        return ok
-
-    @Slot(str)
-    def copyLink(self, url: str) -> None:
-        QGuiApplication.clipboard().setText(url)
-        self.notifyText.emit(self._tr("link_copied"))
-
-    @Slot()
-    def clearFinished(self) -> None:
-        self.manager.clearFinished()
-        self._sync_single_item()
-
-    @Slot()
-    def clearAll(self) -> None:
-        self.manager.clearAll()
-        self.single_manager.clearAll()
-        self._single_item_id = None
-        self._last_item = {}
-        self.lastItemChanged.emit()
 
     def shutdown(self) -> None:
         """Encerra download/playlist/instalação/compressão ao fechar."""
         try:
+            self._persist_state()
+        except Exception:
+            pass
+        try:
             self._playlist.cancel()
+        except Exception:
+            pass
+        try:
+            self.similarity.cancel()
         except Exception:
             pass
         cancel = getattr(self.deps, "cancel", None)
@@ -1540,8 +690,10 @@ class Bridge(QObject):
 
     @Slot()
     def openLogFolder(self) -> None:
-        """Abre a pasta onde ficam logs e settings."""
-        folder = user_config_dir()
+        """Abre a pasta onde ficam logs e settings (portátil/dev incluídos)."""
+        from .config import log_path
+
+        folder = os.path.dirname(log_path()) or user_config_dir()
         try:
             if os.name == "nt":
                 os.startfile(folder)  # type: ignore[attr-defined]
@@ -1553,50 +705,13 @@ class Bridge(QObject):
             pass
 
     # ---------------------------------------------------- dependências (slots)
-    def _on_deps_checked(self, items: list) -> None:
-        self._deps_list = items
-        self.depsChanged.emit()
 
-    def _on_deps_started(self, key: str) -> None:
-        self._deps_busy = True
-        self.depsChanged.emit()
 
-    def _on_deps_finished(self, key: str, ok: bool, name: str) -> None:
-        self._deps_busy = False
-        if ok:
-            self.notifyText.emit(self._tr("dep_updated", name=name))
-        else:
-            self.notifyText.emit(self._tr("dep_install_failed", name=name))
-        self.depsInstallFinished.emit(key, ok, name)
-        if ok and key == "ffmpeg":
-            # A lista de encoders foi detectada antes da instalação; sem
-            # este refresh a compressão continuaria dizendo "manual".
-            self.compression.refresh_encoders()
-            self.compressionEncodersChanged.emit()
-            self.compressionEffectiveEncoderChanged.emit()
-        self.depsChanged.emit()
 
-    @Slot()
-    def refreshDependencies(self) -> None:
-        self.deps.check_all()
 
-    @Slot()
-    def installMissingDependencies(self) -> None:
-        self.deps.install_missing_required()
 
-    @Slot(str)
-    def installDependency(self, key: str) -> None:
-        if not self.deps.install(key):
-            if not self._deps_busy:
-                self.notifyText.emit(self._tr("dep_not_applicable", name=key))
 
-    @Slot()
-    def updateDependencies(self) -> None:
-        self.deps.update_all()
 
-    def set_dependencies(self, items: list[dict]) -> None:
-        """Permite injetar o estado (usado em testes)."""
-        self._on_deps_checked(items)
 
 
 def sys_platform_darwin() -> bool:

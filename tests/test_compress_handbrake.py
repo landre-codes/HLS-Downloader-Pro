@@ -11,6 +11,8 @@ from hlsdl.compress import (
     CompressionManager,
     CompressionSettings,
     build_args,
+    build_filters,
+    expected_dimensions,
     quality_max_for_codec,
     skip_reason,
     validate_output,
@@ -89,6 +91,21 @@ def test_build_args_applies_deinterlace_denoise_and_tonemap():
     assert "-color_trc bt709" in joined
 
 
+def test_geometry_filters_and_expected_dimensions():
+    video = {"codec_type": "video", "width": 1920, "height": 1080}
+    settings = CompressionSettings(
+        codec="hevc", crop="1280:720:100:50",
+        scale_width=640, scale_height=360, rotate=90, fps=30,
+    )
+    chain = build_filters(settings, video)
+    assert "crop=1280:720:100:50" in chain
+    assert "scale=640:360:flags=lanczos" in chain
+    assert "transpose=1" in chain
+    assert "fps=30" in chain
+    width, height = expected_dimensions(settings, video)
+    assert (width, height) == (360, 640)
+
+
 def test_hdr_tonemap_overrides_default_skip():
     probe = _probe(
         video={
@@ -154,7 +171,7 @@ def test_download_compression_uses_part_and_does_not_reuse_stale_output(
     assert os.path.exists(out) and os.path.getsize(out) == 10
     assert stale.read_bytes() == b"stale"
     assert src.exists()
-    assert seen["tmp"].endswith(".part.mp4")
+    assert ".part." in os.path.basename(seen["tmp"])
 
 
 def test_download_compression_rejects_invalid_output(monkeypatch, tmp_path):
@@ -167,7 +184,7 @@ def test_download_compression_rejects_invalid_output(monkeypatch, tmp_path):
     monkeypatch.setattr("hlsdl.downloader.probe_duration", lambda p: 10.0)
 
     def fake_probe(path):
-        if path.endswith(".part.mp4"):
+        if ".part." in path:
             return {"streams": [], "format": {"duration": "2"}}
         return _probe(
             audios=[{"codec_type": "audio", "codec_name": "aac"}], duration="10"
@@ -211,6 +228,9 @@ def test_bridge_applies_preset_and_persists_new_choices(qapp, tmp_path, fake_dep
     assert bridge.compressionContainer == "mkv"
     assert bridge.compressionQuality == 18
     assert bridge.compressionTenBit is True
+    assert bridge.compressionPreset == "archive_hevc"
+    bridge.setCompressionQuality(23)
+    assert bridge.compressionPreset == "custom"
     bridge.setCompressionHdrTonemap(True)
     bridge.setCompressionDeinterlace("on")
     bridge.setCompressionDenoise("medium")

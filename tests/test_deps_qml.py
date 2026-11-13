@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import pytest
 from PySide6.QtCore import QUrl
@@ -68,6 +69,24 @@ def test_settings_scrollbar_is_on_the_right(qapp, fake_deps):
     assert x > 0, "scrollbar vertical ficou no canto esquerdo"
     assert width > 4
     assert horizontal is False
+    bridge.shutdown()
+
+
+def test_qml_icon_paths_are_absolute(qapp, fake_deps):
+    model = DownloadModel([])
+    manager = QueueManager(model, outdir="out")
+    bridge = Bridge(manager, "out", deps=fake_deps)
+    engine = QQmlApplicationEngine()
+    engine.rootContext().setContextProperty("downloadModel", model)
+    engine.rootContext().setContextProperty("compressionModel", bridge.compression.model)
+    engine.rootContext().setContextProperty("bridge", bridge)
+    engine.load(QUrl.fromLocalFile(qml_path()))
+    root = engine.rootObjects()[0]
+    ctx = engine.contextForObject(root)
+    value = QQmlExpression(ctx, root, "root.iconPath('play')").evaluate()[0]
+    url = value if isinstance(value, QUrl) else QUrl(str(value))
+    assert url.isLocalFile(), value
+    assert Path(url.toLocalFile()).is_file(), value
     bridge.shutdown()
 
 

@@ -44,10 +44,19 @@ def test_limit_rate_arg(qapp, tmp_path, fake_deps):
 
 def test_cookies_file_overrides_browser(qapp, tmp_path, fake_deps):
     b = _bridge(tmp_path, fake_deps)
+    cookies = tmp_path / "cookies.txt"
+    cookies.write_text(
+        "# Netscape HTTP Cookie File\n"
+        ".example.com\tTRUE\t/\tFALSE\t0\tsession\tone\n",
+        encoding="utf-8",
+    )
     b.setCookiesEnabled(True)
     b.setCookiesBrowserIndex(0)
-    b.setCookiesFile("C:/x/cookies.txt")
-    assert b._build_cookies_arg() == "file:C:/x/cookies.txt"
+    b.setCookiesFile(str(cookies))
+    assert b._build_cookies_arg() == "file:" + str(cookies)
+    # A missing/invalid file no longer silently falls back to the browser.
+    b.setCookiesFile(str(tmp_path / "missing.txt"))
+    assert b._build_cookies_arg() == ""
 
 
 def test_clamps_out_of_range(qapp, tmp_path, fake_deps):
@@ -63,3 +72,28 @@ def test_edit_url_slot(qapp, tmp_path, fake_deps):
     b.addLinks("https://a.com/1")
     assert b.editUrl(0, "https://b.com/2")
     assert b.manager.items[0]["url"] == "https://b.com/2"
+    assert b.editUrl(0, "not a url") is False
+    assert b.manager.items[0]["url"] == "https://b.com/2"
+
+
+def test_add_links_returns_added_count(qapp, tmp_path, fake_deps):
+    b = _bridge(tmp_path, fake_deps)
+    assert b.addLinks("https://a.com/1\nhttps://b.com/2") == 2
+    assert b.addLinks("https://a.com/1") == 0
+    assert b.addLinks("not a url") == 0
+
+
+def test_single_download_rejects_multiple_links(qapp, tmp_path, fake_deps):
+    b = _bridge(tmp_path, fake_deps)
+    assert b.downloadSingle("https://a.com/1\nhttps://b.com/2") is False
+    assert b.single_manager.items == []
+
+
+def test_batch_ignores_url_active_in_single_queue(qapp, tmp_path, fake_deps):
+    from hlsdl.status import Status
+
+    b = _bridge(tmp_path, fake_deps)
+    b.single_manager.addText("https://a.com/1")
+    b.single_manager.items[0]["status"] = Status.DOWNLOADING
+    assert b.addLinks("https://a.com/1\nhttps://b.com/2") == 1
+    assert [item["url"] for item in b.manager.items] == ["https://b.com/2"]

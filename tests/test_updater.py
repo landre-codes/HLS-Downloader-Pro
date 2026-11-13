@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+
 from hlsdl import __version__
 from hlsdl import updater as updater_module
 from hlsdl.updater import Updater, version_tuple
@@ -74,3 +76,74 @@ def test_sha256(tmp_path):
     assert Updater._sha256(str(path)) == (
         "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
     )
+
+
+class _Response:
+    def __init__(self, payload: bytes):
+        self._payload = payload
+        self._pos = 0
+        self.headers = {"Content-Length": str(len(payload))}
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def read(self, size: int) -> bytes:
+        chunk = self._payload[self._pos:self._pos + size]
+        self._pos += len(chunk)
+        return chunk
+
+
+def test_download_instala_apenas_apos_hash(qapp, monkeypatch, tmp_path):
+    payload = b"installer-bytes"
+    digest = hashlib.sha256(payload).hexdigest()
+    monkeypatch.setattr(updater_module.config, "user_config_dir", lambda: str(tmp_path))
+    monkeypatch.setattr(
+        updater_module.urllib.request, "urlopen",
+        lambda request, timeout: _Response(payload),
+    )
+    monkeypatch.setattr(
+        Updater, "_expected_hash", staticmethod(lambda url, name: digest)
+    )
+    updater = Updater()
+    ready: list[str] = []
+    updater.ready.connect(ready.append)
+
+    updater._download({
+        "installer_url": "https://example/setup.exe",
+        "installer_name": "HLS-Downloader-Pro-setup.exe",
+        "checksums_url": "https://example/SHA256SUMS.txt",
+    })
+
+    destination = tmp_path / "updates" / "HLS-Downloader-Pro-setup.exe"
+    assert ready == [str(destination)]
+    assert destination.read_bytes() == payload
+    assert not list((tmp_path / "updates").glob("*.part"))
+
+
+def test_download_descarta_parcial_quando_hash_falha(qapp, monkeypatch, tmp_path):
+    payload = b"corrupted"
+    monkeypatch.setattr(updater_module.config, "user_config_dir", lambda: str(tmp_path))
+    monkeypatch.setattr(
+        updater_module.urllib.request, "urlopen",
+        lambda request, timeout: _Response(payload),
+    )
+    monkeypatch.setattr(
+        Updater, "_expected_hash", staticmethod(lambda url, name: "0" * 64)
+    )
+    updater = Updater()
+    failed: list[str] = []
+    updater.failed.connect(failed.append)
+
+    updater._download({
+        "installer_url": "https://example/setup.exe",
+        "installer_name": "HLS-Downloader-Pro-setup.exe",
+        "checksums_url": "https://example/SHA256SUMS.txt",
+    })
+
+    assert failed == ["checksum_mismatch"]
+    updates = tmp_path / "updates"
+    assert not (updates / "HLS-Downloader-Pro-setup.exe").exists()
+    assert not list(updates.glob("*.part"))

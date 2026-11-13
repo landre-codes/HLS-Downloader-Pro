@@ -377,6 +377,14 @@ class DependencyManager(QObject):
             if path:
                 status.version = _binary_version(spec, path)
         strategy = _strategy(spec, self.variant)
+        if spec.key == "pyside6" and not config.is_frozen():
+            # Updating Qt/DLLs underneath the running GUI can corrupt the
+            # process.  Treat the running toolkit as bundled; advanced users
+            # can upgrade it with pip while the app is closed.
+            status.strategy = "bundled"
+            status.installable = False
+            status.updateable = False
+            return status
         status.strategy = strategy
         status.installable = strategy in ("download", "package", "pip")
         status.updateable = status.found and status.installable
@@ -414,6 +422,9 @@ class DependencyManager(QObject):
         return True
 
     def _job_for(self, spec: ToolSpec):
+        if spec.key == "pyside6" and not config.is_frozen():
+            # Never replace the running Qt toolkit in-process.
+            return None
         strategy = _strategy(spec, self.variant)
         if strategy == "download":
             if spec.key == "ytdlp":
@@ -574,16 +585,37 @@ class DependencyManager(QObject):
 
     def _extract_members(self, archive: str, wanted: set, target_dir: str) -> set:
         found: set = set()
+        os.makedirs(target_dir, exist_ok=True)
+
+        def install_member(src, base: str) -> None:
+            """Write to a unique temp file and atomically replace the target.
+
+            Extracting directly over a running ``ffmpeg.exe`` can truncate a
+            working binary if the copy or the process is interrupted.  The old
+            binary stays intact until the new one is completely written.
+            """
+            out = os.path.join(target_dir, base)
+            temp = f"{out}.download.{os.getpid()}.{time.time_ns()}"
+            try:
+                with open(temp, "wb") as dst:
+                    shutil.copyfileobj(src, dst)
+                self._make_executable(temp)
+                os.replace(temp, out)
+                found.add(base)
+            finally:
+                try:
+                    if os.path.exists(temp):
+                        os.remove(temp)
+                except OSError:
+                    pass
+
         if archive.endswith(".zip"):
             with zipfile.ZipFile(archive) as zf:
                 for info in zf.infolist():
                     base = os.path.basename(info.filename)
                     if base in wanted:
-                        out = os.path.join(target_dir, base)
-                        with zf.open(info) as src, open(out, "wb") as dst:
-                            shutil.copyfileobj(src, dst)
-                        self._make_executable(out)
-                        found.add(base)
+                        with zf.open(info) as src:
+                            install_member(src, base)
         else:
             with tarfile.open(archive, "r:xz") as tf:
                 for member in tf.getmembers():
@@ -592,11 +624,8 @@ class DependencyManager(QObject):
                         src = tf.extractfile(member)
                         if src is None:
                             continue
-                        out = os.path.join(target_dir, base)
-                        with src, open(out, "wb") as dst:
-                            shutil.copyfileobj(src, dst)
-                        self._make_executable(out)
-                        found.add(base)
+                        with src:
+                            install_member(src, base)
         return found
 
     @staticmethod
@@ -704,7 +733,8 @@ class DependencyManager(QObject):
             for spec in SPECS:
                 if self._cancel:
                     break
-                if not self.detect(spec).found:
+                status = self.detect(spec)
+                if not status.found or not status.updateable:
                     continue
                 job = self._job_for(spec)
                 if job is None:

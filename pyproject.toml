@@ -15,6 +15,7 @@ dependencies = [
     "yt-dlp>=2024.4.9",
     "requests>=2.31.0",
     "beautifulsoup4>=4.12.0",
+    "blake3>=0.4.0",
 ]
 
 [project.optional-dependencies]
@@ -23,17 +24,28 @@ dev = [
     "ruff>=0.6",
     "mypy>=1.10",
     "pillow>=10.0",
+    "tomli>=2.0; python_version < '3.11'",
 ]
 
 [project.gui-scripts]
 hls-downloader-pro = "hlsdl.app:main"
 
+[project.scripts]
+hlsdl = "hlsdl.cli:main"
+
 [tool.setuptools]
-packages = ["hlsdl", "hlsdl.services"]
+packages = ["hlsdl", "hlsdl.bridge_parts", "hlsdl.services"]
 license-files = ["LICENSE"]
 
 [tool.setuptools.package-data]
-hlsdl = ["ui/*.qml", "ui/*.js", "ui/icons/*.svg"]
+hlsdl = [
+    "ui/*.qml",
+    "ui/*.js",
+    "ui/icons/*.svg",
+    "ui/components/*.qml",
+    "ui/dialogs/*.qml",
+    "ui/pages/*.qml",
+]
 
 [tool.setuptools.dynamic]
 version = { attr = "hlsdl.__version__" }

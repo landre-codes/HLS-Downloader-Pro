@@ -15,7 +15,7 @@ from PySide6.QtCore import Property, QObject, QThread, QUrl, Signal, Slot
 from .downloader import DownloadWorker
 from .formats import FORMAT_MODES
 from .i18n import translator
-from .lifecycle import shutdown_threads
+from .jobs import JobThreadRegistry
 from .model import DownloadModel, make_item
 from .status import ACTIVE, FINAL, Status
 from .urlutils import extract_urls, normalize_url
@@ -40,6 +40,7 @@ class QueueManager(QObject):
     outdirChanged = Signal(str)
     itemUpdated = Signal(object)  # um item da fila mudou (dict)
     queueStateChanged = Signal(bool, bool)  # ativo, pausado
+    itemsChanged = Signal()  # estrutura/estado persistente mudou
 
     def __init__(
         self,
@@ -48,6 +49,7 @@ class QueueManager(QObject):
         concurrency: int = 3,
         worker_factory: WorkerFactory = DownloadWorker,
         parent: QObject | None = None,
+        catalog_path: str | None = None,
     ):
         super().__init__(parent)
         self.model = model
@@ -60,7 +62,7 @@ class QueueManager(QObject):
         self._active = False
         self._paused = False
         self._running = 0
-        self._threads: dict[int, tuple[QThread, DownloadWorker, dict]] = {}
+        self._threads = JobThreadRegistry()
         self._counter = 0
         self._cookies = ""
         self._limit_rate = ""
@@ -72,6 +74,7 @@ class QueueManager(QObject):
         self._compress_level = "medium"
         self._naming_mode = "id"
         self._worker_factory = worker_factory
+        self.catalog_path = catalog_path
         self._translate: Callable[..., str] = translator("pt")
 
     # ------------------------------------------------------------ propriedades
@@ -154,10 +157,30 @@ class QueueManager(QObject):
     def setOutdir(self, path: str) -> None:
         self.outdir = path
 
+    def active_urls(self) -> list[str]:
+        """URLs whose worker may still be writing, regardless of row status."""
+        return [
+            item.get("url", "")
+            for item in self.items
+            if item.get("status") not in FINAL or item.get("id") in self._threads
+        ]
+
+    def has_active_url(self, url: str) -> bool:
+        target = normalize_url(url)
+        return any(
+            normalize_url(item.get("url", "")) == target
+            and (item.get("status") not in FINAL or item.get("id") in self._threads)
+            for item in self.items
+        )
+
     # ------------------------------------------------------------- adição
     @Slot(str)
-    def addText(self, text: str) -> list:
+    def addText(self, text: str, exclude: list | None = None) -> list:
         """Adiciona os links extraídos de ``text``, ignorando duplicados ativos.
+
+        ``exclude`` permite que a fila do lote ignore URLs que já estão ativas
+        em outra fila (Download Individual), evitando dois workers escrevendo
+        o mesmo arquivo de saída.
 
         Retorna ``[adicionados, duplicados_ignorados]``. Links finalizados
         podem ser re-adicionados (forma de tentar de novo).
@@ -166,6 +189,10 @@ class QueueManager(QObject):
         existing = {
             normalize_url(i["url"]) for i in self.items if i["status"] not in FINAL
         }
+        for value in exclude or []:
+            normalized = normalize_url(str(value))
+            if normalized:
+                existing.add(normalized)
         added = 0
         skipped = 0
         for url in urls:
@@ -186,7 +213,30 @@ class QueueManager(QObject):
             if self._active and not self._paused:
                 self._pump()
             self._emit_stats()
+            self.itemsChanged.emit()
         return [added, skipped]
+
+    def restore_items(self, entries: list[dict]) -> int:
+        """Restore a persisted snapshot as WAITING items (never auto-start)."""
+        existing = {normalize_url(i["url"]) for i in self.items}
+        restored = 0
+        for entry in entries:
+            url = str(entry.get("url") or "").strip()
+            normalized = normalize_url(url)
+            if not url or normalized in existing:
+                continue
+            existing.add(normalized)
+            self._counter += 1
+            item = make_item(self._counter, url)
+            title = str(entry.get("title") or "").strip()
+            if title:
+                item["title"] = title
+            self.model.add(item)
+            restored += 1
+        if restored:
+            self._emit_stats()
+            self.itemsChanged.emit()
+        return restored
 
     # ------------------------------------------------------------- controle
     @Slot()
@@ -223,14 +273,19 @@ class QueueManager(QObject):
         for _, worker, _ in list(self._threads.values()):
             worker.cancel()
         self._emit_state()
+        self.itemsChanged.emit()
 
     @Slot()
     def clearFinished(self) -> None:
         """Remove da fila os itens em estado final (ok/erro/cancelado)."""
-        rows = [i for i, it in enumerate(self.items) if it["status"] in FINAL]
+        rows = [
+            i for i, it in enumerate(self.items)
+            if it["status"] in FINAL and it["id"] not in self._threads
+        ]
         if rows:
             self.model.remove_rows(rows)
             self._emit_stats()
+            self.itemsChanged.emit()
 
     @Slot(int)
     def cancelItem(self, row: int) -> None:
@@ -254,12 +309,15 @@ class QueueManager(QObject):
         item = self.items[row]
         if item["status"] in ACTIVE or item["status"] == Status.WAITING:
             self.cancelItem(row)
+        elif item["id"] in self._threads:
+            self._threads[item["id"]][1].cancel()
         try:
             current = self.items.index(item)
         except ValueError:
             return
         self.model.remove_rows([current])
         self._emit_stats()
+        self.itemsChanged.emit()
 
     @Slot(int)
     def retryItem(self, row: int) -> None:
@@ -268,6 +326,10 @@ class QueueManager(QObject):
             return
         item = self.items[row]
         if item["status"] not in FINAL:
+            return
+        if item["id"] in self._threads:
+            # The previous worker is still unwinding; launching now would
+            # overwrite its scheduler entry and strand the new thread.
             return
         item["status"] = Status.WAITING
         item["progress"] = 0.0
@@ -278,6 +340,7 @@ class QueueManager(QObject):
         item.pop("thumb", None)
         self._touch(item)
         self._emit_stats()
+        self.itemsChanged.emit()
         if self._active and not self._paused:
             self._pump()
 
@@ -289,9 +352,15 @@ class QueueManager(QObject):
         new_url = (new_url or "").strip()
         if not new_url:
             return False
+        parsed = extract_urls(new_url)
+        if len(parsed) != 1:
+            return False
+        new_url = parsed[0]
         item = self.items[row]
         if item["status"] in ACTIVE:
             return False  # não edita em andamento
+        if item["id"] in self._threads:
+            return False  # worker anterior ainda terminando
         if normalize_url(new_url) == normalize_url(item["url"]):
             return True  # nada mudou
         existing = {
@@ -314,6 +383,7 @@ class QueueManager(QObject):
         if self._active and not self._paused:
             self._pump()
         self._emit_stats()
+        self.itemsChanged.emit()
         return True
 
     @Slot()
@@ -323,6 +393,7 @@ class QueueManager(QObject):
         if rows:
             self.model.remove_rows(rows)
             self._emit_stats()
+            self.itemsChanged.emit()
 
     def shutdown(self, timeout: float = 6.0) -> None:
         """Cancela tudo e aguarda as threads terminarem (chamado ao fechar).
@@ -330,8 +401,7 @@ class QueueManager(QObject):
         A proteção contra ``QThread`` viva (``0xC0000409``) e a espera ficam
         em :func:`hlsdl.lifecycle.shutdown_threads`.
         """
-        self._threads = shutdown_threads(
-            self._threads,
+        self._threads.shutdown(
             timeout=timeout,
             label="thread de download",
             cancel=self.cancelAll,
@@ -369,6 +439,7 @@ class QueueManager(QObject):
             compress_level=self._compress_level,
             naming_mode=self._naming_mode,
             translate=self._translate,
+            catalog_path=self.catalog_path,
         )
         worker.moveToThread(thread)
 
@@ -385,9 +456,10 @@ class QueueManager(QObject):
         worker.cancelled.connect(self._worker_cancelled)
         worker.thumbnailReady.connect(self._worker_thumb)
 
-        # Ciclo de vida da thread. NÃO usar deleteLater (padrão deleteLater +
-        # GC do PySide6 pode deixar o wrapper apontando para o C++ deletado e
-        # causar crash 0xC0000409). Refcount/GC após `finished` é seguro.
+        # Ciclo de vida da thread: ela é liberada em ``_on_thread_done``,
+        # depois de ``finished`` e de limpar ``worker._queue_item``.  O
+        # ``deleteLater`` só é chamado nesse ponto (nunca durante o run), o
+        # que evita o wrapper apontando para C++ já destruído.
         thread.started.connect(worker.run)
         worker.finished.connect(thread.quit)
         thread.finished.connect(lambda it=item: self._on_thread_done(it))
@@ -481,6 +553,7 @@ class QueueManager(QObject):
             pass
         self._touch(item)
         self._emit_stats()
+        self.itemsChanged.emit()
 
     def _on_failure(self, item: dict, error: str) -> None:
         item["status"] = Status.ERROR
@@ -488,11 +561,13 @@ class QueueManager(QObject):
         item["speed"] = "—"
         self._touch(item)
         self._emit_stats()
+        self.itemsChanged.emit()
 
     def _on_cancelled(self, item: dict) -> None:
         item["status"] = Status.CANCELLED
         self._touch(item)
         self._emit_stats()
+        self.itemsChanged.emit()
 
     def _on_thumb(self, item: dict, path: str) -> None:
         if path:
@@ -501,7 +576,7 @@ class QueueManager(QObject):
 
     def _on_thread_done(self, item: dict) -> None:
         """Uma thread terminou -> libera a vaga e dispara o próximo item."""
-        self._threads.pop(item["id"], None)
+        self._threads.pop(item["id"], None)  # registry cleans worker/thread
         self._running = max(0, self._running - 1)
         self._pump()
         self._emit_stats()

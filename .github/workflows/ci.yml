@@ -47,6 +47,57 @@ jobs:
         run: sudo apt-get update -q && sudo apt-get install -y -q libegl1 libgl1 libxkbcommon0 libxcb-cursor0
       - name: Lint
         run: ruff check hlsdl tests main.py worker.py
+      - name: QML syntax
+        run: |
+          output=$(pyside6-qmllint hlsdl/ui/main.qml hlsdl/ui/pages/*.qml \
+            hlsdl/ui/dialogs/*.qml hlsdl/ui/components/*.qml 2>&1 || true)
+          printf '%s\n' "$output"
+          if printf '%s\n' "$output" | grep -Eq '\[syntax\]|is not a type|Could not find property|Expected token'; then
+            echo "Erro de sintaxe/tipo no QML"; exit 1
+          fi
+      - name: Wheel package data
+        run: |
+          pip wheel . --no-deps -w /tmp/wheel
+          python - <<'PY'
+          import glob
+          import zipfile
+
+          wheel = glob.glob("/tmp/wheel/*.whl")[0]
+          names = set(zipfile.ZipFile(wheel).namelist())
+          required = [
+              "hlsdl/bridge_parts/__init__.py",
+              "hlsdl/ui/pages/SinglePage.qml",
+              "hlsdl/ui/pages/BatchPage.qml",
+              "hlsdl/ui/components/AppButton.qml",
+              "hlsdl/ui/dialogs/RecoveryDialog.qml",
+              "hlsdl/ui/main.qml",
+          ]
+          missing = [name for name in required if name not in names]
+          if missing:
+              raise SystemExit(f"wheel sem recursos: {missing}")
+          print(f"OK: {len(names)} arquivos no wheel")
+          PY
+      - name: Tests
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m pytest -q
+
+  # ---------------------------------------------------------- testes Windows
+  test-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pytest ruff
+      - name: Lint
+        run: ruff check hlsdl tests main.py worker.py
       - name: Tests
         env:
           QT_QPA_PLATFORM: offscreen
@@ -89,6 +140,10 @@ jobs:
             echo "=== falha ao iniciar ==="; cat /tmp/app.log; exit 1
           fi
           echo "=== app rodou 25s offscreen sem erros ==="
+      - name: Generate SBOM
+        run: |
+          python scripts/gen_sbom.py dist/sbom.json
+          cp dist/sbom.json HLS-Downloader-Pro-linux-x86_64-sbom.json
       - name: Package release archive
         run: |
           chmod +x install-desktop.sh
@@ -97,13 +152,15 @@ jobs:
              install-desktop.sh icon.svg LICENSE THIRD_PARTY_NOTICES.md CHANGELOG.md \
              package/HLS-Downloader-Pro-linux-x86_64/
           tar -czf HLS-Downloader-Pro-linux-x86_64.tar.gz -C package .
-          sha256sum HLS-Downloader-Pro-linux-x86_64.tar.gz > SHA256SUMS-linux.txt
+          sha256sum HLS-Downloader-Pro-linux-x86_64.tar.gz \
+            HLS-Downloader-Pro-linux-x86_64-sbom.json > SHA256SUMS-linux.txt
       - name: Upload Linux artifact
         uses: actions/upload-artifact@v4
         with:
           name: linux-build
           path: |
             HLS-Downloader-Pro-linux-x86_64.tar.gz
+            HLS-Downloader-Pro-linux-x86_64-sbom.json
             SHA256SUMS-linux.txt
       - name: Attach to GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
@@ -111,11 +168,12 @@ jobs:
         with:
           files: |
             HLS-Downloader-Pro-linux-x86_64.tar.gz
+            HLS-Downloader-Pro-linux-x86_64-sbom.json
             SHA256SUMS-linux.txt
 
   # ---------------------------------------------------------- build Windows
   build-windows:
-    needs: test
+    needs: [test, test-windows]
     runs-on: windows-latest
     permissions:
       contents: write
@@ -166,12 +224,18 @@ jobs:
           & $iscc "/DAppVersion=$env:VERSION" "installer\HLS-Downloader-Pro.iss"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Get-ChildItem "dist\installer"
+      - name: Generate SBOM
+        shell: pwsh
+        run: |
+          python scripts/gen_sbom.py dist/sbom.json
+          Copy-Item dist/sbom.json "HLS-Downloader-Pro-$env:VERSION-sbom.json"
       - name: Checksums
         shell: pwsh
         run: |
           $files = @(
             "dist\installer\HLS-Downloader-Pro-$env:VERSION-setup.exe",
-            "HLS-Downloader-Pro-$env:VERSION-portable-win64.zip"
+            "HLS-Downloader-Pro-$env:VERSION-portable-win64.zip",
+            "HLS-Downloader-Pro-$env:VERSION-sbom.json"
           )
           $lines = foreach ($f in $files) {
             $h = (Get-FileHash $f -Algorithm SHA256).Hash.ToLower()
@@ -186,6 +250,7 @@ jobs:
           path: |
             dist/installer/*.exe
             HLS-Downloader-Pro-*-portable-win64.zip
+            HLS-Downloader-Pro-*-sbom.json
             SHA256SUMS-windows.txt
       - name: Attach to GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
@@ -194,4 +259,5 @@ jobs:
           files: |
             dist/installer/*.exe
             HLS-Downloader-Pro-*-portable-win64.zip
+            HLS-Downloader-Pro-*-sbom.json
             SHA256SUMS-windows.txt

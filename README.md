@@ -8,6 +8,11 @@ Downloader de vídeos (HLS / m3u8) com interface **Qt Quick (QML) + Material Des
 - **Aba de Playlists**: carrega os itens de uma playlist (**YouTube** ou sites em geral), permite selecionar os desejados e enviá-los à fila
 - **Aba de Compressão local**: fila de arquivos/pastas, codecs **HEVC, H.264 e AV1**, contêineres **MP4/MKV/WebM/MOV/AVI**, aceleração por **Intel QSV, NVIDIA NVENC, AMD AMF, Kvazaar ou software** (`libx265`/`libx264`/`libsvtav1`), qualidade **RF 1–51 (AV1 até 63)**, presets de velocidade (**rápida → muito lenta**), **presets no estilo HandBrake** (Rápido, Equilibrado, Qualidade, Arquivo 10-bit e AV1), filtros de **desentrelaçamento e redução de ruído**, política de **HDR** (pular, preservar 10-bit ou tone mapping para SDR), modos de **áudio** (automático/cópia/AAC-Opus) e **legendas** (texto/todas/nenhuma, preservando PGS e fontes em MKV). Inclui paralelismo, **sugestões/estimativa de economia por formato**, validação da saída (duração, vídeo e áudio) e substituição atômica. O modo **Auto** prioriza a **GPU dedicada** (Arc/NVIDIA/AMD), filtra encoders pela GPU realmente presente e testa o escolhido, caindo para software se ele falhar; o dispositivo QSV pode ser escolhido na interface. Inclui **10-bit** e **ajuste fino do x265** (`aq-mode`/`psy`), além de **preservar metadados HDR** (primárias, transferência, espaço de cor e faixa) e mostrar o **encoder real** usado em cada arquivo (ex.: `QSV HEVC · Intel Arc B580`).
 - **Interface**: busca na fila com ícone de pesquisa, cabeçalhos de tabela maiores/destacados, **console de instalação estilo terminal** no log de dependências (com copiar saída), cursor de mão em ações e **tooltips com exemplos**. A escala da interface acompanha o tamanho da tela (até 128%) sem desalinhar as tabelas.
+- **Integridade de mídia**: identidade estável (ID do extractor ou hash de manifesto HLS), sidecar `<arquivo>.hlsdl.json` com resumo do `ffprobe`, SHA-256 e BLAKE3 opcional, **catálogo SQLite** (`catalog.sqlite3`), validação profunda de resolução/bit depth/HDR/áudio/legendas, **SSIM amostral** e recusa de saídas truncadas. Downloads inválidos são preservados como `*.invalid`.
+- **Fila persistente + CLI**: a fila de downloads/compressão é salva em `queue.json` e restaurada ao abrir (itens concluídos são omitidos). O comando `hlsdl` oferece `probe`, `verify`, `similar`, `compress` e `download` para automação.
+- **HandBrake-like**: além de presets/filtros/tone mapping, inclui **decodificação por hardware** (`-hwaccel auto`), metadados HDR10 (`master-display`/`max-cll`) no x265 e validação de frames/áudio/legendas.
+- **Preservação do original**: a compressão grava em `.part` único, usa journal de transação e backup por hard link/cópia. Em erro, hash divergente, perda de energia ou falha de áudio, o original é mantido/restaurado; “Apagar original” só ocorre após validação e deixa um backup recuperável.
+- **Busca de similares (VDF/Czkawka-inspired)**: assinatura multi-frame dHash + aHash + envelope RMS de áudio, com fallbacks por hash amostral, metadados, duração/resolução e nome. Disponível na aba Compressão → “Mídias similares”.
 - **Atualizações**: verifica a última release, baixa o instalador e **valida o SHA-256** antes de executar (Windows; no portátil abre a página da release)
 - **Modo de extração** (Individual e Lote): **Vídeo + áudio**, **Apenas vídeo** ou **Somente áudio**
 - **Qualidade de 144p a 4K** (2160p) e **escolha do arquivo** de saída: **mp4, mkv, webm, avi, mov** (ou **mp3, m4a, wav, flac, opus** no modo áudio)
@@ -97,6 +102,11 @@ Windows usa `--onedir` (startup mais rápido e menos falsos positivos de
 antivírus). Sem certificado de assinatura, o SmartScreen pode avisar na
 primeira execução — confira o hash.
 
+As releases também publicam um **SBOM CycloneDX** por plataforma
+(`HLS-Downloader-Pro-<versão>-sbom.json` no Windows e
+`HLS-Downloader-Pro-linux-x86_64-sbom.json` no Linux); os hashes dos SBOMs
+entram nos respectivos `SHA256SUMS`.
+
 ### Windows — código-fonte
 
 ```powershell
@@ -119,7 +129,7 @@ Se a janela der problema no Wayland: `QT_QPA_PLATFORM=xcb python3 main.py`.
 1. **Download Individual**: cole a URL, escolha o formato, a qualidade (144p–4K), o arquivo e a compressão (H.264/H.265), e clique em **Baixar agora**. O progresso aparece na mesma aba.
 2. **Lote**: cole vários links (um por linha) — ou importe/arraste um `.txt` —, ajuste formato/qualidade/arquivo/compressão e clique em **Adicionar à Fila**. Use o campo **Filtrar** para achar itens por título/URL.
 3. **Playlists**: cole a URL de uma playlist (YouTube ou site), clique em **Carregar itens**, marque os desejados e use **Adicionar selecionados à fila** (ou **Baixar selecionados agora**).
-4. **Compressão**: adicione arquivos/pastas (ou arraste vídeos), escolha um **preset** ou ajuste **codec/contêiner/RF/velocidade/paralelismo**, filtros, HDR, áudio e legendas; clique em **Iniciar**. O botão **Sugestões** compara economia × compatibilidade; o original só é apagado se você marcar "Apagar original após sucesso".
+4. **Compressão**: adicione arquivos/pastas (ou arraste vídeos), escolha um **preset** ou ajuste **codec/contêiner/RF/velocidade/paralelismo**, filtros, HDR, áudio e legendas; clique em **Iniciar**. O botão **Sugestões** compara economia × compatibilidade. **Mídias similares** procura duplicados/reencodes na fila ou em uma pasta. O original só é apagado se você marcar "Apagar original após sucesso", e mesmo assim um backup é mantido.
 5. Em **Configurações → Downloads** você escolhe o **nome do arquivo** (ID estável ou título da página).
 6. Em **Configurações → Sobre** você vê a versão e pode **Verificar atualizações**.
 7. Clique em **Iniciar Fila** e acompanhe status, percentual, velocidade e tamanho.
@@ -241,6 +251,29 @@ conferir, a instalação é abortada e o binário temporário é removido. No Wi
 e no Linux, o ffmpeg ainda pode ser instalado pelo gerenciador de pacotes do
 sistema como alternativa.
 
+## CLI (automação)
+
+O pacote instala o comando `hlsdl`:
+
+```bash
+hlsdl probe video.mp4                 # streams, duração, HDR
+hlsdl verify video.mp4                # sidecar + SHA-256/BLAKE3
+hlsdl similar --threshold 85 ./Videos # grupos de mídias similares
+hlsdl compress in.mp4 --codec hevc --container mp4 --quality 24
+hlsdl download https://youtu.be/... --outdir ./Videos
+```
+
+`compress` mantém o original por padrão; `--replace` remove após validação e ainda deixa o backup. O journal/recuperação é o mesmo da GUI.
+
+## Integridade, similares e recuperação
+
+- **Sidecar de conclusão**: cada download/compressão validado grava `arquivo.ext.hlsdl.json` com tamanho, duração, resumo do `ffprobe`, SHA-256, encoder e configurações. O app não confia apenas em “arquivo existe”.
+- **Identidade de mídia**: YouTube/Vimeo usam o ID do extractor; HLS usa o hash do manifesto (segmentos e `EXT-X-ENDLIST`, ignorando tokens); demais URLs usam host/path com parâmetros voláteis removidos.
+- **Compressão transacional**: `.part` único por job, journal em `%APPDATA%\HLSDownloaderPro\jobs` (ou `jobs/` no portátil), backup do original e `os.replace` somente após validação profunda. Na inicialização, journals pendentes são recuperados: parcial é descartado, original é restaurado e saída só é mantida se o hash/tamanho conferirem.
+- **Validação de saída**: duração/streams, resolução, bit depth, cor/HDR, contagem/codec/canais de áudio, legendas e contagem de frames. Falha de áudio ou hash aborta a substituição.
+- **Mídias similares**: na aba Compressão, “Mídias similares” analisa a fila ou uma pasta. Usa dHash multi-frame + aHash + envelope RMS de áudio; se faltar vídeo/áudio, cai para hash amostral, duração/resolução e similaridade de nome. O resultado é uma triagem, não uma exclusão automática.
+- **Backups**: “Apagar original” deixa um `*.hlsdl-backup-*` ao lado do arquivo. A remoção do backup é manual, para preservar dados em caso de erro tardio.
+
 ## Exportar
 
 Para gerar pacotes de distribuição e conferir integridade:
@@ -287,7 +320,8 @@ python layout_debug.py       # dump da geometria do layout
 | Arquivo | Papel |
 |---|---|
 | `hlsdl/app.py` | Entry point: logging rotativo, crash log, hooks de exceção/Qt, instância única e shutdown gracioso |
-| `hlsdl/bridge.py` | Ponte Python↔QML (slots, sinais, persistência, dependências) |
+| `hlsdl/bridge.py` | Fachada QML enxuta + composição dos mixins; núcleo de settings/lifecycle |
+| `hlsdl/bridge_parts/` | Mixins por domínio: settings, downloads, compression, similarity, updates, playlist, dependencies, signals |
 | `hlsdl/config.py` | Caminhos (inclui build congelado), constantes, preferências |
 | `hlsdl/model.py` | `DownloadModel` — **dono único** da lista de itens |
 | `hlsdl/queue.py` | `QueueManager` — escalonador de threads/concorrência |
@@ -299,11 +333,21 @@ python layout_debug.py       # dump da geometria do layout
 | `hlsdl/deps.py` | Detecção/instalação/atualização de dependências |
 | `hlsdl/i18n.py` | Mensagens do backend (8 idiomas) |
 | `hlsdl/status.py` | Enum de status (fonte única de verdade) |
+| `hlsdl/media.py` | `ffprobe`, identidade de mídia, HDR metadata, dHash/aHash, envelope RMS, SSIM |
+| `hlsdl/integrity.py` | Sidecar de conclusão, SHA-256/BLAKE3, backup, journal e recuperação transacional |
+| `hlsdl/catalog.py` | Índice SQLite de mídia, hashes, validação e jobs |
+| `hlsdl/similarity.py` | Busca de mídias similares (perceptual + fallbacks) |
+| `hlsdl/jobs.py` | Ciclo de vida compartilhado de QThreads |
+| `hlsdl/persistence.py`, `hlsdl/cli.py` | Fila persistente e automação headless |
 | `hlsdl/naming.py`, `hlsdl/urlutils.py` | Nomes de arquivo e URLs |
 | `hlsdl/services/` | Scraper HTML e utilitários de processo/ffmpeg |
 | `hlsdl/diagnostics.py`, `diagnostico.py` | Relatório de ambiente, telas, escala, ferramentas e encoders |
 | `hlsdl/exporter.py`, `exportar.py` | Pacotes de código-fonte/portátil e `SHA256SUMS.txt` |
-| `hlsdl/ui/main.qml`, `hlsdl/ui/i18n.js` | Interface completa |
+| `hlsdl/ui/main.qml` | Shell da janela: título, abas, atalhos, drop zone e tema |
+| `hlsdl/ui/pages/` | Páginas QML extraídas: Individual, Lote, Playlists, Compressão e Configurações |
+| `hlsdl/ui/components/` | Componentes reutilizáveis (botões, combos, campos, painel de terminal, seletores e superfície de diálogo) |
+| `hlsdl/ui/dialogs/` | Diálogos modulares: erro, confirmações, dependências, opções do lote, sugestões, similaridade e recuperação |
+| `hlsdl/ui/i18n.js` | Traduções e retradução da interface |
 | `installer/` | Script Inno Setup do instalador Windows |
 | `scripts/` | Geração do ícone e dos metadados de versão do exe |
 | `assets/` | Ícone (`icon.ico`/`icon.png`) |
@@ -318,6 +362,9 @@ python layout_debug.py       # dump da geometria do layout
 - **Motores e serviços isolados** (`services/`) e injetáveis (`worker_factory`).
 - **Configuração tipada** e ciente de build empacotado (Windows: `--onedir`; Linux: `--onefile`).
 - **Testes** cobrem deduplicação, ciclo de vida da fila, persistência e o carregamento do QML.
+- **UI modular**: `main.qml` é só o shell; cada aba vive em `hlsdl/ui/pages/` e os controles
+  compartilhados em `hlsdl/ui/components/`. O CI roda `pyside6-qmllint` para bloquear erros
+  de sintaxe/tipo (warnings de `unqualified access` não falham o build).
 
 ## Licença
 

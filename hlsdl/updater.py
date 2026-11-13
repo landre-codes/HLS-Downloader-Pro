@@ -115,42 +115,61 @@ class Updater(QObject):
         try:
             folder = os.path.join(config.user_config_dir(), "updates")
             os.makedirs(folder, exist_ok=True)
-            name = info.get("installer_name") or "HLS-Downloader-Pro-setup.exe"
+            name = os.path.basename(
+                str(info.get("installer_name") or "HLS-Downloader-Pro-setup.exe")
+            )
+            if not name.lower().endswith(".exe"):
+                name = "HLS-Downloader-Pro-setup.exe"
             destination = os.path.join(folder, name)
+            partial = destination + ".part"
             request = urllib.request.Request(
                 info["installer_url"], headers={"User-Agent": USER_AGENT}
             )
-            with urllib.request.urlopen(request, timeout=120) as response, open(destination, "wb") as fh:
-                total = int(response.headers.get("Content-Length") or 0)
-                done = 0
-                last = -1
-                while True:
-                    chunk = response.read(262144)
-                    if not chunk:
-                        break
-                    fh.write(chunk)
-                    done += len(chunk)
-                    if total:
-                        pct = int(done * 100 / total)
-                        if pct != last:
-                            last = pct
-                            self.downloadProgress.emit(pct)
+            try:
+                with urllib.request.urlopen(request, timeout=120) as response, open(partial, "wb") as fh:
+                    total = int(response.headers.get("Content-Length") or 0)
+                    done = 0
+                    last = -1
+                    while True:
+                        chunk = response.read(262144)
+                        if not chunk:
+                            break
+                        fh.write(chunk)
+                        done += len(chunk)
+                        if total:
+                            pct = int(done * 100 / total)
+                            if pct != last:
+                                last = pct
+                                self.downloadProgress.emit(pct)
 
-            expected = self._expected_hash(info["checksums_url"], name)
-            if not expected:
-                self.failed.emit("missing_checksum")
-                return
-            actual = self._sha256(destination)
-            if actual.lower() != expected.lower():
-                self.failed.emit("checksum_mismatch")
-                return
-            self.ready.emit(destination)
+                expected = self._expected_hash(info["checksums_url"], name)
+                if not expected:
+                    self._remove_quiet(partial)
+                    self.failed.emit("missing_checksum")
+                    return
+                actual = self._sha256(partial)
+                if actual.lower() != expected.lower():
+                    self._remove_quiet(partial)
+                    self.failed.emit("checksum_mismatch")
+                    return
+                os.replace(partial, destination)
+                self.ready.emit(destination)
+            except Exception:
+                self._remove_quiet(partial)
+                raise
         except Exception as exc:
-            log.warning("falha ao baixar atualização: %s", exc)
+            log.warning("falha ao baixar atualizacao: %s", exc)
             self.failed.emit(str(exc))
         finally:
             self._busy = False
             self.checkingChanged.emit(False)
+
+    @staticmethod
+    def _remove_quiet(path: str) -> None:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
 
     @staticmethod
     def _expected_hash(checksums_url: str, name: str) -> str:

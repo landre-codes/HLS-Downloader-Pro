@@ -117,6 +117,24 @@ print("OK", flush=True)
     assert "OK" in proc.stdout
 
 
+def test_start_compression_before_encoder_detection_does_not_fail_items(
+    qapp, tmp_path, fake_deps, monkeypatch
+):
+    source = tmp_path / "video.mp4"
+    source.write_bytes(b"x")
+    bridge = Bridge(
+        QueueManager(DownloadModel([]), outdir=str(tmp_path)),
+        str(tmp_path),
+        settings_path=str(tmp_path / "settings.ini"),
+        deps=fake_deps,
+        defer_detection=True,
+    )
+    monkeypatch.setattr(bridge, "refreshCompressionEncoders", lambda: None)
+    bridge.compression.add_paths([str(source)])
+    bridge.startCompression()
+    assert bridge.compression.items[0]["status"].value == "waiting"
+
+
 def test_corrupt_settings_falls_back(qapp, tmp_path, fake_deps):
     settings = tmp_path / "settings.ini"
     settings.write_text(

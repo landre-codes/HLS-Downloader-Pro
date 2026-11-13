@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 import re
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 
 log = logging.getLogger("hlsdl")
 
@@ -88,7 +88,10 @@ class HtmlMediaScraper:
                 value = "https:" + value
             elif not value.startswith("http"):
                 value = urljoin(resp.url, value)
-            if value not in seen and ("m3u8" in value or value.lower().endswith(_MEDIA_EXT)):
+            path = urlsplit(value).path.lower()
+            if value not in seen and (
+                ".m3u8" in value.lower() or path.endswith(_MEDIA_EXT)
+            ):
                 seen.add(value)
                 normalized.append(value)
 

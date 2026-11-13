@@ -192,6 +192,38 @@ def tools_dir() -> str:
     return folder
 
 
+def catalog_path() -> str:
+    """SQLite index for media identity, hashes and validation reports."""
+    if is_portable():
+        return os.path.join(app_dir(), "catalog.sqlite3")
+    return os.path.join(user_config_dir(), "catalog.sqlite3")
+
+
+def queue_state_path() -> str:
+    """Persistent queue snapshot (download + compression items)."""
+    override = os.environ.get("HLSDL_QUEUE_STATE", "").strip()
+    if override:
+        return os.path.abspath(os.path.expanduser(override))
+    if is_portable():
+        return os.path.join(app_dir(), "queue.json")
+    return os.path.join(user_config_dir(), "queue.json")
+
+
+def journals_dir() -> str:
+    """Pasta dos journals de compressão (recuperação após queda de energia).
+
+    Fica junto da configuração do usuário (ou do executável no modo portátil)
+    para ser gravável e sobreviver a reinícios.  Os arquivos apontam para os
+    caminhos absolutos de origem/temporário/final.
+    """
+    if is_portable():
+        folder = os.path.join(app_dir(), "jobs")
+    else:
+        folder = os.path.join(user_config_dir(), "jobs")
+    os.makedirs(folder, exist_ok=True)
+    return folder
+
+
 def ensure_tools_on_path() -> None:
     """Prepara o PATH para encontrar as ferramentas gerenciadas/detectáveis.
 

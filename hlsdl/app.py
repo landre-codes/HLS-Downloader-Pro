@@ -618,7 +618,9 @@ def main() -> int:
 
     outdir = default_output_folder()
     model = DownloadModel([])
-    manager = QueueManager(model, outdir=outdir, concurrency=3)
+    manager = QueueManager(
+        model, outdir=outdir, concurrency=3, catalog_path=config.catalog_path()
+    )
     bridge = Bridge(manager, outdir, defer_detection=True)
 
     engine = QQmlApplicationEngine()

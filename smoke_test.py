@@ -9,6 +9,9 @@ import sys
 import tempfile
 
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
+os.environ["HLSDL_QUEUE_STATE"] = os.path.join(
+    tempfile.mkdtemp(prefix="hlsdlp-smoke-"), "queue.json"
+)
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from PySide6.QtCore import QTimer, QUrl

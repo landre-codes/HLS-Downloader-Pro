@@ -7,6 +7,7 @@ import subprocess
 
 import pytest
 
+from hlsdl import compress as compress_module
 from hlsdl.bridge import Bridge
 from hlsdl.compress import (
     CompressionManager,
@@ -23,6 +24,7 @@ from hlsdl.compress import (
     is_integrated_gpu,
     output_path,
     pick_encoder,
+    reset_qsv_device_cache,
     resolve_encoder,
     resolve_qsv_device,
     skip_reason,
@@ -109,6 +111,32 @@ def test_resolve_qsv_device_prefers_arc():
     assert is_integrated_gpu("Intel(R) UHD Graphics 770") is True
     assert is_integrated_gpu("Intel(R) Arc(TM) B580 Graphics") is False
     assert is_integrated_gpu("NVIDIA GeForce RTX 4060") is False
+
+
+def test_qsv_device_detection_is_cached(monkeypatch):
+    calls: list[tuple] = []
+
+    class Result:
+        returncode = 0
+        stdout = ""
+        stderr = "Using device 00:02.0 (Intel(R) Arc(TM) B580 Graphics)"
+
+    def fake_run(*args, **kwargs):
+        calls.append(args)
+        return Result()
+
+    monkeypatch.setattr(compress_module, "which", lambda name: "ffmpeg")
+    monkeypatch.setattr(compress_module.subprocess, "run", fake_run)
+    reset_qsv_device_cache()
+    try:
+        first = detect_qsv_devices()
+        assert first
+        count = len(calls)
+        second = detect_qsv_devices()
+        assert second == first
+        assert len(calls) == count
+    finally:
+        reset_qsv_device_cache()
 
 
 def test_build_args_includes_qsv_device():
@@ -198,7 +226,7 @@ def test_bridge_persists_compression_settings(qapp, tmp_path, fake_deps):
     b = Bridge(QueueManager(DownloadModel([]), outdir="out"), "out",
                settings_path=settings, deps=fake_deps)
     b.setCompressionEncoder("software")
-    b.setCompressionCodec("h264")
+    b.setCompressionCodec("hevc")
     b.setCompressionContainer("mkv")
     b.setCompressionQuality(26)
     b.setCompressionParallel(2)
@@ -210,7 +238,7 @@ def test_bridge_persists_compression_settings(qapp, tmp_path, fake_deps):
     b2 = Bridge(QueueManager(DownloadModel([]), outdir="out"), "out",
                 settings_path=settings, deps=fake_deps)
     assert b2.compressionEncoder == "software"
-    assert b2.compressionCodec == "h264"
+    assert b2.compressionCodec == "hevc"
     assert b2.compressionContainer == "mkv"
     assert b2.compressionQuality == 26
     assert b2.compressionParallel == 2
