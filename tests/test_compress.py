@@ -87,6 +87,9 @@ def test_quality_report_flags_extreme_bitrate_drop():
     assert report["bitrate_before"] == 15_000_000
     assert report["bitrate_after"] == 450_000
     assert report["quality_warning"] == "bitrate_drop"
+    assert report["size_before"] == 18_750_000
+    assert report["size_after"] == 562_500
+    assert report["saving"] == 97.0
 
 
 def test_quality_report_does_not_warn_when_scaled():
@@ -439,3 +442,45 @@ def test_manager_queue_real_encode(qapp, tmp_path):
     assert item["status"] == CompressStatus.DONE, item
     assert item["output"] and os.path.exists(item["output"])
     manager.shutdown(timeout=5)
+
+
+@pytest.mark.skipif(
+    which("ffmpeg") is None or which("ffprobe") is None
+    or not {"libx264", "libx265"} <= detect_encoders(),
+    reason="ffmpeg/ffprobe/libx264/libx265 indisponíveis",
+)
+def test_worker_rejects_extreme_quality_drop_and_keeps_original(qapp, tmp_path):
+    ffmpeg = which("ffmpeg")
+    src = tmp_path / "in.mp4"
+    subprocess.run(
+        [ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
+         "-f", "lavfi", "-i", "testsrc2=duration=2:size=320x240:rate=30",
+         "-c:v", "libx264", "-preset", "ultrafast", "-b:v", "8000k",
+         "-maxrate", "8000k", "-bufsize", "16000k", "-pix_fmt", "yuv420p",
+         str(src)],
+        check=True, **popen_kwargs(),
+    )
+    before = src.read_bytes()
+    worker = CompressionWorker(
+        str(src),
+        CompressionSettings(
+            encoder="software", codec="hevc", container="mp4",
+            quality=24, speed="fast", only_if_smaller=True,
+        ),
+        "libx265", quality_timeout=5,
+    )
+    prompts: list[dict] = []
+    skipped: list[str] = []
+    completed: list[tuple] = []
+    worker.qualityConfirmation.connect(
+        lambda report: (prompts.append(report), worker.respond_quality(False))
+    )
+    worker.skipped.connect(skipped.append)
+    worker.completed.connect(lambda *args: completed.append(args))
+    worker.run()
+
+    assert prompts, "a queda extrema deveria pedir confirmação"
+    assert prompts[0]["quality_warning"] == "bitrate_drop"
+    assert skipped and not completed
+    assert src.read_bytes() == before
+    assert not list(tmp_path.glob("*.part.*"))

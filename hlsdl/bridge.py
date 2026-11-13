@@ -203,6 +203,9 @@ class Bridge(
         self.compression.statsChanged.connect(self.compressionStatsChanged.emit)
         self.compression.stateChanged.connect(self._on_comp_state)
         self.compression.qsvDevicesChanged.connect(self.compressionQsvDevicesChanged.emit)
+        self.compression.qualityPromptChanged.connect(
+            self.compressionQualityPromptChanged.emit
+        )
         self._comp_settings = CompressionSettings(
             encoder=str(self._settings.value("compress/encoder", "auto")),
             codec=str(self._settings.value("compress/codec", "hevc")),

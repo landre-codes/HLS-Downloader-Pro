@@ -107,6 +107,9 @@ QUALITY_MAX = {"hevc": 51, "h264": 51, "av1": 63}
 # SSIM minimo para reencodes sem filtros que alteram pixels. 0.90 e um
 # piso conservador; o valor antigo (0.78) aceitava perdas visiveis.
 SSIM_MIN = 0.90
+# Tempo máximo que o encode fica parado esperando a decisão do usuário.
+# Sem resposta, o arquivo original é mantido (falha segura).
+QUALITY_CONFIRM_TIMEOUT = 600.0
 COMPRESSION_PRESETS = (
     "custom",
     "fast_h264",
@@ -228,6 +231,10 @@ class CompressionSettings:
     audio_mode: str = "auto"    # auto | copy | aac
     subtitle_mode: str = "auto"  # auto | all | none
     quality_check: bool = True   # sampled SSIM for normal re-encodes
+    # Pedido de confirmação quando o bitrate cai de forma extrema sem mudar
+    # resolução/FPS. No CLI, o padrão seguro é recusar a saída.
+    confirm_quality_drop: bool = True
+    allow_quality_drop: bool = False
 
 
 def make_item(item_id: int, path: str) -> dict:
@@ -1005,6 +1012,12 @@ def build_quality_report(source_probe: dict, output_probe: dict | None,
         "height_after": height_after,
         "ssim": float(ssim) if ssim is not None else 0.0,
         "quality_warning": warning,
+        "size_before": int(size_before),
+        "size_after": int(size_after),
+        "saving": (
+            round(100.0 * (1 - size_after / size_before), 1)
+            if size_before else 0.0
+        ),
     }
 
 
@@ -1257,6 +1270,9 @@ class CompressionWorker(QObject):
     # New transactional signal: final, backup, before, after, sha256, validation
     completed = Signal(str, str, int, int, str, str)
     qualityReport = Signal(object)
+    # Pedido de confirmação: o manager mostra o diálogo e chama
+    # ``respond_quality``. A thread do encode fica bloqueada nesse intervalo.
+    qualityConfirmation = Signal(object)
     skipped = Signal(str)
     failed = Signal(str)
     cancelled = Signal()
@@ -1266,7 +1282,8 @@ class CompressionWorker(QObject):
                  encoder: str, translate=None, parent: QObject | None = None,
                  qsv_device: int = 0, job_id: int | str = 0,
                  journals_dir: str | None = None,
-                 catalog_path: str | None = None):
+                 catalog_path: str | None = None,
+                 quality_timeout: float = QUALITY_CONFIRM_TIMEOUT):
         super().__init__(parent)
         self.src = src
         self.settings = settings
@@ -1275,13 +1292,65 @@ class CompressionWorker(QObject):
         self.job_id = job_id
         self.journals_dir = journals_dir
         self.catalog_path = catalog_path
+        self.quality_timeout = max(0.0, float(quality_timeout))
         self._t = translate or translator("pt")
         self._cancel = False
         self._proc = None
+        self._quality_lock = threading.Lock()
+        self._quality_event = threading.Event()
+        self._quality_decision: bool | None = None
 
     def cancel(self) -> None:
         self._cancel = True
+        # Acorda a thread caso ela esteja parada esperando a confirmação.
+        with self._quality_lock:
+            if not self._quality_event.is_set():
+                self._quality_decision = False
+                self._quality_event.set()
         terminate_tree(self._proc)
+
+    def respond_quality(self, allow: bool) -> None:
+        """Responde ao pedido de confirmação (chamado da thread da GUI)."""
+        with self._quality_lock:
+            if self._quality_event.is_set():
+                return
+            self._quality_decision = bool(allow)
+            self._quality_event.set()
+
+    def _quality_drop_allowed(self, report: dict) -> bool:
+        """Decide se uma saída com queda extrema pode ser instalada.
+
+        No modo GUI, pergunta ao usuário. No CLI, o padrão é recusar; o
+        operador precisa passar ``--allow-quality-drop`` para aceitar.
+        """
+        if report.get("quality_warning") != "bitrate_drop":
+            return True
+        if self.settings.confirm_quality_drop:
+            return self._ask_quality_confirmation(report)
+        return bool(self.settings.allow_quality_drop)
+
+    def _ask_quality_confirmation(self, report: dict) -> bool:
+        with self._quality_lock:
+            self._quality_decision = None
+            self._quality_event.clear()
+        request = dict(report)
+        request.update({
+            "name": os.path.basename(self.src),
+            "input": self.src,
+            "encoder": self.encoder,
+            "timeout": self.quality_timeout,
+        })
+        log.warning(
+            "qualidade: queda extrema de bitrate (%.2f -> %.2f Mb/s); "
+            "aguardando confirmação do usuário",
+            float(request.get("bitrate_before", 0)) / 1_000_000,
+            float(request.get("bitrate_after", 0)) / 1_000_000,
+        )
+        self.qualityConfirmation.emit(request)
+        if not self._quality_event.wait(self.quality_timeout):
+            log.warning("qualidade: confirmação expirou; original será mantido")
+            return False
+        return self._quality_decision is True
 
     def run(self) -> None:
         final = ""
@@ -1423,8 +1492,35 @@ class CompressionWorker(QObject):
                 probe, out_probe, self.settings, size_before, size_after,
                 duration, ssim_score,
             )
+            log.info(
+                "qualidade: %.2f -> %.2f Mb/s | %dx%d -> %dx%d | SSIM %.3f | aviso=%s",
+                quality["bitrate_before"] / 1_000_000,
+                quality["bitrate_after"] / 1_000_000,
+                quality["width_before"], quality["height_before"],
+                quality["width_after"], quality["height_after"],
+                quality["ssim"], quality["quality_warning"] or "-",
+            )
+            self.qualityReport.emit(quality)
             self.statusChanged.emit(CompressStatus.VERIFYING.value)
             self.progressChanged.emit(99.0, "—")
+            if self._cancel:
+                self._cleanup(temp, final, journal)
+                self.cancelled.emit()
+                return
+            if quality["quality_warning"]:
+                allowed = self._quality_drop_allowed(quality)
+                if self._cancel:
+                    self._cleanup(temp, final, journal)
+                    self.cancelled.emit()
+                    return
+                if not allowed:
+                    log.warning(
+                        "qualidade: saída recusada; arquivo original mantido"
+                    )
+                    self._cleanup(temp, final, journal)
+                    self.skipped.emit(self._t("compress_quality_rejected"))
+                    return
+                log.info("qualidade: queda extrema autorizada pelo usuário")
             expected_hash = sha256_file(temp)
             journal.stage(
                 "validating", expected_hash=expected_hash,
@@ -1449,7 +1545,6 @@ class CompressionWorker(QObject):
             )
             installed = True
             output_hash = expected_hash
-            self.qualityReport.emit(quality)
             try:
                 source_key = "file:" + hashlib.sha256(
                     os.path.abspath(self.src).lower().encode("utf-8", "replace")
@@ -1520,6 +1615,7 @@ class CompressionManager(QObject):
     qsvDevicesChanged = Signal()
     finishedAll = Signal(int, int, int)            # done, errors, skipped
     itemsChanged = Signal()
+    qualityPromptChanged = Signal()
 
     def __init__(
         self,
@@ -1546,6 +1642,8 @@ class CompressionManager(QObject):
         self._running = 0
         self._threads = JobThreadRegistry()
         self._job_settings: dict[int, CompressionSettings] = {}
+        self._quality_active: dict | None = None
+        self._quality_prompts: deque[dict] = deque()
         self._counter = 0
         self._encoder = ""
         self._last_error = ""
@@ -1583,6 +1681,23 @@ class CompressionManager(QObject):
     @property
     def encoders_ready(self) -> bool:
         return self._encoders_ready
+
+    @property
+    def quality_prompt(self) -> dict | None:
+        """Prompt de confirmação visível no momento (ou ``None``)."""
+        return self._quality_active
+
+    @Slot(bool)
+    def respond_quality(self, allow: bool) -> None:
+        """Responde ao prompt atual e libera o worker correspondente."""
+        prompt = self._quality_active
+        if prompt is None:
+            return
+        worker = self._quality_worker(prompt.get("id"))
+        self._quality_active = None
+        if worker is not None:
+            worker.respond_quality(bool(allow))
+        self._advance_quality_prompt()
 
     # ------------------------------------------------------------- settings
     def apply_settings(self, settings: CompressionSettings) -> None:
@@ -1753,6 +1868,7 @@ class CompressionManager(QObject):
     def cancelAll(self) -> None:
         self._active = False
         self._paused = False
+        self._clear_quality_prompts()
         for item in self.items:
             if item["status"] in ACTIVE or item["status"] == CompressStatus.WAITING:
                 self._set_status(item, CompressStatus.CANCELLED)
@@ -1770,6 +1886,7 @@ class CompressionManager(QObject):
             entry = self._threads.get(item["id"])
             if entry:
                 entry[1].cancel()
+            self._drop_quality_prompt(item["id"])
             self._set_status(item, CompressStatus.CANCELLED)
         elif item["status"] == CompressStatus.WAITING:
             self._set_status(item, CompressStatus.CANCELLED)
@@ -1783,6 +1900,7 @@ class CompressionManager(QObject):
             self.cancelItem(row)
         elif item["id"] in self._threads:
             self._threads[item["id"]][1].cancel()
+        self._drop_quality_prompt(item["id"])
         try:
             current = self.items.index(item)
         except ValueError:
@@ -1846,6 +1964,7 @@ class CompressionManager(QObject):
             label="thread de compressão",
             cancel=self.cancelAll,
         )
+        self._clear_quality_prompts()
         self._running = len(self._threads)
 
     # ------------------------------------------------------------- scheduler
@@ -1931,6 +2050,7 @@ class CompressionManager(QObject):
         worker.progressChanged.connect(self._worker_progress)
         worker.completed.connect(self._worker_completed)
         worker.qualityReport.connect(self._worker_quality)
+        worker.qualityConfirmation.connect(self._worker_quality_request)
         worker.skipped.connect(self._worker_skipped)
         worker.failed.connect(self._worker_failed)
         worker.cancelled.connect(self._worker_cancelled)
@@ -1947,6 +2067,67 @@ class CompressionManager(QObject):
         worker = self.sender()
         item = getattr(worker, "_queue_item", None)
         return item if isinstance(item, dict) else None
+
+    def _quality_worker(self, item_id) -> CompressionWorker | None:
+        entry = self._threads.get(item_id)
+        return entry[1] if entry else None
+
+    def _request_quality(self, item: dict, report: dict) -> None:
+        """Enfileira um pedido de confirmação vindo da thread do encode."""
+        if not isinstance(report, dict):
+            return
+        prompt = {
+            "id": item.get("id", 0),
+            "name": item.get("name", ""),
+            "input": item.get("input", ""),
+            "encoder": item.get("encoder", ""),
+            "size_before": int(
+                report.get("size_before", item.get("size_before", 0)) or 0
+            ),
+            "size_after": int(
+                report.get("size_after", item.get("size_after", 0)) or 0
+            ),
+            "saving": float(
+                report.get("saving", item.get("saving", 0.0)) or 0.0
+            ),
+        }
+        for key in (
+            "bitrate_before", "bitrate_after", "ssim", "quality_warning",
+            "width_before", "height_before", "width_after", "height_after",
+        ):
+            prompt[key] = report.get(key, item.get(key, 0))
+        self._quality_prompts.append(prompt)
+        if self._quality_active is None:
+            self._advance_quality_prompt()
+
+    def _advance_quality_prompt(self) -> None:
+        self._quality_active = (
+            self._quality_prompts.popleft() if self._quality_prompts else None
+        )
+        self.qualityPromptChanged.emit()
+
+    def _drop_quality_prompt(self, item_id) -> None:
+        """Remove prompts de um item que foi cancelado/removido/finalizado."""
+        if not self._quality_prompts and (
+            self._quality_active is None
+            or self._quality_active.get("id") != item_id
+        ):
+            return
+        self._quality_prompts = deque(
+            p for p in self._quality_prompts if p.get("id") != item_id
+        )
+        if (self._quality_active is not None
+                and self._quality_active.get("id") == item_id):
+            self._advance_quality_prompt()
+
+    def _clear_quality_prompts(self) -> None:
+        had_prompt = (
+            self._quality_active is not None or bool(self._quality_prompts)
+        )
+        self._quality_prompts.clear()
+        self._quality_active = None
+        if had_prompt:
+            self.qualityPromptChanged.emit()
 
     @Slot(str)
     def _worker_status(self, status: str) -> None:
@@ -1975,6 +2156,12 @@ class CompressionManager(QObject):
             self._on_completed(item, final, backup, before, after, sha256, validation)
 
     @Slot(object)
+    def _worker_quality_request(self, report: dict) -> None:
+        item = self._sender_item()
+        if item is not None:
+            self._request_quality(item, report)
+
+    @Slot(object)
     def _worker_quality(self, report: dict) -> None:
         item = self._sender_item()
         if item is None or not isinstance(report, dict):
@@ -1982,6 +2169,7 @@ class CompressionManager(QObject):
         for key in (
             "bitrate_before", "bitrate_after", "ssim", "quality_warning",
             "width_before", "height_before", "width_after", "height_after",
+            "size_before", "size_after", "saving",
         ):
             if key in report:
                 item[key] = report[key]
@@ -2076,6 +2264,7 @@ class CompressionManager(QObject):
         self.itemsChanged.emit()
 
     def _on_thread_done(self, item: dict) -> None:
+        self._drop_quality_prompt(item["id"])
         self._threads.pop(item["id"], None)  # registry cleans worker/thread
         self._job_settings.pop(item["id"], None)
         self._running = max(0, self._running - 1)

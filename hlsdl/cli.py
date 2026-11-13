@@ -79,6 +79,10 @@ def cmd_compress(args) -> int:
         only_if_smaller=not args.allow_larger,
         replace_original=args.replace,
         quality_check=not args.no_quality_check,
+        # O CLI não abre diálogos: sem a flag explícita, uma queda extrema de
+        # bitrate é recusada e o original é mantido.
+        confirm_quality_drop=False,
+        allow_quality_drop=bool(args.allow_quality_drop),
     )
     encoder = resolve_encoder(settings, available)
     if not encoder:
@@ -111,11 +115,21 @@ def cmd_compress(args) -> int:
         worker.skipped.connect(
             lambda msg, res=result: res.update({"status": "skipped", "reason": msg})
         )
+        worker.qualityReport.connect(
+            lambda report, res=result: res.update({"quality": report})
+        )
         worker.failed.connect(
             lambda err, res=result: res.update({"status": "error", "error": err})
         )
         worker.run()
         print(json.dumps(result, ensure_ascii=False))
+        quality = result.get("quality") or {}
+        if result["status"] == "skipped" and quality.get("quality_warning"):
+            print(
+                "queda extrema de bitrate; use --allow-quality-drop para "
+                "aceitar a saída mesmo assim",
+                file=sys.stderr,
+            )
         if result["status"] == "error":
             failures += 1
     return 0 if not failures else 1
@@ -179,6 +193,10 @@ def build_parser() -> argparse.ArgumentParser:
                           help="remove o original após validação (backup é mantido)")
     compress.add_argument("--allow-larger", action="store_true")
     compress.add_argument("--no-quality-check", action="store_true")
+    compress.add_argument(
+        "--allow-quality-drop", action="store_true",
+        help="aceita saída com queda extrema de bitrate sem confirmação",
+    )
     compress.set_defaults(func=cmd_compress)
 
     download = sub.add_parser("download", help="baixa uma ou mais URLs")

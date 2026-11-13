@@ -41,7 +41,10 @@ def test_all_languages_are_present_and_translated():
     from hlsdl.i18n import BACKEND, LANGUAGES
 
     assert LANGUAGES == ("pt", "en", "es", "it", "fr", "ru", "ja", "zh")
-    core_keys = ("links_added", "queue_started", "err_unexpected", "dep_found")
+    core_keys = (
+        "links_added", "queue_started", "err_unexpected", "dep_found",
+        "compress_quality_rejected",
+    )
     for lang in LANGUAGES:
         for key in core_keys:
             assert BACKEND[lang][key], f"chave {key} vazia em {lang}"

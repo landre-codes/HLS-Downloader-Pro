@@ -32,6 +32,7 @@ class BridgeSignals:
     compressionEncodersChanged = Signal()
     compressionEffectiveEncoderChanged = Signal()
     compressionQsvDevicesChanged = Signal()
+    compressionQualityPromptChanged = Signal()
     updateChanged = Signal()
     updateProgressChanged = Signal(int)
     depsChanged = Signal()
@@ -70,6 +71,7 @@ compressionConfigChanged = BridgeSignals.compressionConfigChanged
 compressionEncodersChanged = BridgeSignals.compressionEncodersChanged
 compressionEffectiveEncoderChanged = BridgeSignals.compressionEffectiveEncoderChanged
 compressionQsvDevicesChanged = BridgeSignals.compressionQsvDevicesChanged
+compressionQualityPromptChanged = BridgeSignals.compressionQualityPromptChanged
 updateChanged = BridgeSignals.updateChanged
 updateProgressChanged = BridgeSignals.updateProgressChanged
 depsChanged = BridgeSignals.depsChanged
@@ -78,5 +80,5 @@ depsInstallFinished = BridgeSignals.depsInstallFinished
 similarityChanged = BridgeSignals.similarityChanged
 recoveryChanged = BridgeSignals.recoveryChanged
 
-__all__ = ["BridgeSignals"] + ['statsChanged', 'notifyText', 'outputFolderChanged', 'darkChanged', 'concurrencyChanged', 'limitRateChanged', 'fragmentsChanged', 'cookiesEnabledChanged', 'cookiesBrowserIndexChanged', 'cookiesFileChanged', 'languageChanged', 'queueActiveChanged', 'queuePausedChanged', 'formatModeChanged', 'qualityChanged', 'containerChanged', 'codecChanged', 'compressLevelChanged', 'namingModeChanged', 'ytdlpVariantChanged', 'lastItemChanged', 'playlistChanged', 'playlistLoadingChanged', 'compressionStatsChanged', 'compressionStateChanged', 'compressionConfigChanged', 'compressionEncodersChanged', 'compressionEffectiveEncoderChanged', 'compressionQsvDevicesChanged', 'updateChanged', 'updateProgressChanged', 'depsChanged', 'depsOutput', 'depsInstallFinished', 'similarityChanged', 'recoveryChanged']
+__all__ = ["BridgeSignals"] + ['statsChanged', 'notifyText', 'outputFolderChanged', 'darkChanged', 'concurrencyChanged', 'limitRateChanged', 'fragmentsChanged', 'cookiesEnabledChanged', 'cookiesBrowserIndexChanged', 'cookiesFileChanged', 'languageChanged', 'queueActiveChanged', 'queuePausedChanged', 'formatModeChanged', 'qualityChanged', 'containerChanged', 'codecChanged', 'compressLevelChanged', 'namingModeChanged', 'ytdlpVariantChanged', 'lastItemChanged', 'playlistChanged', 'playlistLoadingChanged', 'compressionStatsChanged', 'compressionStateChanged', 'compressionConfigChanged', 'compressionEncodersChanged', 'compressionEffectiveEncoderChanged', 'compressionQsvDevicesChanged', 'compressionQualityPromptChanged', 'updateChanged', 'updateProgressChanged', 'depsChanged', 'depsOutput', 'depsInstallFinished', 'similarityChanged', 'recoveryChanged']
 

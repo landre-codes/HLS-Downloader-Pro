@@ -501,6 +501,15 @@ class CompressionMixin(BridgeSignals):
 
         threading.Thread(target=work, daemon=True).start()
 
+    @Property("QVariantMap", notify=compressionQualityPromptChanged)
+    def compressionQualityPrompt(self) -> dict:
+        """Pedido de confirmação de qualidade atual (vazio quando não há)."""
+        return self.compression.quality_prompt or {}
+
+    @Slot(bool)
+    def respondCompressionQuality(self, allow: bool) -> None:
+        self.compression.respond_quality(bool(allow))
+
     @Property(bool, notify=compressionEncodersChanged)
     def compressionDetecting(self) -> bool:
         return not bool(self.compression.encoders_ready)

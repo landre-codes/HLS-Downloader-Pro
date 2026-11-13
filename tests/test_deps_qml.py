@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import QUrl
+from PySide6.QtCore import QMetaObject, QObject, QUrl
 from PySide6.QtQml import QQmlApplicationEngine, QQmlExpression
 
 from hlsdl.bridge import Bridge
@@ -15,6 +15,7 @@ from hlsdl.deps import SPECS, DependencyManager
 from hlsdl.downloader import DownloadWorker
 from hlsdl.model import DownloadModel
 from hlsdl.queue import QueueManager
+from tests.conftest import process_until
 
 
 def test_detect_returns_all_tools(qapp):
@@ -132,4 +133,75 @@ def test_qml_single_download_validates_and_isolates(qapp, fake_deps):
     assert ev("singleUrl.text") == ""
     assert len(bridge.single_manager.items) == 1
     assert manager.items[0]["status"].value == "waiting"
+    bridge.shutdown()
+
+
+def test_qml_quality_prompt_opens_and_closing_rejects(qapp, fake_deps, tmp_path):
+    class FakeQualityWorker:
+        def __init__(self) -> None:
+            self.decisions: list[bool] = []
+
+        def respond_quality(self, allow: bool) -> None:
+            self.decisions.append(allow)
+
+        def cancel(self) -> None:
+            pass
+
+    model = DownloadModel([])
+    manager = QueueManager(model, outdir="out")
+    bridge = Bridge(
+        manager, "out", settings_path=str(tmp_path / "settings.ini"),
+        deps=fake_deps, defer_detection=True,
+    )
+    path = tmp_path / "video.mp4"
+    path.write_bytes(b"x")
+    bridge.compression.add_paths([str(path)])
+    item = bridge.compression.items[0]
+    worker = FakeQualityWorker()
+    bridge.compression._threads[item["id"]] = (object(), worker, item)
+
+    engine = QQmlApplicationEngine()
+    engine.rootContext().setContextProperty("downloadModel", model)
+    engine.rootContext().setContextProperty(
+        "compressionModel", bridge.compression.model
+    )
+    engine.rootContext().setContextProperty("bridge", bridge)
+    engine.load(QUrl.fromLocalFile(qml_path()))
+    root = engine.rootObjects()[0]
+    root.show()
+    dialog = next(
+        (obj for obj in root.findChildren(QObject)
+         if obj.objectName() == "qualityConfirmDialog"),
+        None,
+    )
+    assert dialog is not None
+
+    report = {
+        "bitrate_before": 15_000_000,
+        "bitrate_after": 450_000,
+        "width_before": 1920,
+        "height_before": 1080,
+        "width_after": 1920,
+        "height_after": 1080,
+        "ssim": 0.93,
+        "quality_warning": "bitrate_drop",
+    }
+    bridge.compression._request_quality(item, report)
+    assert process_until(qapp, lambda: dialog.property("opened") is True)
+    assert dialog.property("prompt")["id"] == item["id"]
+
+    assert QMetaObject.invokeMethod(dialog, "close") is True
+    assert process_until(qapp, lambda: worker.decisions == [False])
+    assert dialog.property("opened") is False
+
+    bridge.compression._request_quality(item, report)
+    assert process_until(qapp, lambda: dialog.property("opened") is True)
+    accept = next(
+        obj for obj in root.findChildren(QObject)
+        if obj.objectName() == "qualityConfirmAccept"
+    )
+    assert QMetaObject.invokeMethod(accept, "click") is True
+    assert process_until(qapp, lambda: worker.decisions == [False, True])
+
+    bridge.compression._threads.clear()
     bridge.shutdown()

@@ -12,7 +12,7 @@ Downloader de vídeos (HLS / m3u8) com interface **Qt Quick (QML) + Material Des
 - **Fila persistente + CLI**: a fila de downloads/compressão é salva em `queue.json` e restaurada ao abrir (itens concluídos são omitidos). O comando `hlsdl` oferece `probe`, `verify`, `similar`, `compress` e `download` para automação.
 - **HandBrake-like**: além de presets/filtros/tone mapping, inclui **decodificação por hardware** (`-hwaccel auto`), metadados HDR10 (`master-display`/`max-cll`) no x265 e validação de frames/áudio/legendas.
 - **Preservação do original**: a compressão grava em `.part` único, usa journal de transação e backup por hard link/cópia. Em erro, hash divergente, perda de energia ou falha de áudio, o original é mantido/restaurado; “Apagar original” só ocorre após validação e deixa um backup recuperável.
-- **Qualidade mensurável**: a tabela e o log mostram bitrate, resolução e SSIM antes/depois. Reencodes sem filtros precisam de SSIM mínimo **0,90**; quedas extremas de bitrate com resolução/FPS iguais são sinalizadas para revisão.
+- **Qualidade mensurável**: a tabela e o log mostram bitrate, resolução e SSIM antes/depois. Reencodes sem filtros precisam de SSIM mínimo **0,90**; quedas extremas de bitrate com resolução/FPS iguais pedem confirmação antes de substituir o original (fechar o diálogo mantém o arquivo original).
 - **Busca de similares (VDF/Czkawka-inspired)**: assinatura multi-frame dHash + aHash + envelope RMS de áudio, com fallbacks por hash amostral, metadados, duração/resolução e nome. Disponível na aba Compressão → “Mídias similares”.
 - **Atualizações**: verifica a última release, baixa o instalador, valida o **SHA-256** e a **assinatura Ed25519** do manifesto antes de executar (Windows; no portátil abre a página da release)
 - **Modo de extração** (Individual e Lote): **Vídeo + áudio**, **Apenas vídeo** ou **Somente áudio**
@@ -264,7 +264,7 @@ hlsdl compress in.mp4 --codec hevc --container mp4 --quality 24
 hlsdl download https://youtu.be/... --outdir ./Videos
 ```
 
-`compress` mantém o original por padrão; `--replace` remove após validação e ainda deixa o backup. O journal/recuperação é o mesmo da GUI.
+`compress` mantém o original por padrão; `--replace` remove após validação e ainda deixa o backup. O journal/recuperação é o mesmo da GUI. No modo headless, uma queda extrema de bitrate é recusada por segurança; use `--allow-quality-drop` para aceitar a saída.
 
 ## Integridade, similares e recuperação
 

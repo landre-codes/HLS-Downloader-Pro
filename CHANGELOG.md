@@ -43,7 +43,7 @@ e o versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 - **Mapeamento QSV**: o regex aceita o BDF completo (`0000:00:02.0`), então GPUs Intel Arc/UHD voltam a ser associadas ao índice `-qsv_device` correto.
 - **Economia estimada**: a estimativa agora cresce com o RF/quantização (arquivo menor); antes estava invertida e reduzia a economia ao aumentar o RF.
 - **Download de atualização atômico**: o instalador é gravado em `.part`, verificado por SHA-256 e só então movido para o nome final; falhas removem o parcial.
-- **Qualidade mensurável**: bitrate/resolução/SSIM de origem e saída ficam no log, na linha da fila e no tooltip; o gate SSIM subiu para 0,90 e quedas extremas de bitrate com resolução/FPS iguais geram aviso.
+- **Qualidade mensurável**: bitrate/resolução/SSIM de origem e saída ficam no log, na linha da fila e no tooltip; o gate SSIM subiu para 0,90 e quedas extremas de bitrate com resolução/FPS iguais geram aviso e confirmação antes de instalar. No CLI, o padrão é recusar; `--allow-quality-drop` aceita explicitamente.
 - **Filtro na fila de compressão**: busca por nome, caminho ou encoder, com limpar e mensagem de “nenhum resultado”.
 - **Sidecars JSON ocultos**: os `.hlsdl.json` de integridade continuam ao lado da mídia para portabilidade, mas recebem atributo oculto no Windows.
 

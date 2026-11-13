@@ -593,6 +593,37 @@ COMPRESS_MESSAGES: dict[str, dict[str, str]] = {
 for _lang, _messages in COMPRESS_MESSAGES.items():
     BACKEND.setdefault(_lang, {}).update(_messages)
 
+# Confirmação de qualidade (mesclada ao catálogo principal).
+COMPRESS_QUALITY_MESSAGES: dict[str, dict[str, str]] = {
+    "pt": {
+        "compress_quality_rejected": "Queda extrema de bitrate recusada; original mantido.",
+    },
+    "en": {
+        "compress_quality_rejected": "Extreme bitrate drop rejected; original kept.",
+    },
+    "es": {
+        "compress_quality_rejected": "Caída extrema de bitrate rechazada; original conservado.",
+    },
+    "it": {
+        "compress_quality_rejected": "Calo estremo del bitrate rifiutato; originale mantenuto.",
+    },
+    "fr": {
+        "compress_quality_rejected": "Chute extrême du débit refusée ; original conservé.",
+    },
+    "ru": {
+        "compress_quality_rejected": "Резкое падение битрейта отклонено; исходник сохранён.",
+    },
+    "ja": {
+        "compress_quality_rejected": "ビットレートの極端な下降を拒否しました。元ファイルを保持します。",
+    },
+    "zh": {
+        "compress_quality_rejected": "已拒绝码率大幅下降；原文件已保留。",
+    },
+}
+
+for _lang, _messages in COMPRESS_QUALITY_MESSAGES.items():
+    BACKEND.setdefault(_lang, {}).update(_messages)
+
 COMPRESS_EXTRA: dict[str, dict[str, str]] = {
     "pt": {
         "compress_skip_already_codec": "Já está em {codec}.",

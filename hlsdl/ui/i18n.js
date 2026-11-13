@@ -2854,6 +2854,130 @@ var extraStatus = {
     "zh": { s_verifying: "校验中" }
 }
 
+// Confirmação de queda extrema de bitrate (mesclada por getAll).
+var extraQuality = {
+    "pt": {
+        compress_quality_confirm_title: "Queda extrema de bitrate",
+        compress_quality_confirm_message: "A sa\u00edda ficou com bitrate muito menor que o original, sem mudan\u00e7a de resolu\u00e7\u00e3o ou FPS. Isso pode indicar perda de qualidade.",
+        compress_quality_confirm_hint: "Revise as m\u00e9tricas antes de substituir o arquivo original.",
+        compress_quality_source: "Original",
+        compress_quality_output: "Sa\u00edda",
+        compress_quality_bitrate: "Bitrate",
+        compress_quality_resolution: "Resolu\u00e7\u00e3o",
+        compress_quality_size: "Tamanho",
+        compress_quality_ssim: "SSIM",
+        compress_quality_saving: "Economia",
+        compress_quality_keep: "Manter mesmo assim",
+        compress_quality_discard: "Descartar e manter original",
+        compress_quality_close_hint: "Fechar esta janela mant\u00e9m o arquivo original.",
+    },
+    "en": {
+        compress_quality_confirm_title: "Extreme bitrate drop",
+        compress_quality_confirm_message: "The output bitrate is much lower than the source without a resolution or FPS change. This may indicate quality loss.",
+        compress_quality_confirm_hint: "Review the metrics before replacing the original file.",
+        compress_quality_source: "Source",
+        compress_quality_output: "Output",
+        compress_quality_bitrate: "Bitrate",
+        compress_quality_resolution: "Resolution",
+        compress_quality_size: "Size",
+        compress_quality_ssim: "SSIM",
+        compress_quality_saving: "Saving",
+        compress_quality_keep: "Keep it anyway",
+        compress_quality_discard: "Discard and keep original",
+        compress_quality_close_hint: "Closing this window keeps the original file.",
+    },
+    "es": {
+        compress_quality_confirm_title: "Ca\u00edda extrema de bitrate",
+        compress_quality_confirm_message: "La salida tiene un bitrate mucho menor que el original sin cambios de resoluci\u00f3n ni FPS. Esto puede indicar p\u00e9rdida de calidad.",
+        compress_quality_confirm_hint: "Revisa las m\u00e9tricas antes de sustituir el archivo original.",
+        compress_quality_source: "Original",
+        compress_quality_output: "Salida",
+        compress_quality_bitrate: "Bitrate",
+        compress_quality_resolution: "Resoluci\u00f3n",
+        compress_quality_size: "Tama\u00f1o",
+        compress_quality_ssim: "SSIM",
+        compress_quality_saving: "Ahorro",
+        compress_quality_keep: "Mantener igualmente",
+        compress_quality_discard: "Descartar y mantener original",
+        compress_quality_close_hint: "Cerrar esta ventana mantiene el archivo original.",
+    },
+    "it": {
+        compress_quality_confirm_title: "Calo estremo del bitrate",
+        compress_quality_confirm_message: "L'output ha un bitrate molto inferiore all'originale senza variazioni di risoluzione o FPS. Potrebbe indicare una perdita di qualit\u00e0.",
+        compress_quality_confirm_hint: "Controlla le metriche prima di sostituire il file originale.",
+        compress_quality_source: "Originale",
+        compress_quality_output: "Output",
+        compress_quality_bitrate: "Bitrate",
+        compress_quality_resolution: "Risoluzione",
+        compress_quality_size: "Dimensione",
+        compress_quality_ssim: "SSIM",
+        compress_quality_saving: "Risparmio",
+        compress_quality_keep: "Mantieni comunque",
+        compress_quality_discard: "Scarta e mantieni l'originale",
+        compress_quality_close_hint: "Chiudendo questa finestra l'originale viene mantenuto.",
+    },
+    "fr": {
+        compress_quality_confirm_title: "Chute extr\u00eame du d\u00e9bit",
+        compress_quality_confirm_message: "La sortie a un d\u00e9bit bien inf\u00e9rieur \u00e0 l'original sans changement de r\u00e9solution ni de FPS. Cela peut indiquer une perte de qualit\u00e9.",
+        compress_quality_confirm_hint: "V\u00e9rifiez les m\u00e9triques avant de remplacer le fichier original.",
+        compress_quality_source: "Original",
+        compress_quality_output: "Sortie",
+        compress_quality_bitrate: "D\u00e9bit",
+        compress_quality_resolution: "R\u00e9solution",
+        compress_quality_size: "Taille",
+        compress_quality_ssim: "SSIM",
+        compress_quality_saving: "\u00c9conomie",
+        compress_quality_keep: "Conserver quand m\u00eame",
+        compress_quality_discard: "Ignorer et garder l'original",
+        compress_quality_close_hint: "Fermer cette fen\u00eatre conserve le fichier original.",
+    },
+    "ru": {
+        compress_quality_confirm_title: "\u0420\u0435\u0437\u043a\u043e\u0435 \u043f\u0430\u0434\u0435\u043d\u0438\u0435 \u0431\u0438\u0442\u0440\u0435\u0439\u0442\u0430",
+        compress_quality_confirm_message: "\u0411\u0438\u0442\u0440\u0435\u0439\u0442 \u0440\u0435\u0437\u0443\u043b\u044c\u0442\u0430\u0442\u0430 \u043d\u0430\u043c\u043d\u043e\u0433\u043e \u043d\u0438\u0436\u0435 \u0438\u0441\u0445\u043e\u0434\u043d\u043e\u0433\u043e \u0431\u0435\u0437 \u0438\u0437\u043c\u0435\u043d\u0435\u043d\u0438\u044f \u0440\u0430\u0437\u0440\u0435\u0448\u0435\u043d\u0438\u044f \u0438\u043b\u0438 FPS. \u042d\u0442\u043e \u043c\u043e\u0436\u0435\u0442 \u0443\u043a\u0430\u0437\u044b\u0432\u0430\u0442\u044c \u043d\u0430 \u043f\u043e\u0442\u0435\u0440\u044e \u043a\u0430\u0447\u0435\u0441\u0442\u0432\u0430.",
+        compress_quality_confirm_hint: "\u041f\u0440\u043e\u0432\u0435\u0440\u044c\u0442\u0435 \u043c\u0435\u0442\u0440\u0438\u043a\u0438 \u043f\u0435\u0440\u0435\u0434 \u0437\u0430\u043c\u0435\u043d\u043e\u0439 \u0438\u0441\u0445\u043e\u0434\u043d\u043e\u0433\u043e \u0444\u0430\u0439\u043b\u0430.",
+        compress_quality_source: "\u0418\u0441\u0445\u043e\u0434\u043d\u0438\u043a",
+        compress_quality_output: "\u0420\u0435\u0437\u0443\u043b\u044c\u0442\u0430\u0442",
+        compress_quality_bitrate: "\u0411\u0438\u0442\u0440\u0435\u0439\u0442",
+        compress_quality_resolution: "\u0420\u0430\u0437\u0440\u0435\u0448\u0435\u043d\u0438\u0435",
+        compress_quality_size: "\u0420\u0430\u0437\u043c\u0435\u0440",
+        compress_quality_ssim: "SSIM",
+        compress_quality_saving: "\u042d\u043a\u043e\u043d\u043e\u043c\u0438\u044f",
+        compress_quality_keep: "\u0412\u0441\u0451 \u0440\u0430\u0432\u043d\u043e \u043e\u0441\u0442\u0430\u0432\u0438\u0442\u044c",
+        compress_quality_discard: "\u041e\u0442\u043a\u043b\u043e\u043d\u0438\u0442\u044c \u0438 \u043e\u0441\u0442\u0430\u0432\u0438\u0442\u044c \u0438\u0441\u0445\u043e\u0434\u043d\u0438\u043a",
+        compress_quality_close_hint: "\u0417\u0430\u043a\u0440\u044b\u0442\u0438\u0435 \u043e\u043a\u043d\u0430 \u0441\u043e\u0445\u0440\u0430\u043d\u0438\u0442 \u0438\u0441\u0445\u043e\u0434\u043d\u044b\u0439 \u0444\u0430\u0439\u043b.",
+    },
+    "ja": {
+        compress_quality_confirm_title: "\u30d3\u30c3\u30c8\u30ec\u30fc\u30c8\u306e\u6975\u7aef\u306a\u4e0b\u964d",
+        compress_quality_confirm_message: "\u89e3\u50cf\u5ea6\u3084FPS\u3092\u5909\u3048\u305a\u306b\u3001\u51fa\u529b\u306e\u30d3\u30c3\u30c8\u30ec\u30fc\u30c8\u304c\u5143\u3088\u308a\u5927\u5e45\u306b\u4e0b\u964d\u3057\u3066\u3044\u307e\u3059\u3002\u753b\u8cea\u52a3\u5316\u306e\u53ef\u80fd\u6027\u304c\u3042\u308a\u307e\u3059\u3002",
+        compress_quality_confirm_hint: "\u5143\u306e\u30d5\u30a1\u30a4\u30eb\u3092\u7f6e\u304d\u63db\u3048\u308b\u524d\u306b\u6307\u6a19\u3092\u78ba\u8a8d\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
+        compress_quality_source: "\u5143\u30d5\u30a1\u30a4\u30eb",
+        compress_quality_output: "\u51fa\u529b",
+        compress_quality_bitrate: "\u30d3\u30c3\u30c8\u30ec\u30fc\u30c8",
+        compress_quality_resolution: "\u89e3\u50cf\u5ea6",
+        compress_quality_size: "\u30b5\u30a4\u30ba",
+        compress_quality_ssim: "SSIM",
+        compress_quality_saving: "\u524a\u6e1b\u7387",
+        compress_quality_keep: "\u3053\u306e\u307e\u307e\u4fdd\u6301",
+        compress_quality_discard: "\u7834\u68c4\u3057\u3066\u5143\u30d5\u30a1\u30a4\u30eb\u3092\u6b8b\u3059",
+        compress_quality_close_hint: "\u3053\u306e\u30a6\u30a3\u30f3\u30c9\u30a6\u3092\u9589\u3058\u308b\u3068\u5143\u306e\u30d5\u30a1\u30a4\u30eb\u304c\u4fdd\u6301\u3055\u308c\u307e\u3059\u3002",
+    },
+    "zh": {
+        compress_quality_confirm_title: "\u7801\u7387\u5927\u5e45\u4e0b\u964d",
+        compress_quality_confirm_message: "\u8f93\u51fa\u7801\u7387\u8fdc\u4f4e\u4e8e\u6e90\u6587\u4ef6\uff0c\u4f46\u5206\u8fa8\u7387\u548c FPS \u672a\u53d8\u3002\u8fd9\u53ef\u80fd\u610f\u5473\u7740\u753b\u8d28\u635f\u5931\u3002",
+        compress_quality_confirm_hint: "\u66ff\u6362\u539f\u6587\u4ef6\u524d\u8bf7\u68c0\u67e5\u6307\u6807\u3002",
+        compress_quality_source: "\u539f\u6587\u4ef6",
+        compress_quality_output: "\u8f93\u51fa",
+        compress_quality_bitrate: "\u7801\u7387",
+        compress_quality_resolution: "\u5206\u8fa8\u7387",
+        compress_quality_size: "\u5927\u5c0f",
+        compress_quality_ssim: "SSIM",
+        compress_quality_saving: "\u8282\u7701",
+        compress_quality_keep: "\u4ecd\u7136\u4fdd\u7559",
+        compress_quality_discard: "\u4e22\u5f03\u5e76\u4fdd\u7559\u539f\u6587\u4ef6",
+        compress_quality_close_hint: "\u5173\u95ed\u6b64\u7a97\u53e3\u5c06\u4fdd\u7559\u539f\u6587\u4ef6\u3002",
+    },
+}
+
 function getAll() {
     var out = {}
     var base = dict["pt"]
@@ -2892,6 +3016,9 @@ function getAll() {
     var geo = extraGeometry[lang] || {}
     for (var k12 in geo)
         out[k12] = geo[k12]
+    var quality = extraQuality[lang] || {}
+    for (var k13 in quality)
+        out[k13] = quality[k13]
     return out
 }
 

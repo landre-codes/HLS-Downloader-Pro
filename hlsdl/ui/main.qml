@@ -776,6 +776,13 @@ ApplicationWindow {
         onConfirmed: bridge.downloadUpdate()
     }
 
+    QualityConfirmDialog {
+        id: qualityConfirm
+        appRoot: root
+        strings: root.strings
+        bridge: root.bridgeApi
+    }
+
     SimilarityDialog {
         id: similarDialog
         appRoot: root
