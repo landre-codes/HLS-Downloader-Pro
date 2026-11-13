@@ -4,6 +4,32 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/)
 e o versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 
+## [Não lançado] — compressor inspirado no HandBrake
+
+### Adicionado
+- **Presets de compressão** (Rápido H.264, Equilibrado HEVC, Qualidade HEVC,
+  Arquivo HEVC 10-bit e AV1 equilibrado).
+- **RF por codec**: faixa 1–51 para H.264/HEVC e 1–63 para AV1.
+- **Filtros**: desentrelaçamento automático/forçado (`yadif`) e redução de
+  ruído (`hqdn3d` leve/média/forte).
+- **Política de HDR**: pular, preservar 10-bit ou converter para SDR com
+  tone mapping (`zscale`/`tonemap`) e metadados bt709 corretos.
+- **Áudio**: automático, cópia quando o contêiner permite ou conversão
+  consistente (AAC/Opus/MP3), com bitrate maior para multichannel.
+- **Legendas**: automático, todas ou nenhuma; MKV preserva PGS/bitmap e
+  fontes/anexos, MP4/MOV usam `mov_text` e WebM usa `webvtt`.
+
+### Corrigido
+- **Pipeline único**: a compressão durante o download agora usa o mesmo
+  planejador da aba Compressão, grava em `.part`, valida com `ffprobe` e só
+  troca o arquivo atomicamente; arquivos parciais/stale não são reaproveitados.
+- **Encoder por job**: mudar o codec com a fila ativa não usa mais o encoder
+  antigo para os próximos itens.
+- **Validação de saída**: confere duração (tolerância de 2%/2 s), presença de
+  vídeo e quantidade de faixas de áudio antes do `os.replace`.
+- **Logs do ffmpeg** limitados em memória; MKV deixa de recodificar áudio
+  DTS/TrueHD/FLAC desnecessariamente.
+
 ## [1.4.0] — 2026-11-09
 
 ### Corrigido

@@ -26,7 +26,15 @@ from collections.abc import Callable
 from PySide6.QtCore import QObject, Signal
 
 from . import config
-from .compress import TEXT_SUBS, analyze, probe_media
+from .compress import (
+    CompressionSettings,
+    analyze,
+    build_args,
+    output_path,
+    probe_media,
+    skip_reason,
+    validate_output,
+)
 from .config import USER_AGENT
 from .formats import (
     AUDIO_CONTAINERS,
@@ -701,11 +709,11 @@ class DownloadWorker(QObject):
 
     # -------------------------------------------------- conclusão e miniatura
     def _maybe_compress(self, path: str) -> str | None:
-        """Reencoda para H.264/H.265 se configurado.
+        """Reencoda para H.264/H.265 usando o mesmo planejador da aba Compressão.
 
         Retorna o caminho final (original ou comprimido) ou ``None`` se o
-        usuário cancelou durante a compressão. Em falha de reencode, mantém o
-        arquivo original (o download não é perdido).
+        usuário cancelou durante a compressão. Em falha/validação inválida,
+        mantém o original; nunca reaproveita um arquivo parcial existente.
         """
         if self.codec not in ("h264", "h265") or self.format_mode == "audio_only":
             return path
@@ -713,65 +721,81 @@ class DownloadWorker(QObject):
             return path
         if self._cancel:
             return None
-        ffmpeg = which("ffmpeg")
-        if not ffmpeg:
+        if not which("ffmpeg"):
             return path
 
+        codec = "h264" if self.codec == "h264" else "hevc"
         container = self.container if self.container in ("mp4", "mkv", "mov", "avi") else "mkv"
-        if self.codec == "h265" and container == "avi":
+        if codec == "hevc" and container == "avi":
             container = "mkv"  # HEVC em AVI é mal suportado
-        base, _ = os.path.splitext(path)
-        out = f"{base}_{self.codec}.{container}"
-        if os.path.exists(out) and os.path.getsize(out) > 0:
-            return out
+        source_probe = probe_media(path)
+        if not source_probe:
+            log.warning("compressão ignorada: ffprobe não conseguiu ler %s", path)
+            return path
+        settings = CompressionSettings(
+            codec=codec,
+            container=container,
+            quality=CRF.get(self.codec, {}).get(self.compress_level, 23),
+            speed="balanced",
+            only_if_smaller=True,
+            replace_original=False,
+            reencode_hevc=True,
+            skip_hdr=True,
+            deinterlace="auto",
+            denoise="off",
+            audio_mode="auto",
+            subtitle_mode="all",
+        )
+        reason = skip_reason(settings, source_probe)
+        if reason:
+            log.info("compressão ignorada (%s): %s", reason, path)
+            return path
 
-        crf = CRF.get(self.codec, {}).get(self.compress_level, 23)
-        vcodec = "libx264" if self.codec == "h264" else "libx265"
-        cmd = [
-            ffmpeg, "-y", "-hide_banner", "-i", path,
-            "-map", "0:v:0", "-map", "0:a?",
-            "-c:v", vcodec, "-preset", "medium", "-crf", str(crf),
-            "-c:a", "aac", "-b:a", "192k",
-            "-map_metadata", "0", "-map_chapters", "0",
-            "-max_muxing_queue_size", "4096",
-        ]
-        # Preserva legendas de texto. MP4/MOV não aceitam PGS/DVD bitmap;
-        # nesse caso copiamos tudo só no MKV, onde qualquer codec é válido.
-        probe = probe_media(path) or {}
-        _videos, _audios, subs, _duration = analyze(probe)
-        text_subs = [
-            index for index, sub in enumerate(subs)
-            if (sub.get("codec_name") or "").lower() in TEXT_SUBS
-        ]
-        if container in ("mp4", "mov") and text_subs:
-            for index in text_subs:
-                cmd += ["-map", f"0:s:{index}"]
-            cmd += ["-c:s", "mov_text", "-movflags", "+faststart"]
-        elif container == "mkv" and subs:
-            cmd += ["-map", "0:s?", "-c:s", "copy"]
-        else:
-            cmd += ["-sn"]
-        if self.codec == "h265":
-            cmd += ["-tag:v", "hvc1"]
-        cmd.append(out)
-
-        duration = probe_duration(path)
+        final = output_path(
+            path, codec, container,
+            suffix="h265" if codec == "hevc" else "h264",
+        )
+        tmp = final + ".part." + container
+        encoder = "libx264" if codec == "h264" else "libx265"
+        # Sem -progress pipe:1 aqui: _run_process() lê o progresso do stderr
+        # do ffmpeg, como faz no fallback de download.
+        cmd = build_args(
+            path, tmp, settings, encoder, source_probe,
+            progress_pipe=False, log_level="info",
+        )
+        duration = analyze(source_probe)[3] or probe_duration(path)
         self.statusChanged.emit(Status.ENCODING.value)
         ok, err = self._run_process(cmd, duration=duration, is_ffmpeg=True)
         if self._cancel:
+            self._safe_remove(tmp)
             return None
-        if ok and os.path.exists(out) and os.path.getsize(out) > 0:
-            # O arquivo original é preservado. A versão recomprimida ganha
-            # sufixo _h264/_h265; quem quiser substituir pode usar a aba
-            # Compressão (que tem a opção explícita de apagar o original).
-            log.info(
-                "comprimido (%s/%s): %s -> %s (original mantido)",
-                self.codec, self.compress_level, path, out,
-            )
-            return out
-        log.warning("compressão falhou (%s) — mantendo original", err)
-        self._safe_remove(out)
-        return path
+        if not ok:
+            log.warning("compressão falhou (%s) — mantendo original", err)
+            self._safe_remove(tmp)
+            return path
+
+        out_probe = probe_media(tmp)
+        invalid = validate_output(source_probe, out_probe, tmp)
+        if invalid:
+            log.warning("compressão inválida (%s) — mantendo original", invalid)
+            self._safe_remove(tmp)
+            return path
+        # A compressão durante o download nunca deve piorar o tamanho.
+        if os.path.getsize(tmp) >= os.path.getsize(path):
+            log.info("compressão não reduziu o tamanho — mantendo original")
+            self._safe_remove(tmp)
+            return path
+        try:
+            os.replace(tmp, final)
+        except OSError as exc:
+            log.warning("não foi possível finalizar a compressão: %s", exc)
+            self._safe_remove(tmp)
+            return path
+        log.info(
+            "comprimido (%s/%s): %s -> %s (original mantido)",
+            self.codec, self.compress_level, path, final,
+        )
+        return final
 
     def _succeed(self, path: str) -> None:
         compressed = self._maybe_compress(path)

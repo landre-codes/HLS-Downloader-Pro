@@ -17,17 +17,23 @@ from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox
 
 from . import __version__
 from .compress import (
+    AUDIO_MODES,
     CODEC_NAMES,
+    COMPRESSION_PRESETS,
     CONTAINERS,
     DEFAULT_CONTAINERS,
+    DEINTERLACE_MODES,
+    DENOISE_MODES,
     ENCODER_NAMES,
     ENCODER_ORDER,
     SPEEDS,
+    SUBTITLE_MODES,
     CompressionManager,
     CompressionModel,
     CompressionSettings,
     available_vendors,
     estimate_saving,
+    quality_max_for_codec,
     resolve_encoder,
 )
 from .compress import (
@@ -206,6 +212,12 @@ class Bridge(QObject):
             qsv_device=self._setting_int("compress/qsv_device", -1, -1, 15),
             ten_bit=self._setting_bool("compress/ten_bit", False),
             x265_tuning=self._setting_bool("compress/x265_tuning", False),
+            preset=str(self._settings.value("compress/preset", "custom")),
+            hdr_tonemap=self._setting_bool("compress/hdr_tonemap", False),
+            deinterlace=str(self._settings.value("compress/deinterlace", "auto")),
+            denoise=str(self._settings.value("compress/denoise", "off")),
+            audio_mode=str(self._settings.value("compress/audio_mode", "auto")),
+            subtitle_mode=str(self._settings.value("compress/subtitle_mode", "auto")),
         )
         if self._comp_settings.encoder == "x265":
             self._comp_settings.encoder = "software"
@@ -617,9 +629,16 @@ class Bridge(QObject):
     def compressionQuality(self) -> int:
         return self._comp_settings.quality
 
+    @Property(int, notify=compressionConfigChanged)
+    def compressionQualityMax(self) -> int:
+        """Limite de RF do codec atual (AV1 vai até 63)."""
+        return quality_max_for_codec(self._comp_settings.codec)
+
     @Slot(int)
     def setCompressionQuality(self, value: int) -> None:
-        value = self._clamp(int(value), 1, 51)
+        value = self._clamp(
+            int(value), 1, quality_max_for_codec(self._comp_settings.codec)
+        )
         if value == self._comp_settings.quality:
             return
         self._comp_settings.quality = value
@@ -640,6 +659,100 @@ class Bridge(QObject):
         self._save("compress/speed", speed)
         self.compression.apply_settings(self._comp_settings)
         self.compressionConfigChanged.emit()
+
+    @Property(bool, notify=compressionConfigChanged)
+    def compressionHdrTonemap(self) -> bool:
+        return bool(self._comp_settings.hdr_tonemap)
+
+    @Slot(bool)
+    def setCompressionHdrTonemap(self, value: bool) -> None:
+        self._set_comp_bool("hdr_tonemap", value, "hdr_tonemap")
+
+    @Property(str, notify=compressionConfigChanged)
+    def compressionDeinterlace(self) -> str:
+        return self._comp_settings.deinterlace
+
+    @Slot(str)
+    def setCompressionDeinterlace(self, value: str) -> None:
+        self._set_comp_choice(
+            "deinterlace", value, DEINTERLACE_MODES, "deinterlace"
+        )
+
+    @Property(str, notify=compressionConfigChanged)
+    def compressionDenoise(self) -> str:
+        return self._comp_settings.denoise
+
+    @Slot(str)
+    def setCompressionDenoise(self, value: str) -> None:
+        self._set_comp_choice("denoise", value, DENOISE_MODES, "denoise")
+
+    @Property(str, notify=compressionConfigChanged)
+    def compressionAudioMode(self) -> str:
+        return self._comp_settings.audio_mode
+
+    @Slot(str)
+    def setCompressionAudioMode(self, value: str) -> None:
+        self._set_comp_choice("audio_mode", value, AUDIO_MODES, "audio_mode")
+
+    @Property(str, notify=compressionConfigChanged)
+    def compressionSubtitleMode(self) -> str:
+        return self._comp_settings.subtitle_mode
+
+    @Slot(str)
+    def setCompressionSubtitleMode(self, value: str) -> None:
+        self._set_comp_choice(
+            "subtitle_mode", value, SUBTITLE_MODES, "subtitle_mode"
+        )
+
+    @Property(list, constant=True)
+    def compressionPresets(self) -> list:
+        return list(COMPRESSION_PRESETS)
+
+    @Slot(str)
+    def applyCompressionPreset(self, key: str) -> None:
+        """Aplica um preset no estilo HandBrake aos ajustes atuais."""
+        presets = {
+            "fast_h264": {
+                "encoder": "auto", "codec": "h264", "container": "mp4",
+                "quality": 23, "speed": "fast", "ten_bit": False,
+                "x265_tuning": False,
+            },
+            "balanced_hevc": {
+                "encoder": "auto", "codec": "hevc", "container": "mp4",
+                "quality": 24, "speed": "balanced", "ten_bit": False,
+                "x265_tuning": False,
+            },
+            "quality_hevc": {
+                "encoder": "auto", "codec": "hevc", "container": "mp4",
+                "quality": 20, "speed": "slow", "ten_bit": False,
+                "x265_tuning": True,
+            },
+            "archive_hevc": {
+                "encoder": "software", "codec": "hevc", "container": "mkv",
+                "quality": 18, "speed": "slower", "ten_bit": True,
+                "x265_tuning": True,
+            },
+            "av1_balanced": {
+                "encoder": "software", "codec": "av1", "container": "mkv",
+                "quality": 30, "speed": "slow", "ten_bit": False,
+                "x265_tuning": False,
+            },
+        }
+        values = presets.get(key)
+        if values is None:
+            return
+        for attr, value in values.items():
+            setattr(self._comp_settings, attr, value)
+        self._comp_settings.preset = key
+        for attr in (
+            "encoder", "codec", "container", "quality", "speed",
+            "ten_bit", "x265_tuning", "preset",
+        ):
+            self._save(f"compress/{attr}", getattr(self._comp_settings, attr))
+        self.compression.apply_settings(self._comp_settings)
+        self.compressionConfigChanged.emit()
+        self.compressionEncodersChanged.emit()
+        self.compressionEffectiveEncoderChanged.emit()
 
     @Property(int, notify=compressionConfigChanged)
     def compressionParallel(self) -> int:
@@ -671,6 +784,16 @@ class Bridge(QObject):
 
     def _set_comp_bool(self, attr: str, value: bool, key: str) -> None:
         value = bool(value)
+        if getattr(self._comp_settings, attr) == value:
+            return
+        setattr(self._comp_settings, attr, value)
+        self._save(f"compress/{key}", value)
+        self.compression.apply_settings(self._comp_settings)
+        self.compressionConfigChanged.emit()
+
+    def _set_comp_choice(self, attr: str, value: str, allowed: tuple,
+                         key: str) -> None:
+        value = value if value in allowed else allowed[0]
         if getattr(self._comp_settings, attr) == value:
             return
         setattr(self._comp_settings, attr, value)

@@ -1778,6 +1778,35 @@ ApplicationWindow {
 
                         Flow {
                             Layout.fillWidth: true
+                            spacing: 8
+                            Label { text: strings.compress_preset; font.pixelSize: 13; color: root.theme.textSecondary }
+                            HandComboBox {
+                                id: compPreset
+                                model: [
+                                    { text: strings.compress_preset_custom, value: "custom" },
+                                    { text: strings.compress_preset_fast_h264, value: "fast_h264" },
+                                    { text: strings.compress_preset_balanced_hevc, value: "balanced_hevc" },
+                                    { text: strings.compress_preset_quality_hevc, value: "quality_hevc" },
+                                    { text: strings.compress_preset_archive_hevc, value: "archive_hevc" },
+                                    { text: strings.compress_preset_av1_balanced, value: "av1_balanced" }
+                                ]
+                                textRole: "text"
+                                valueRole: "value"
+                                currentIndex: 0
+                                width: 240
+                                ToolTip.text: strings.compress_preset_tip
+                                ToolTip.visible: hovered
+                                ToolTip.delay: 500
+                                onActivated: {
+                                    if (currentValue !== "custom")
+                                        bridge.applyCompressionPreset(currentValue)
+                                    currentIndex = 0
+                                }
+                            }
+                        }
+
+                        Flow {
+                            Layout.fillWidth: true
                             spacing: 10
                             Label { text: strings.compress_encoder; font.pixelSize: 13; color: root.theme.textSecondary }
                             HandComboBox {
@@ -1836,13 +1865,13 @@ ApplicationWindow {
                                 Accessible.name: strings.compress_gpu
                                 onClicked: bridge.refreshCompressionEncoders()
                             }
-                            Label { text: strings.compress_quality; font.pixelSize: 13; color: root.theme.textSecondary }
+                            Label { text: strings.compress_quality_rf; font.pixelSize: 13; color: root.theme.textSecondary }
                             SpinBox {
                                 id: compQuality
-                                from: 1; to: 51
+                                from: 1; to: bridge.compressionQualityMax
                                 value: bridge.compressionQuality
                                 editable: true
-                                ToolTip.text: strings.compress_quality_tip
+                                ToolTip.text: strings.compress_quality_rf_tip
                                 ToolTip.visible: hovered; ToolTip.delay: 500
                                 onValueChanged: if (value !== bridge.compressionQuality) bridge.setCompressionQuality(value)
                             }
@@ -1964,6 +1993,145 @@ ApplicationWindow {
 
                         Flow {
                             Layout.fillWidth: true
+                            spacing: 10
+
+                            RowLayout {
+                                spacing: 6
+                                Label { text: strings.compress_deinterlace; font.pixelSize: 13; color: root.theme.textSecondary }
+                                HandComboBox {
+                                    model: [
+                                        { text: strings.compress_deinterlace_auto, value: "auto" },
+                                        { text: strings.compress_deinterlace_off, value: "off" },
+                                        { text: strings.compress_deinterlace_on, value: "on" }
+                                    ]
+                                    textRole: "text"
+                                    valueRole: "value"
+                                    currentIndex: {
+                                        for (var i = 0; i < model.length; i++)
+                                            if (model[i].value === bridge.compressionDeinterlace)
+                                                return i
+                                        return 0
+                                    }
+                                    width: 140
+                                    ToolTip.text: strings.compress_deinterlace_tip
+                                    ToolTip.visible: hovered
+                                    ToolTip.delay: 500
+                                    onActivated: bridge.setCompressionDeinterlace(currentValue)
+                                }
+                            }
+
+                            RowLayout {
+                                spacing: 6
+                                Label { text: strings.compress_denoise; font.pixelSize: 13; color: root.theme.textSecondary }
+                                HandComboBox {
+                                    model: [
+                                        { text: strings.compress_denoise_off, value: "off" },
+                                        { text: strings.compress_denoise_light, value: "light" },
+                                        { text: strings.compress_denoise_medium, value: "medium" },
+                                        { text: strings.compress_denoise_strong, value: "strong" }
+                                    ]
+                                    textRole: "text"
+                                    valueRole: "value"
+                                    currentIndex: {
+                                        for (var i = 0; i < model.length; i++)
+                                            if (model[i].value === bridge.compressionDenoise)
+                                                return i
+                                        return 0
+                                    }
+                                    width: 120
+                                    ToolTip.text: strings.compress_denoise_tip
+                                    ToolTip.visible: hovered
+                                    ToolTip.delay: 500
+                                    onActivated: bridge.setCompressionDenoise(currentValue)
+                                }
+                            }
+
+                            RowLayout {
+                                spacing: 6
+                                Label { text: strings.compress_hdr_policy; font.pixelSize: 13; color: root.theme.textSecondary }
+                                HandComboBox {
+                                    model: [
+                                        { text: strings.compress_hdr_skip, value: "skip" },
+                                        { text: strings.compress_hdr_preserve, value: "preserve" },
+                                        { text: strings.compress_hdr_tonemap, value: "tonemap" }
+                                    ]
+                                    textRole: "text"
+                                    valueRole: "value"
+                                    currentIndex: bridge.compressionSkipHdr
+                                                  ? 0
+                                                  : (bridge.compressionHdrTonemap ? 2 : 1)
+                                    width: 180
+                                    ToolTip.text: strings.compress_hdr_tip
+                                    ToolTip.visible: hovered
+                                    ToolTip.delay: 500
+                                    onActivated: {
+                                        if (currentValue === "skip") {
+                                            bridge.setCompressionSkipHdr(true)
+                                            bridge.setCompressionHdrTonemap(false)
+                                        } else if (currentValue === "preserve") {
+                                            bridge.setCompressionSkipHdr(false)
+                                            bridge.setCompressionHdrTonemap(false)
+                                        } else {
+                                            bridge.setCompressionSkipHdr(false)
+                                            bridge.setCompressionHdrTonemap(true)
+                                        }
+                                    }
+                                }
+                            }
+
+                            RowLayout {
+                                spacing: 6
+                                Label { text: strings.compress_audio_mode; font.pixelSize: 13; color: root.theme.textSecondary }
+                                HandComboBox {
+                                    model: [
+                                        { text: strings.compress_audio_auto, value: "auto" },
+                                        { text: strings.compress_audio_copy, value: "copy" },
+                                        { text: strings.compress_audio_aac, value: "aac" }
+                                    ]
+                                    textRole: "text"
+                                    valueRole: "value"
+                                    currentIndex: {
+                                        for (var i = 0; i < model.length; i++)
+                                            if (model[i].value === bridge.compressionAudioMode)
+                                                return i
+                                        return 0
+                                    }
+                                    width: 200
+                                    ToolTip.text: strings.compress_audio_tip
+                                    ToolTip.visible: hovered
+                                    ToolTip.delay: 500
+                                    onActivated: bridge.setCompressionAudioMode(currentValue)
+                                }
+                            }
+
+                            RowLayout {
+                                spacing: 6
+                                Label { text: strings.compress_subtitle_mode; font.pixelSize: 13; color: root.theme.textSecondary }
+                                HandComboBox {
+                                    model: [
+                                        { text: strings.compress_subtitle_auto, value: "auto" },
+                                        { text: strings.compress_subtitle_all, value: "all" },
+                                        { text: strings.compress_subtitle_none, value: "none" }
+                                    ]
+                                    textRole: "text"
+                                    valueRole: "value"
+                                    currentIndex: {
+                                        for (var i = 0; i < model.length; i++)
+                                            if (model[i].value === bridge.compressionSubtitleMode)
+                                                return i
+                                        return 0
+                                    }
+                                    width: 180
+                                    ToolTip.text: strings.compress_subtitle_tip
+                                    ToolTip.visible: hovered
+                                    ToolTip.delay: 500
+                                    onActivated: bridge.setCompressionSubtitleMode(currentValue)
+                                }
+                            }
+                        }
+
+                        Flow {
+                            Layout.fillWidth: true
                             spacing: 12
                             HandCheckBox {
                                 text: strings.compress_only_smaller
@@ -1988,14 +2156,6 @@ ApplicationWindow {
                                 ToolTip.visible: hovered
                                 ToolTip.delay: 500
                                 onToggled: bridge.setCompressionReencodeHevc(checked)
-                            }
-                            HandCheckBox {
-                                text: strings.compress_skip_hdr
-                                checked: bridge.compressionSkipHdr
-                                ToolTip.text: strings.compress_skip_hdr_tip
-                                ToolTip.visible: hovered
-                                ToolTip.delay: 500
-                                onToggled: bridge.setCompressionSkipHdr(checked)
                             }
                             HandCheckBox {
                                 text: strings.compress_ten_bit

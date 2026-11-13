@@ -15,6 +15,7 @@ import re
 import subprocess
 import sys
 import threading
+from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from enum import Enum
@@ -72,6 +73,20 @@ ENCODER_LABELS = {
     "libkvazaar": "Kvazaar",
 }
 SPEEDS = ("fast", "balanced", "slow", "slower")
+DEINTERLACE_MODES = ("auto", "off", "on")
+DENOISE_MODES = ("off", "light", "medium", "strong")
+AUDIO_MODES = ("auto", "copy", "aac")
+SUBTITLE_MODES = ("auto", "all", "none")
+HDR_TRANSFERS = ("smpte2084", "arib-std-b67")
+QUALITY_MAX = {"hevc": 51, "h264": 51, "av1": 63}
+COMPRESSION_PRESETS = (
+    "custom",
+    "fast_h264",
+    "balanced_hevc",
+    "quality_hevc",
+    "archive_hevc",
+    "av1_balanced",
+)
 SPEED_NAMES = {
     "fast": "Fast",
     "balanced": "Balanced",
@@ -142,6 +157,12 @@ class CompressionSettings:
     qsv_device: int = -1        # -1 = automático (prefere a GPU dedicada)
     ten_bit: bool = False       # x265/Kvazaar 10-bit
     x265_tuning: bool = False   # aq-mode/psy para máxima qualidade
+    preset: str = "custom"      # preset da UI (não altera o encode sozinho)
+    hdr_tonemap: bool = False   # converte HDR/HLG para SDR bt709
+    deinterlace: str = "auto"   # auto | off | on
+    denoise: str = "off"        # off | light | medium | strong
+    audio_mode: str = "auto"    # auto | copy | aac
+    subtitle_mode: str = "auto"  # auto | all | none
 
 
 def make_item(item_id: int, path: str) -> dict:
@@ -250,7 +271,8 @@ def probe_encoder(encoder: str, qsv_device: int = -1,
             cmd += ["-qsv_device", str(qsv_device)]
         cmd += ["-f", "lavfi", "-i", "color=c=black:s=320x240:r=1:d=0.2"]
         if ten_bit:
-            cmd += ["-pix_fmt", "yuv420p10le"]
+            pixel_format = "p010le" if not encoder.startswith("lib") else "yuv420p10le"
+            cmd += ["-pix_fmt", pixel_format]
         cmd += ["-frames:v", "1", "-c:v", encoder, "-f", "null", "-"]
         try:
             result = subprocess.run(
@@ -303,6 +325,48 @@ def estimate_saving(codec: str, quality: int) -> int:
     """Estimativa grosseira de redução (%) em relação ao original."""
     base = ESTIMATE_BASE.get(codec, 35)
     return max(5, min(85, round(base - (int(quality) - 24) * 1.1)))
+
+
+def quality_max_for_codec(codec: str) -> int:
+    """Faixa de RF/quantização aceita pelo codec (AV1 vai até 63)."""
+    return QUALITY_MAX.get(codec, 51)
+
+
+def is_hdr_video(video: dict | None) -> bool:
+    """True para HDR10/HLG (a transferência é o indicador mais confiável)."""
+    transfer = str((video or {}).get("color_transfer") or "").lower()
+    return transfer in HDR_TRANSFERS
+
+
+def is_interlaced_video(video: dict | None) -> bool:
+    """True quando o ffprobe indica campos entrelaçados."""
+    order = str((video or {}).get("field_order") or "").lower()
+    return order in ("tt", "bb", "tb", "bt")
+
+
+def build_filters(settings: CompressionSettings, video: dict | None) -> str:
+    """Monta a cadeia -vf (desentrelaçar, denoise e tone mapping HDR)."""
+    filters: list[str] = []
+    if settings.deinterlace == "on" or (
+        settings.deinterlace == "auto" and is_interlaced_video(video)
+    ):
+        filters.append("yadif=deint=interlaced")
+    denoise = {
+        "light": "hqdn3d=1.5:1.5:6:6",
+        "medium": "hqdn3d=3:3:12:12",
+        "strong": "hqdn3d=6:6:24:24",
+    }.get(settings.denoise)
+    if denoise:
+        filters.append(denoise)
+    if settings.hdr_tonemap and is_hdr_video(video):
+        # zscale é usado pelo HandBrake/ffmpeg para tone mapping de HDR.
+        filters.append(
+            "zscale=t=linear:npl=100,"
+            "tonemap=hable:desat=0,"
+            "zscale=p=bt709:t=bt709:m=bt709:r=tv,"
+            "format=yuv420p"
+        )
+    return ",".join(filters)
 
 
 def is_integrated_gpu(name: str) -> bool:
@@ -427,43 +491,48 @@ def resolve_qsv_device(preferred: int, devices: list[dict]) -> int:
 # ---------------------------------------------------------------------------
 def video_args(encoder: str, codec: str, quality: int, speed: str,
                ten_bit: bool = False, x265_tuning: bool = False) -> list[str]:
-    q = max(1, min(51, int(quality)))
+    q = max(1, min(quality_max_for_codec(codec), int(quality)))
     speed = speed if speed in SPEEDS else "balanced"
     tag = ["-tag:v", "hvc1"] if codec == "hevc" else []
     preset_x26x = {"fast": "fast", "balanced": "medium",
                    "slow": "slow", "slower": "slower"}[speed]
-    pix = ["-pix_fmt", "yuv420p10le"] if ten_bit else []
+    software_pix = ["-pix_fmt", "yuv420p10le"] if ten_bit else []
+    hardware_pix = ["-pix_fmt", "p010le"] if ten_bit else []
     if encoder == "libkvazaar":
         return ["-c:v", encoder, "-preset", preset_x26x,
-                "-crf", str(q)] + pix + tag
+                "-crf", str(q)] + software_pix + tag
     if encoder.endswith("_qsv"):
         preset = {"fast": "fast", "balanced": "medium",
                   "slow": "slow", "slower": "slower"}[speed]
         return ["-c:v", encoder, "-preset", preset,
-                "-global_quality", str(q)] + tag
+                "-global_quality", str(q)] + hardware_pix + tag
     if encoder.endswith("_nvenc"):
         preset = {"fast": "p3", "balanced": "p5",
                   "slow": "p6", "slower": "p7"}[speed]
         return ["-c:v", encoder, "-gpu", "0", "-preset", preset, "-tune", "hq",
-                "-rc", "vbr", "-cq", str(q), "-b:v", "0"] + tag
+                "-rc", "vbr", "-cq", str(q), "-b:v", "0"] + hardware_pix + tag
     if encoder.endswith("_amf"):
         preset = {"fast": "speed", "balanced": "balanced",
                   "slow": "quality", "slower": "quality"}[speed]
-        return ["-c:v", encoder, "-quality", preset, "-rc", "cqp",
-                "-qp_i", str(q), "-qp_p", str(q)] + tag
+        args = ["-c:v", encoder, "-quality", preset, "-rc", "cqp",
+                "-qp_i", str(q), "-qp_p", str(q)]
+        if encoder != "hevc_amf":
+            # O encoder HEVC da AMF não expõe qp_b no ffmpeg.
+            args += ["-qp_b", str(q)]
+        return args + hardware_pix + tag
     if codec == "av1":
         preset = {"fast": "8", "balanced": "6", "slow": "4", "slower": "2"}[speed]
         if encoder == "libaom-av1":
             return ["-c:v", encoder, "-crf", str(q), "-b:v", "0",
-                    "-cpu-used", preset, "-row-mt", "1"]
-        return ["-c:v", encoder, "-crf", str(q), "-preset", preset]
+                    "-cpu-used", preset, "-row-mt", "1"] + software_pix
+        return ["-c:v", encoder, "-crf", str(q), "-preset", preset] + software_pix
     if encoder == "libx264":
-        return ["-c:v", encoder, "-preset", preset_x26x, "-crf", str(q)]
+        return ["-c:v", encoder, "-preset", preset_x26x, "-crf", str(q)] + software_pix
     params = ["log-level=error"]
     if x265_tuning:
         params += ["aq-mode=3", "psy-rd=2.0", "psy-rdoq=1.0", "deblock=-1,-1"]
     return (["-c:v", encoder, "-preset", preset_x26x, "-crf", str(q),
-             "-x265-params", ":".join(params)] + pix + tag)
+             "-x265-params", ":".join(params)] + software_pix + tag)
 
 
 def probe_media(path: str) -> dict | None:
@@ -506,77 +575,182 @@ def skip_reason(settings: CompressionSettings, probe: dict) -> str:
     source_codec = (video.get("codec_name") or "").lower()
     if source_codec == settings.codec and not settings.reencode_hevc:
         return "already_codec"
-    transfer = (video.get("color_transfer") or "").lower()
-    if settings.skip_hdr and transfer in ("smpte2084", "arib-std-b67"):
+    if settings.skip_hdr and is_hdr_video(video) and not settings.hdr_tonemap:
+        return "hdr"
+    # H.264 não é uma boa escolha para preservar HDR; sem tone mapping,
+    # mantenha o original em vez de gravar metadados HDR num bitstream 8-bit.
+    if is_hdr_video(video) and settings.codec == "h264" and not settings.hdr_tonemap:
         return "hdr"
     return ""
 
 
-def output_path(src: str, codec: str, container: str) -> str:
+def output_path(src: str, codec: str, container: str,
+                suffix: str | None = None) -> str:
     base, _ = os.path.splitext(src)
-    candidate = f"{base}_{codec}.{container}"
+    suffix = suffix or codec
+    candidate = f"{base}_{suffix}.{container}"
     n = 2
     while os.path.exists(candidate):
-        candidate = f"{base}_{codec}-{n}.{container}"
+        candidate = f"{base}_{suffix}-{n}.{container}"
         n += 1
     return candidate
 
 
-def build_args(src: str, tmp: str, settings: CompressionSettings,
-               encoder: str, probe: dict, qsv_device: int = 0) -> list[str]:
-    videos, audios, subs, _duration = analyze(probe)
-    ffmpeg = which("ffmpeg")
-    cmd = [ffmpeg, "-hide_banner", "-nostdin", "-y"]
-    if encoder.endswith("_qsv"):
-        cmd += ["-qsv_device", str(qsv_device)]
-    cmd += ["-progress", "pipe:1", "-nostats", "-i", src,
-            "-map", "0:V:0", "-map", "0:a?"]
-
+def audio_args(settings: CompressionSettings, audios: list,
+               container: str) -> list[str]:
+    """Argumentos de áudio por contêiner, copiando quando possível."""
+    args: list[str] = []
     for i, audio in enumerate(audios):
-        codec = (audio.get("codec_name") or "").lower()
-        if settings.container == "webm":
-            cmd += [f"-c:a:{i}", "libopus", f"-b:a:{i}", "128k"]
-        elif settings.container == "avi":
-            cmd += [f"-c:a:{i}", "libmp3lame", f"-b:a:{i}", "192k"]
-        elif codec in SAFE_AUDIO:
-            cmd += [f"-c:a:{i}", "copy"]
-        else:
-            cmd += [f"-c:a:{i}", "aac", f"-b:a:{i}", "192k"]
+        source = (audio.get("codec_name") or "").lower()
+        try:
+            channels = int(audio.get("channels") or 2)
+        except (TypeError, ValueError):
+            channels = 2
+        bitrate = "320k" if channels > 2 else "192k"
 
+        if container == "webm":
+            if settings.audio_mode != "aac" and source in ("opus", "vorbis"):
+                args += [f"-c:a:{i}", "copy"]
+            else:
+                args += [
+                    f"-c:a:{i}", "libopus", f"-b:a:{i}",
+                    "192k" if channels > 2 else "128k",
+                ]
+            continue
+        if container == "avi":
+            if settings.audio_mode != "aac" and source == "mp3":
+                args += [f"-c:a:{i}", "copy"]
+            else:
+                args += [f"-c:a:{i}", "libmp3lame", f"-b:a:{i}", "192k"]
+            continue
+        # MP4/MOV/MKV
+        if settings.audio_mode == "aac":
+            if source == "aac":
+                args += [f"-c:a:{i}", "copy"]
+            else:
+                args += [f"-c:a:{i}", "aac", f"-b:a:{i}", bitrate]
+        elif settings.audio_mode == "copy" or container == "mkv" or source in SAFE_AUDIO:
+            if container == "mkv" or source in SAFE_AUDIO:
+                args += [f"-c:a:{i}", "copy"]
+            else:
+                args += [f"-c:a:{i}", "aac", f"-b:a:{i}", bitrate]
+        else:
+            args += [f"-c:a:{i}", "aac", f"-b:a:{i}", bitrate]
+    return args
+
+
+def subtitle_args(settings: CompressionSettings, subs: list,
+                  container: str) -> list[str]:
+    """Mapeia legendas e attachments preservando o que o contêiner aceita."""
+    if settings.subtitle_mode == "none" or not subs:
+        return ["-sn"]
     text_subs = [
         i for i, sub in enumerate(subs)
         if (sub.get("codec_name") or "").lower() in TEXT_SUBS
     ]
-    if text_subs and settings.container in ("mp4", "mov"):
+    if container in ("mp4", "mov"):
+        if not text_subs:
+            return ["-sn"]
+        args: list[str] = []
         for i in text_subs:
-            cmd += ["-map", f"0:s:{i}"]
-        cmd += ["-c:s", "mov_text"]
-    elif text_subs and settings.container == "mkv":
+            args += ["-map", f"0:s:{i}"]
+        return args + ["-c:s", "mov_text"]
+    if container == "mkv":
+        selected = text_subs if settings.subtitle_mode == "auto" else list(range(len(subs)))
+        if not selected:
+            return ["-sn"]
+        args = []
+        for i in selected:
+            args += ["-map", f"0:s:{i}"]
+        # Fontes/anexos de ASS/SSA só existem em MKV.
+        return args + ["-c:s", "copy", "-map", "0:t?", "-c:t", "copy"]
+    if container == "webm":
+        if not text_subs:
+            return ["-sn"]
+        args = []
         for i in text_subs:
-            cmd += ["-map", f"0:s:{i}"]
-        cmd += ["-c:s", "copy"]
-    else:
-        cmd += ["-sn"]
+            args += ["-map", f"0:s:{i}"]
+        return args + ["-c:s", "webvtt"]
+    return ["-sn"]
 
-    if videos:
+
+def build_args(src: str, tmp: str, settings: CompressionSettings,
+               encoder: str, probe: dict, qsv_device: int = 0,
+               *, progress_pipe: bool = True,
+               log_level: str = "warning") -> list[str]:
+    videos, audios, subs, _duration = analyze(probe)
+    ffmpeg = which("ffmpeg")
+    cmd = [ffmpeg, "-hide_banner", "-nostdin", "-y", "-loglevel", log_level]
+    if encoder.endswith("_qsv"):
+        cmd += ["-qsv_device", str(qsv_device)]
+    if progress_pipe:
+        cmd += ["-progress", "pipe:1", "-nostats"]
+    cmd += ["-i", src, "-map", "0:V:0", "-map", "0:a?"]
+
+    video = videos[0] if videos else None
+    filters = build_filters(settings, video)
+    if filters:
+        cmd += ["-vf", filters]
+
+    cmd += audio_args(settings, audios, settings.container)
+    cmd += subtitle_args(settings, subs, settings.container)
+
+    if settings.hdr_tonemap and is_hdr_video(video):
+        cmd += [
+            "-color_primaries", "bt709",
+            "-color_trc", "bt709",
+            "-colorspace", "bt709",
+            "-color_range", "tv",
+        ]
+    elif video:
         for source_key, option in (
             ("color_primaries", "-color_primaries"),
             ("color_transfer", "-color_trc"),
             ("color_space", "-colorspace"),
             ("color_range", "-color_range"),
         ):
-            value = str(videos[0].get(source_key) or "").lower()
+            value = str(video.get(source_key) or "").lower()
             if value and value != "unknown":
                 cmd += [option, value]
 
-    cmd += video_args(encoder, settings.codec, settings.quality, settings.speed,
-                      ten_bit=settings.ten_bit, x265_tuning=settings.x265_tuning)
+    preserve_hdr = bool(
+        is_hdr_video(video) and not settings.hdr_tonemap and settings.codec != "h264"
+    )
+    cmd += video_args(
+        encoder, settings.codec, settings.quality, settings.speed,
+        ten_bit=settings.ten_bit or preserve_hdr,
+        x265_tuning=settings.x265_tuning,
+    )
     cmd += ["-map_chapters", "0", "-map_metadata", "0",
             "-max_muxing_queue_size", "4096"]
     if settings.container in ("mp4", "mov"):
         cmd += ["-movflags", "+faststart"]
     cmd.append(tmp)
     return cmd
+
+
+def validate_output(source_probe: dict, output_probe: dict | None,
+                    path: str) -> str:
+    """Valida a saída antes de substituir o original.
+
+    Retorna ``""`` quando ok ou um código curto (``empty``, ``no_video``,
+    ``duration``, ``audio``). A duração é comparada com tolerância de 2% ou
+    2 segundos, o que pega encodes truncados sem rejeitar diferenças normais
+    de container.
+    """
+    if not path or not os.path.isfile(path) or os.path.getsize(path) <= 0:
+        return "empty"
+    out_videos, out_audios, _out_subs, out_duration = analyze(output_probe or {})
+    if not out_videos:
+        return "no_video"
+    _src_videos, src_audios, _src_subs, src_duration = analyze(source_probe or {})
+    if src_duration > 0 and out_duration > 0:
+        tolerance = max(2.0, src_duration * 0.02)
+        if abs(src_duration - out_duration) > tolerance:
+            return "duration"
+    if len(out_audios) < len(src_audios):
+        return "audio"
+    return ""
 
 
 # ---------------------------------------------------------------------------
@@ -741,7 +915,7 @@ class CompressionWorker(QObject):
                 text=True, encoding="utf-8", errors="replace", bufsize=1,
                 **spawn_kwargs(),
             )
-            stderr_lines: list[str] = []
+            stderr_lines: deque[str] = deque(maxlen=400)
 
             def drain() -> None:
                 assert self._proc is not None and self._proc.stderr is not None
@@ -785,10 +959,13 @@ class CompressionWorker(QObject):
                 self.failed.emit(message)
                 return
             out_probe = probe_media(tmp)
-            videos, _a, _s, _d = analyze(out_probe or {})
-            if not os.path.exists(tmp) or not videos or os.path.getsize(tmp) == 0:
+            reason = validate_output(probe, out_probe, tmp)
+            if reason:
+                log.error("saída inválida (%s): %s", reason, tmp)
                 self._safe_remove(tmp)
-                self.failed.emit(self._t("compress_invalid_output"))
+                self.failed.emit(
+                    f"{self._t('compress_invalid_output')} ({reason})"
+                )
                 return
             self.succeeded.emit(tmp, final, size_before, os.path.getsize(tmp))
         except Exception as exc:
@@ -856,11 +1033,24 @@ class CompressionManager(QObject):
 
     # ------------------------------------------------------------- settings
     def apply_settings(self, settings: CompressionSettings) -> None:
-        settings.quality = max(1, min(51, int(settings.quality)))
-        settings.parallel = max(1, min(8, int(settings.parallel)))
-        settings.speed = settings.speed if settings.speed in SPEEDS else "balanced"
         if settings.codec not in CODECS:
             settings.codec = "hevc"
+        settings.quality = max(
+            1, min(quality_max_for_codec(settings.codec), int(settings.quality))
+        )
+        settings.parallel = max(1, min(8, int(settings.parallel)))
+        settings.speed = settings.speed if settings.speed in SPEEDS else "balanced"
+        settings.deinterlace = (
+            settings.deinterlace if settings.deinterlace in DEINTERLACE_MODES else "auto"
+        )
+        settings.denoise = settings.denoise if settings.denoise in DENOISE_MODES else "off"
+        settings.audio_mode = settings.audio_mode if settings.audio_mode in AUDIO_MODES else "auto"
+        settings.subtitle_mode = (
+            settings.subtitle_mode
+            if settings.subtitle_mode in SUBTITLE_MODES
+            else "auto"
+        )
+        settings.preset = settings.preset if settings.preset in COMPRESSION_PRESETS else "custom"
         if settings.container not in CONTAINERS[settings.codec]:
             settings.container = DEFAULT_CONTAINERS[settings.codec]
         self.settings = settings
@@ -1027,9 +1217,10 @@ class CompressionManager(QObject):
                 break
             self._launch(item)
 
-    def _encoder_label(self) -> str:
-        label = ENCODER_LABELS.get(self._encoder, self._encoder)
-        if self._encoder.endswith("_qsv") and self.qsv_devices:
+    def _encoder_label(self, encoder: str | None = None) -> str:
+        encoder = encoder or self._encoder
+        label = ENCODER_LABELS.get(encoder, encoder)
+        if encoder.endswith("_qsv") and self.qsv_devices:
             device = next(
                 (d for d in self.qsv_devices if d["index"] == self._qsv_device),
                 None,
@@ -1038,17 +1229,41 @@ class CompressionManager(QObject):
                 label = f"{label} · {device['name']}"
         return label
 
+    def _encoder_for_job(self, settings: CompressionSettings) -> str:
+        """Resolve o encoder para um job, sem reutilizar a escolha antiga.
+
+        Mudar o codec com a fila ativa precisa usar o encoder correspondente;
+        o encoder global escolhido no ``start`` não pode vazar para o job.
+        """
+        encoder = resolve_encoder(settings, self.available)
+        if encoder and not encoder.startswith("lib"):
+            device = self._qsv_device if encoder.endswith("_qsv") else -1
+            if not probe_encoder(encoder, device, settings.ten_bit):
+                fallback = pick_encoder("software", settings.codec, self.available)
+                log.warning(
+                    "encoder %s falhou no teste para o job; usando %s",
+                    encoder,
+                    fallback or "nenhum",
+                )
+                encoder = fallback
+        return encoder
+
     def _launch(self, item: dict) -> None:
         item["status"] = CompressStatus.ANALYZING
-        item["encoder"] = self._encoder_label()
         # Snapshot: mudar opções na UI não pode alterar um encode em curso
         # nem a decisão de apagar/substituir o original no fim.
         job_settings = replace(self.settings)
+        encoder = self._encoder_for_job(job_settings)
+        if not encoder:
+            item["error"] = self._t("err_ffmpeg_missing")
+            self._set_status(item, CompressStatus.ERROR)
+            return
+        item["encoder"] = self._encoder_label(encoder)
         self._job_settings[item["id"]] = job_settings
         self._touch(item)
         thread = QThread(self)
         worker = self._worker_factory(
-            item["input"], job_settings, self._encoder, self._t,
+            item["input"], job_settings, encoder, self._t,
             qsv_device=self._qsv_device,
         )
         worker.moveToThread(thread)

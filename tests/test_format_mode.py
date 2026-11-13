@@ -109,7 +109,7 @@ def test_compress_noop_when_copy(tmp_path):
 
 def test_compress_runs_ffmpeg_h264(monkeypatch, tmp_path):
     src = tmp_path / "a.mp4"
-    src.write_bytes(b"orig")
+    src.write_bytes(b"orig" * 100)
     w = DownloadWorker("https://x.com/v", "out", codec="h264",
                        compress_level="strong", container="mp4")
     monkeypatch.setattr("hlsdl.downloader.which", lambda name: "/usr/bin/ffmpeg")
@@ -163,6 +163,13 @@ def test_compress_cancelled_returns_none(monkeypatch, tmp_path):
     w = DownloadWorker("https://x.com/v", "out", codec="h264")
     monkeypatch.setattr("hlsdl.downloader.which", lambda name: "/usr/bin/ffmpeg")
     monkeypatch.setattr("hlsdl.downloader.probe_duration", lambda p: 10.0)
+    monkeypatch.setattr(
+        "hlsdl.downloader.probe_media",
+        lambda p: {
+            "streams": [{"codec_type": "video", "codec_name": "h264"}],
+            "format": {"duration": "1"},
+        },
+    )
 
     def fake_run(cmd, duration=None, is_ffmpeg=False):
         w._cancel = True
