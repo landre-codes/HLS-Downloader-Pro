@@ -315,6 +315,17 @@ ApplicationWindow {
         return (i === 0 ? n.toFixed(0) : n.toFixed(1)) + " " + units[i]
     }
 
+    function formatBitrate(value) {
+        var n = Number(value) || 0
+        if (n <= 0)
+            return "—"
+        if (n >= 1000000)
+            return (n / 1000000).toFixed(1) + " Mb/s"
+        if (n >= 1000)
+            return Math.round(n / 1000) + " kb/s"
+        return Math.round(n) + " b/s"
+    }
+
     function isVideoPath(path) {
         var p = String(path).toLowerCase()
         return p.endsWith(".mp4") || p.endsWith(".mkv") || p.endsWith(".mov")

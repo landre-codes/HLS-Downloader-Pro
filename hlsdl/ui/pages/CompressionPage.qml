@@ -23,7 +23,7 @@ import "../components"
                     Layout.preferredHeight: Math.max(
                         280,
                         Math.min(
-                            appRoot.height - 300,
+                            appRoot.height - 440,
                             32 + compHeader.implicitHeight + 12
                             + compPresetRow.implicitHeight + 12
                             + compTabsRow.implicitHeight + 12
@@ -758,7 +758,7 @@ import "../components"
                 Rectangle {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    Layout.minimumHeight: 150
+                    Layout.minimumHeight: 210
                     radius: 12
                     color: appRoot.theme.cardBg
                     border.color: appRoot.theme.cardBorder
@@ -775,6 +775,7 @@ import "../components"
                             AppHintField {
                                 id: compFilter
                                 Layout.preferredWidth: 280
+                                Layout.preferredHeight: 38
                                 hint: strings.filter_placeholder
                                 leadingIcon: appRoot.iconPath("search")
                                 selectByMouse: true
@@ -824,7 +825,7 @@ import "../components"
                                 Item { Layout.fillWidth: true; Layout.minimumWidth: 160 }
                                 Label { text: strings.h_status; Layout.preferredWidth: 110; font.pixelSize: 13; font.bold: true; color: appRoot.theme.tableHeaderText }
                                 Label { text: strings.h_progress; Layout.preferredWidth: 150; font.pixelSize: 13; font.bold: true; color: appRoot.theme.tableHeaderText; horizontalAlignment: Text.AlignHCenter }
-                                Label { text: strings.compress_col_result; Layout.preferredWidth: 190; font.pixelSize: 13; font.bold: true; color: appRoot.theme.tableHeaderText }
+                                Label { text: strings.compress_col_result; Layout.preferredWidth: 220; font.pixelSize: 13; font.bold: true; color: appRoot.theme.tableHeaderText }
                                 Item { Layout.preferredWidth: 108 }
                             }
                         }
@@ -934,31 +935,67 @@ import "../components"
                                         }
                                     }
                                     Column {
-                                        Layout.preferredWidth: 190
+                                        Layout.preferredWidth: 220
                                         spacing: 2
                                         Label {
                                             width: parent.width
-                                            text: appRoot.formatBytes(model.sizeBefore) + " → "
-                                                  + (model.sizeAfter > 0 ? appRoot.formatBytes(model.sizeAfter) : "—")
+                                            text: appRoot.formatBytes(model.sizeBefore) + " \u2192 "
+                                                  + (model.sizeAfter > 0 ? appRoot.formatBytes(model.sizeAfter) : "-")
                                             font.pixelSize: 11
                                             elide: Text.ElideRight
                                         }
                                         Label {
                                             width: parent.width
-                                            text: model.saving > 0
-                                                  ? (model.saving + "% " + strings.compress_saving)
-                                                  : (model.error.length > 0 ? model.error : model.speed)
+                                            text: {
+                                                if (model.error.length > 0)
+                                                    return model.error
+                                                var parts = []
+                                                if (model.saving > 0)
+                                                    parts.push(model.saving + "%")
+                                                if (model.ssim > 0)
+                                                    parts.push("SSIM " + Number(model.ssim).toFixed(3))
+                                                if (model.bitrateAfter > 0)
+                                                    parts.push(appRoot.formatBitrate(model.bitrateAfter))
+                                                return parts.length > 0 ? parts.join(" ? ") : model.speed
+                                            }
                                             font.pixelSize: 10
                                             color: compRow.st === "error"
-                                                   ? (appRoot.theme.errorText)
-                                                   : appRoot.theme.textSecondary
+                                                   ? appRoot.theme.errorText
+                                                   : (model.qualityWarning.length > 0
+                                                      ? appRoot.theme.warningText
+                                                      : appRoot.theme.textSecondary)
                                             elide: Text.ElideRight
                                             HoverHandler { id: compErrHover }
-                                            ToolTip.text: model.error
-                                                + (model.backup !== "" ? "\n" + strings.compress_backup_kept + ": " + model.backup : "")
-                                                + (model.sha256 !== "" ? "\n" + strings.compress_hash + ": " + model.sha256 : "")
+                                            ToolTip.text: {
+                                                var lines = []
+                                                if (model.error.length > 0)
+                                                    lines.push(model.error)
+                                                if (model.bitrateBefore > 0 || model.bitrateAfter > 0)
+                                                    lines.push("Bitrate: " + appRoot.formatBitrate(model.bitrateBefore)
+                                                               + " -> " + appRoot.formatBitrate(model.bitrateAfter))
+                                                if (model.widthBefore > 0 || model.widthAfter > 0)
+                                                    lines.push(model.widthBefore + "x" + model.heightBefore
+                                                               + " -> " + model.widthAfter + "x" + model.heightAfter)
+                                                if (model.ssim > 0)
+                                                    lines.push("SSIM: " + Number(model.ssim).toFixed(3))
+                                                if (model.qualityWarning.length > 0)
+                                                    lines.push(strings.compress_quality_bitrate_warning)
+                                                if (model.saving > 0)
+                                                    lines.push(model.saving + "% " + strings.compress_saving)
+                                                if (model.backup !== "")
+                                                    lines.push(strings.compress_backup_kept + ": " + model.backup)
+                                                if (model.sha256 !== "")
+                                                    lines.push(strings.compress_hash + ": " + model.sha256)
+                                                return lines.join("\n")
+                                            }
                                             ToolTip.visible: compErrHover.hovered
-                                                             && (model.error.length > 0 || model.backup !== "" || model.sha256 !== "")
+                                                             && (model.error.length > 0
+                                                                 || model.bitrateBefore > 0
+                                                                 || model.bitrateAfter > 0
+                                                                 || model.ssim > 0
+                                                                 || model.qualityWarning.length > 0
+                                                                 || model.backup !== ""
+                                                                 || model.sha256 !== "")
                                             ToolTip.delay: 400
                                         }
                                     }

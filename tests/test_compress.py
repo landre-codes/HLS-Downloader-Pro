@@ -10,6 +10,7 @@ import pytest
 from hlsdl import compress as compress_module
 from hlsdl.bridge import Bridge
 from hlsdl.compress import (
+    SSIM_MIN,
     CompressionManager,
     CompressionModel,
     CompressionSettings,
@@ -17,6 +18,7 @@ from hlsdl.compress import (
     CompressStatus,
     analyze,
     build_args,
+    build_quality_report,
     detect_encoders,
     detect_qsv_devices,
     estimate_saving,
@@ -28,6 +30,7 @@ from hlsdl.compress import (
     resolve_encoder,
     resolve_qsv_device,
     skip_reason,
+    validate_visual_quality_report,
     video_args,
 )
 from hlsdl.downloader import DownloadWorker  # noqa: F401  (garante import limpo)
@@ -61,6 +64,71 @@ def test_auto_prefers_discrete_gpu_encoders():
     assert resolve_encoder(settings, only_qsv) == "hevc_qsv"
     # Codec sem encoder de hardware cai para software.
     assert resolve_encoder(settings, {"libx264"}, codec="h264") == "libx264"
+
+
+def test_quality_report_flags_extreme_bitrate_drop():
+    source = {
+        "streams": [{
+            "codec_type": "video", "codec_name": "h264",
+            "width": 1920, "height": 1080, "avg_frame_rate": "30/1",
+        }],
+        "format": {"duration": "10", "bit_rate": "15000000"},
+    }
+    output = {
+        "streams": [{
+            "codec_type": "video", "codec_name": "hevc",
+            "width": 1920, "height": 1080, "avg_frame_rate": "30/1",
+        }],
+        "format": {"duration": "10", "bit_rate": "450000"},
+    }
+    report = build_quality_report(
+        source, output, CompressionSettings(), 18_750_000, 562_500, 10.0, 0.95
+    )
+    assert report["bitrate_before"] == 15_000_000
+    assert report["bitrate_after"] == 450_000
+    assert report["quality_warning"] == "bitrate_drop"
+
+
+def test_quality_report_does_not_warn_when_scaled():
+    source = {
+        "streams": [{
+            "codec_type": "video", "codec_name": "h264",
+            "width": 1920, "height": 1080, "avg_frame_rate": "30/1",
+        }],
+        "format": {"duration": "10", "bit_rate": "15000000"},
+    }
+    output = {
+        "streams": [{
+            "codec_type": "video", "codec_name": "hevc",
+            "width": 1280, "height": 720, "avg_frame_rate": "30/1",
+        }],
+        "format": {"duration": "10", "bit_rate": "450000"},
+    }
+    report = build_quality_report(
+        source, output, CompressionSettings(scale_width=1280), 18_750_000,
+        562_500, 10.0, 0.95,
+    )
+    assert report["quality_warning"] == ""
+
+
+def test_visual_quality_report_rejects_below_ssim_min(monkeypatch):
+    import hlsdl.compress as compress_module
+
+    monkeypatch.setattr(
+        compress_module, "sampled_ssim", lambda *args: SSIM_MIN - 0.01
+    )
+    probe = {
+        "streams": [{
+            "codec_type": "video", "codec_name": "h264",
+            "width": 1920, "height": 1080, "field_order": "progressive",
+        }],
+        "format": {"duration": "10"},
+    }
+    reason, score = validate_visual_quality_report(
+        "source.mp4", "output.mp4", CompressionSettings(), probe
+    )
+    assert reason == "quality"
+    assert score is not None and score < SSIM_MIN
 
 
 def test_estimate_saving_order():

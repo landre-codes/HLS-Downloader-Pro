@@ -49,6 +49,8 @@ from .jobs import JobThreadRegistry
 from .media import (
     HDR_TRANSFERS,
     hdr_metadata,
+    media_summary,
+    parse_fraction,
     sampled_ssim,
     stream_duration,
     x265_hdr_params,
@@ -102,6 +104,9 @@ DENOISE_MODES = ("off", "light", "medium", "strong")
 AUDIO_MODES = ("auto", "copy", "aac")
 SUBTITLE_MODES = ("auto", "all", "none")
 QUALITY_MAX = {"hevc": 51, "h264": 51, "av1": 63}
+# SSIM minimo para reencodes sem filtros que alteram pixels. 0.90 e um
+# piso conservador; o valor antigo (0.78) aceitava perdas visiveis.
+SSIM_MIN = 0.90
 COMPRESSION_PRESETS = (
     "custom",
     "fast_h264",
@@ -246,6 +251,14 @@ def make_item(item_id: int, path: str) -> dict:
         "backup": "",
         "sha256": "",
         "validation": "",
+        "bitrate_before": 0,
+        "bitrate_after": 0,
+        "ssim": 0.0,
+        "quality_warning": "",
+        "width_before": 0,
+        "height_before": 0,
+        "width_after": 0,
+        "height_after": 0,
     }
 
 
@@ -894,28 +907,105 @@ def _int_or_zero(value) -> int:
         return 0
 
 
-def validate_visual_quality(source_path: str, output_path: str,
-                            settings: CompressionSettings,
-                            source_probe: dict | None) -> str:
-    """Sampled SSIM gate for encodes that do not intentionally alter pixels."""
+def validate_visual_quality_report(source_path: str, output_path: str,
+                                   settings: CompressionSettings,
+                                   source_probe: dict | None
+                                   ) -> tuple[str, float | None]:
+    """Retorna (motivo, SSIM) para reencodes sem filtros de pixels."""
     if not settings.quality_check:
-        return ""
+        return "", None
     videos, _audios, _subs, _duration = analyze(source_probe or {})
     if not videos:
-        return ""
+        return "", None
     if (settings.hdr_tonemap or settings.denoise != "off"
             or settings.crop or settings.scale_width or settings.scale_height
             or settings.rotate in (90, 180, 270)):
-        return ""  # filters/geometry intentionally change pixels
+        return "", None  # filtros/geometria alteram pixels de proposito
     if settings.deinterlace == "on" or (
         settings.deinterlace == "auto" and is_interlaced_video(videos[0])
     ):
-        return ""
+        return "", None
     score = sampled_ssim(source_path, output_path)
-    if score is not None and score < 0.78:
-        log.warning("SSIM baixo (%.3f): %s -> %s", score, source_path, output_path)
-        return "quality"
-    return ""
+    if score is not None and score < SSIM_MIN:
+        log.warning("SSIM baixo (%.3f, minimo %.2f): %s -> %s",
+                    score, SSIM_MIN, source_path, output_path)
+        return "quality", score
+    return "", score
+
+
+def validate_visual_quality(source_path: str, output_path: str,
+                            settings: CompressionSettings,
+                            source_probe: dict | None) -> str:
+    """Wrapper legado: retorna o motivo do gate SSIM."""
+    return validate_visual_quality_report(
+        source_path, output_path, settings, source_probe
+    )[0]
+
+
+def _bitrate_bps(summary: dict, size: int, duration: float) -> int:
+    """Bitrate total em bps: usa o container e cai para tamanho/duracao."""
+    try:
+        value = int(summary.get("bit_rate") or 0)
+    except (TypeError, ValueError):
+        value = 0
+    if value > 0:
+        return value
+    if size > 0 and duration > 0:
+        return max(0, int(size * 8 / duration))
+    return 0
+
+
+def build_quality_report(source_probe: dict, output_probe: dict | None,
+                         settings: CompressionSettings, size_before: int,
+                         size_after: int, duration: float,
+                         ssim: float | None) -> dict:
+    """Resumo de qualidade exibido na UI e usado para avisos."""
+    src_videos, _src_audios, _src_subs, src_duration = analyze(source_probe or {})
+    out_videos, _out_audios, _out_subs, out_duration = analyze(output_probe or {})
+    source_summary = media_summary(source_probe)
+    output_summary = media_summary(output_probe)
+    reference = float(duration or src_duration or 0)
+    output_seconds = float(out_duration or reference)
+    bitrate_before = _bitrate_bps(source_summary, size_before, reference)
+    bitrate_after = _bitrate_bps(output_summary, size_after, output_seconds)
+    source_video = src_videos[0] if src_videos else {}
+    output_video = out_videos[0] if out_videos else {}
+    width_before = _int_or_zero(source_video.get("width"))
+    height_before = _int_or_zero(source_video.get("height"))
+    width_after = _int_or_zero(output_video.get("width"))
+    height_after = _int_or_zero(output_video.get("height"))
+    same_resolution = (
+        not width_before or not height_before or not width_after or not height_after
+        or (width_before, height_before) == (width_after, height_after)
+    )
+    source_fps = parse_fraction(str(source_video.get("avg_frame_rate") or ""))
+    output_fps = parse_fraction(str(output_video.get("avg_frame_rate") or ""))
+    same_fps = (
+        not source_fps or not output_fps
+        or abs(source_fps - output_fps) <= 0.01
+    )
+    intentional_pixels = bool(
+        settings.hdr_tonemap or settings.denoise != "off"
+        or settings.crop or settings.scale_width or settings.scale_height
+        or settings.rotate in (90, 180, 270) or settings.fps
+        or settings.deinterlace == "on"
+        or (settings.deinterlace == "auto" and is_interlaced_video(source_video))
+    )
+    warning = ""
+    if (bitrate_before > 0 and bitrate_after > 0
+            and bitrate_after < bitrate_before * 0.35
+            and same_resolution and same_fps and not intentional_pixels):
+        warning = "bitrate_drop"
+    return {
+        "bitrate_before": bitrate_before,
+        "bitrate_after": bitrate_after,
+        "width_before": width_before,
+        "height_before": height_before,
+        "width_after": width_after,
+        "height_after": height_after,
+        "ssim": float(ssim) if ssim is not None else 0.0,
+        "quality_warning": warning,
+    }
 
 
 def validate_output_quality(source_probe: dict, output_probe: dict | None,
@@ -1039,6 +1129,14 @@ class CompressionModel(QAbstractListModel):
     BACKUP = int(Qt.ItemDataRole.UserRole) + 13
     SHA256 = int(Qt.ItemDataRole.UserRole) + 14
     VALIDATION = int(Qt.ItemDataRole.UserRole) + 15
+    BITRATE_BEFORE = int(Qt.ItemDataRole.UserRole) + 16
+    BITRATE_AFTER = int(Qt.ItemDataRole.UserRole) + 17
+    SSIM = int(Qt.ItemDataRole.UserRole) + 18
+    QUALITY_WARNING = int(Qt.ItemDataRole.UserRole) + 19
+    WIDTH_BEFORE = int(Qt.ItemDataRole.UserRole) + 20
+    HEIGHT_BEFORE = int(Qt.ItemDataRole.UserRole) + 21
+    WIDTH_AFTER = int(Qt.ItemDataRole.UserRole) + 22
+    HEIGHT_AFTER = int(Qt.ItemDataRole.UserRole) + 23
 
     def __init__(self, items: list[dict] | None = None, parent: QObject | None = None):
         super().__init__(parent)
@@ -1056,6 +1154,14 @@ class CompressionModel(QAbstractListModel):
             self.ENCODER: b"encoder", self.ERROR: b"error",
             self.OUTPUT: b"output", self.BACKUP: b"backup",
             self.SHA256: b"sha256", self.VALIDATION: b"validation",
+            self.BITRATE_BEFORE: b"bitrateBefore",
+            self.BITRATE_AFTER: b"bitrateAfter",
+            self.SSIM: b"ssim",
+            self.QUALITY_WARNING: b"qualityWarning",
+            self.WIDTH_BEFORE: b"widthBefore",
+            self.HEIGHT_BEFORE: b"heightBefore",
+            self.WIDTH_AFTER: b"widthAfter",
+            self.HEIGHT_AFTER: b"heightAfter",
         }
 
     def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:
@@ -1094,6 +1200,22 @@ class CompressionModel(QAbstractListModel):
             return item.get("sha256", "")
         if role == self.VALIDATION:
             return item.get("validation", "")
+        if role == self.BITRATE_BEFORE:
+            return int(item.get("bitrate_before", 0))
+        if role == self.BITRATE_AFTER:
+            return int(item.get("bitrate_after", 0))
+        if role == self.SSIM:
+            return round(float(item.get("ssim", 0.0)), 4)
+        if role == self.QUALITY_WARNING:
+            return item.get("quality_warning", "")
+        if role == self.WIDTH_BEFORE:
+            return int(item.get("width_before", 0))
+        if role == self.HEIGHT_BEFORE:
+            return int(item.get("height_before", 0))
+        if role == self.WIDTH_AFTER:
+            return int(item.get("width_after", 0))
+        if role == self.HEIGHT_AFTER:
+            return int(item.get("height_after", 0))
         if role == self.ID:
             return item.get("id", 0)
         return None
@@ -1134,6 +1256,7 @@ class CompressionWorker(QObject):
     succeeded = Signal(str, str, int, int)
     # New transactional signal: final, backup, before, after, sha256, validation
     completed = Signal(str, str, int, int, str, str)
+    qualityReport = Signal(object)
     skipped = Signal(str)
     failed = Signal(str)
     cancelled = Signal()
@@ -1278,7 +1401,7 @@ class CompressionWorker(QObject):
                     f"{self._t('compress_invalid_output')} ({reason})"
                 )
                 return
-            visual_reason = validate_visual_quality(
+            visual_reason, ssim_score = validate_visual_quality_report(
                 self.src, temp, self.settings, probe
             )
             if visual_reason:
@@ -1296,6 +1419,10 @@ class CompressionWorker(QObject):
                 self._cleanup(temp, final, journal)
                 self.skipped.emit(self._t("compress_no_gain"))
                 return
+            quality = build_quality_report(
+                probe, out_probe, self.settings, size_before, size_after,
+                duration, ssim_score,
+            )
             self.statusChanged.emit(CompressStatus.VERIFYING.value)
             self.progressChanged.emit(99.0, "—")
             expected_hash = sha256_file(temp)
@@ -1322,6 +1449,7 @@ class CompressionWorker(QObject):
             )
             installed = True
             output_hash = expected_hash
+            self.qualityReport.emit(quality)
             try:
                 source_key = "file:" + hashlib.sha256(
                     os.path.abspath(self.src).lower().encode("utf-8", "replace")
@@ -1684,6 +1812,12 @@ class CompressionManager(QObject):
         item["backup"] = ""
         item["sha256"] = ""
         item["validation"] = ""
+        for key in (
+            "bitrate_before", "bitrate_after", "quality_warning",
+            "width_before", "height_before", "width_after", "height_after",
+        ):
+            item[key] = 0 if key != "quality_warning" else ""
+        item["ssim"] = 0.0
         item["progress"] = 0.0
         item["speed"] = "—"
         item["saving"] = 0.0
@@ -1796,6 +1930,7 @@ class CompressionManager(QObject):
         worker.statusChanged.connect(self._worker_status)
         worker.progressChanged.connect(self._worker_progress)
         worker.completed.connect(self._worker_completed)
+        worker.qualityReport.connect(self._worker_quality)
         worker.skipped.connect(self._worker_skipped)
         worker.failed.connect(self._worker_failed)
         worker.cancelled.connect(self._worker_cancelled)
@@ -1838,6 +1973,19 @@ class CompressionManager(QObject):
         item = self._sender_item()
         if item is not None:
             self._on_completed(item, final, backup, before, after, sha256, validation)
+
+    @Slot(object)
+    def _worker_quality(self, report: dict) -> None:
+        item = self._sender_item()
+        if item is None or not isinstance(report, dict):
+            return
+        for key in (
+            "bitrate_before", "bitrate_after", "ssim", "quality_warning",
+            "width_before", "height_before", "width_after", "height_after",
+        ):
+            if key in report:
+                item[key] = report[key]
+        self._touch(item)
 
     @Slot(str)
     def _worker_skipped(self, reason: str) -> None:
