@@ -549,62 +549,27 @@ ApplicationWindow {
             Item { Layout.fillWidth: true }
             Rectangle { width: 1; height: 18; color: root.theme.divider }
 
-            Rectangle {
-                id: minBtn
-                width: 46; height: 30; radius: 6
-                color: minHov.containsMouse ? (root.theme.hover) : "transparent"
-                Accessible.role: Accessible.Button
-                Accessible.name: strings.win_minimize
-                ToolTip.text: strings.win_minimize
-                ToolTip.visible: minHov.containsMouse
-                ToolTip.delay: 500
-                Label { anchors.centerIn: parent; text: "—"; font.pixelSize: 14; color: root.theme.text }
-                MouseArea {
-                    id: minHov
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: root.showMinimized()
-                }
+            TitleBarButton {
+                theme: root.theme
+                kind: "minimize"
+                tip: strings.win_minimize
+                onClicked: root.showMinimized()
             }
-            Rectangle {
+            TitleBarButton {
                 id: maxBtn
-                width: 46; height: 30; radius: 6
-                color: maxHov.containsMouse ? (root.theme.hover) : "transparent"
-                Accessible.role: Accessible.Button
-                Accessible.name: strings.win_maximize
-                ToolTip.text: strings.win_maximize
-                ToolTip.visible: maxHov.containsMouse
-                ToolTip.delay: 500
-                Label { anchors.centerIn: parent; text: root.visibility === Window.Maximized ? "❐" : "▢"; font.pixelSize: 14; color: root.theme.text }
-                MouseArea {
-                    id: maxHov; anchors.fill: parent; hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: root.toggleMaximize()
-                }
+                theme: root.theme
+                kind: root.visibility === Window.Maximized ? "restore" : "maximize"
+                tip: root.visibility === Window.Maximized
+                     ? strings.win_restore
+                     : strings.win_maximize
+                onClicked: root.toggleMaximize()
             }
-            Rectangle {
-                id: closeBtn
-                width: 46; height: 30; radius: 6
-                color: closeHov.containsMouse ? root.theme.dangerFill : "transparent"
-                Accessible.role: Accessible.Button
-                Accessible.name: strings.win_close
-                ToolTip.text: strings.win_close
-                ToolTip.visible: closeHov.containsMouse
-                ToolTip.delay: 500
-                Label {
-                    anchors.centerIn: parent
-                    text: "✕"
-                    font.pixelSize: 14
-                    color: closeHov.containsMouse ? root.theme.onAccent : root.theme.text
-                }
-                MouseArea {
-                    id: closeHov
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: root.close()
-                }
+            TitleBarButton {
+                theme: root.theme
+                kind: "close"
+                danger: true
+                tip: strings.win_close
+                onClicked: root.close()
             }
         }
     }

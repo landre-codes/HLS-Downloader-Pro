@@ -28,6 +28,7 @@ e o versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 - Presets agora resetam filtros/políticas e permanecem selecionados; alterações individuais marcam “Personalizado”.
 - Atualização de dependências bloqueada com jobs ativos e PySide6 não é mais atualizado in-process.
 - Extração de ffmpeg/ffprobe e downloads de ferramentas agora são atômicas.
+- **Barra de título**: botões de minimizar/maximizar/restaurar/fechar redesenhados com ícones vetoriais consistentes, estado de restaurar correto ao maximizar, cursor de mão, foco removido e tooltips traduzidos em todos os botões.
 - **Aba Compressão redesenhada**: opções divididas em **Geral**, **Vídeo**, **Áudio e legendas** e **Avançado**, com grid responsivo (2–4 colunas), presets sempre visíveis, altura adaptativa ao conteúdo da seção e mais espaço para a fila. As abas internas usam o mesmo `TabBar`/`AppTabButton` das abas superiores.
 - `pyproject.toml` inclui `hlsdl.bridge_parts` e todo o QML modular no pacote instalável.
 
