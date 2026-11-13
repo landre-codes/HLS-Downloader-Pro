@@ -150,6 +150,21 @@ def test_build_args_includes_qsv_device():
     assert cmd[cmd.index("-qsv_device") + 1] == "1"
 
 
+def test_build_args_omits_invalid_color_metadata():
+    probe = {
+        "streams": [{
+            "codec_type": "video", "codec_name": "h264",
+            "color_primaries": "reserved", "color_transfer": "reserved",
+            "color_space": "reserved", "color_range": "reserved",
+        }],
+        "format": {"duration": "1"},
+    }
+    settings = CompressionSettings(codec="hevc", skip_hdr=False)
+    cmd = build_args("in.mp4", "out.mp4", settings, "hevc_qsv", probe)
+    for option in ("-color_primaries", "-color_trc", "-colorspace", "-color_range"):
+        assert option not in cmd
+
+
 def test_build_args_preserves_hdr_metadata():
     probe = {
         "streams": [{

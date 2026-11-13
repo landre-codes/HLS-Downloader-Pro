@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import stat
 
 from hlsdl.downloader import DownloadWorker
 from hlsdl.integrity import (
@@ -44,6 +45,8 @@ def test_completion_roundtrip_and_hash_verification(tmp_path, monkeypatch):
     assert record.sha256 == sha256_file(str(media))
     sidecar = write_completion(str(media), record)
     assert os.path.exists(sidecar)
+    if os.name == "nt":
+        assert os.stat(sidecar).st_file_attributes & stat.FILE_ATTRIBUTE_HIDDEN
     loaded = read_completion(str(media))
     assert loaded is not None and loaded.source_key == "youtube:abc"
     ok, reason = verify_completion(str(media))

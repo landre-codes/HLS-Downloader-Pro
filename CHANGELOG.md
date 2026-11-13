@@ -28,6 +28,7 @@ e o versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 - Presets agora resetam filtros/políticas e permanecem selecionados; alterações individuais marcam “Personalizado”.
 - Atualização de dependências bloqueada com jobs ativos e PySide6 não é mais atualizado in-process.
 - Extração de ffmpeg/ffprobe e downloads de ferramentas agora são atômicas.
+- **Metadados de cor inválidos**: tags `reserved`/`unknown`/`unspecified` deixam de ser repassadas como `-color_primaries`/`-color_trc`/`-colorspace`/`-color_range`; isso corrige a falha do `hevc_qsv` (`Unable to parse "color_primaries" option value "reserved"`).
 - **Barra de título**: botões de minimizar/maximizar/restaurar/fechar redesenhados com ícones vetoriais consistentes, estado de restaurar correto ao maximizar, cursor de mão, foco removido e tooltips traduzidos em todos os botões.
 - **Aba Compressão redesenhada**: opções divididas em **Geral**, **Vídeo**, **Áudio e legendas** e **Avançado**, com grid responsivo (2–4 colunas), presets sempre visíveis, altura adaptativa ao conteúdo da seção e mais espaço para a fila. As abas internas usam o mesmo `TabBar`/`AppTabButton` das abas superiores.
 - `pyproject.toml` inclui `hlsdl.bridge_parts` e todo o QML modular no pacote instalável.
@@ -39,6 +40,8 @@ e o versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 - **Mapeamento QSV**: o regex aceita o BDF completo (`0000:00:02.0`), então GPUs Intel Arc/UHD voltam a ser associadas ao índice `-qsv_device` correto.
 - **Economia estimada**: a estimativa agora cresce com o RF/quantização (arquivo menor); antes estava invertida e reduzia a economia ao aumentar o RF.
 - **Download de atualização atômico**: o instalador é gravado em `.part`, verificado por SHA-256 e só então movido para o nome final; falhas removem o parcial.
+- **Filtro na fila de compressão**: busca por nome, caminho ou encoder, com limpar e mensagem de “nenhum resultado”.
+- **Sidecars JSON ocultos**: os `.hlsdl.json` de integridade continuam ao lado da mídia para portabilidade, mas recebem atributo oculto no Windows.
 
 ## [Não lançado] — integridade, similares e recuperação
 

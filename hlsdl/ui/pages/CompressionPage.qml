@@ -9,6 +9,7 @@ import "../components"
     property var appRoot
     property var strings: ({})
     property int compSection: 0
+    property string compFilterText: ""
     readonly property real compContentHeight: compStack.children[compStack.currentIndex]
                                                  ? compStack.children[compStack.currentIndex].implicitHeight : 0
 
@@ -766,7 +767,48 @@ import "../components"
                         anchors.fill: parent
                         anchors.margins: 12
                         spacing: 8
-                        Label { text: strings.compress_queue; font.pixelSize: 15; font.weight: Font.DemiBold }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+                            Label { text: strings.compress_queue; font.pixelSize: 15; font.weight: Font.DemiBold }
+                            Item { Layout.fillWidth: true }
+                            AppHintField {
+                                id: compFilter
+                                Layout.preferredWidth: 280
+                                hint: strings.filter_placeholder
+                                leadingIcon: appRoot.iconPath("search")
+                                selectByMouse: true
+                                ToolTip.text: strings.filter_tip
+                                ToolTip.visible: hovered
+                                ToolTip.delay: 500
+                                onTextChanged: {
+                                    if (text.length === 0) {
+                                        compFilterDebounce.stop()
+                                        page.compFilterText = ""
+                                    } else {
+                                        compFilterDebounce.restart()
+                                    }
+                                }
+                            }
+                            Timer {
+                                id: compFilterDebounce
+                                interval: 220
+                                onTriggered: page.compFilterText = compFilter.text.toLowerCase()
+                            }
+                            AppToolButton {
+                                display: AbstractButton.IconOnly
+                                icon.source: appRoot.iconPath("cancel")
+                                icon.width: 14
+                                icon.height: 14
+                                opacity: compFilter.text.length > 0 ? 1 : 0
+                                enabled: compFilter.text.length > 0
+                                Accessible.name: strings.btn_clear
+                                ToolTip.text: strings.btn_clear
+                                ToolTip.visible: hovered
+                                ToolTip.delay: 500
+                                onClicked: compFilter.clear()
+                            }
+                        }
 
                         Rectangle {
                             Layout.fillWidth: true
@@ -810,10 +852,26 @@ import "../components"
                                 }
                             }
 
+                            Label {
+                                anchors.centerIn: parent
+                                visible: compList.count > 0
+                                         && page.compFilterText.length > 0
+                                         && compList.contentHeight <= 0
+                                text: strings.filter_no_results
+                                font.pixelSize: 13
+                                color: appRoot.theme.textSecondary
+                            }
+
                             delegate: Item {
                                 id: compRow
                                 width: compList.width
-                                height: 58
+                                property string filterText: page.compFilterText
+                                property bool matches: filterText.length === 0
+                                    || String(model.name).toLowerCase().indexOf(filterText) !== -1
+                                    || String(model.path).toLowerCase().indexOf(filterText) !== -1
+                                    || String(model.encoder).toLowerCase().indexOf(filterText) !== -1
+                                height: matches ? 58 : 0
+                                visible: matches
                                 property string st: model.status
                                 RowLayout {
                                     anchors.fill: parent

@@ -147,6 +147,24 @@ def atomic_replace(source: str, destination: str, retries: int = 4) -> None:
         raise last_error
 
 
+def _hide_generated_file(path: str) -> None:
+    """Oculta sidecars/journals no Explorer do Windows.
+
+    Os arquivos continuam ao lado da m?dia (portabilidade e verifica??o),
+    mas n?o poluem a pasta para o usu?rio comum.
+    """
+    if os.name != "nt":
+        return
+    try:
+        import ctypes
+
+        attrs = ctypes.windll.kernel32.GetFileAttributesW(str(path))
+        if attrs != -1:
+            ctypes.windll.kernel32.SetFileAttributesW(str(path), attrs | 0x2)
+    except Exception:
+        pass
+
+
 def write_json_atomic(path: str, data: dict) -> None:
     """Write JSON with a temp file + replace + fsync."""
     folder = os.path.dirname(os.path.abspath(path)) or "."
@@ -161,9 +179,11 @@ def write_json_atomic(path: str, data: dict) -> None:
             pass
     atomic_replace(temp, path)
     fsync_dir(folder)
+    _hide_generated_file(path)
 
 
 def read_json(path: str) -> dict | None:
+    _hide_generated_file(path)
     try:
         with open(path, encoding="utf-8") as handle:
             value = json.load(handle)

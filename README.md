@@ -267,7 +267,7 @@ hlsdl download https://youtu.be/... --outdir ./Videos
 
 ## Integridade, similares e recuperação
 
-- **Sidecar de conclusão**: cada download/compressão validado grava `arquivo.ext.hlsdl.json` com tamanho, duração, resumo do `ffprobe`, SHA-256, encoder e configurações. O app não confia apenas em “arquivo existe”.
+- **Sidecar de conclusão**: cada download/compressão validado grava um sidecar `arquivo.ext.hlsdl.json` oculto no Explorer do Windows, com tamanho, duração, resumo do `ffprobe`, SHA-256, encoder e configurações. O app não confia apenas em “arquivo existe”.
 - **Identidade de mídia**: YouTube/Vimeo usam o ID do extractor; HLS usa o hash do manifesto (segmentos e `EXT-X-ENDLIST`, ignorando tokens); demais URLs usam host/path com parâmetros voláteis removidos.
 - **Compressão transacional**: `.part` único por job, journal em `%APPDATA%\HLSDownloaderPro\jobs` (ou `jobs/` no portátil), backup do original e `os.replace` somente após validação profunda. Na inicialização, journals pendentes são recuperados: parcial é descartado, original é restaurado e saída só é mantida se o hash/tamanho conferirem.
 - **Validação de saída**: duração/streams, resolução, bit depth, cor/HDR, contagem/codec/canais de áudio, legendas e contagem de frames. Falha de áudio ou hash aborta a substituição.

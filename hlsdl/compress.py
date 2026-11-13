@@ -143,6 +143,34 @@ ENCODER_MAP = {
 # (mesma qualidade percebida). É apenas uma referência para a UI.
 ESTIMATE_BASE = {"av1": 58, "hevc": 48, "h264": 26}
 
+# Valores aceitos pelos encoders/ffmpeg para tags de cor. Metadados
+# "reserved"/"unknown"/"unspecified" (ou lixo de container) não podem
+# ser repassados como opção do encoder — o hevc_qsv, por exemplo,
+# aborta o job com "Unable to parse color_primaries option value reserved".
+COLOR_PRIMARIES = {
+    "bt709", "bt470m", "bt470bg", "smpte170m", "smpte240m", "film",
+    "bt2020", "smpte428", "smpte431", "smpte432", "jedec-p22", "ebu3213",
+}
+COLOR_TRANSFERS = {
+    "bt709", "gamma22", "gamma28", "smpte170m", "smpte240m", "linear",
+    "log", "log_sqrt", "iec61966_2_4", "iec61966_2_1", "bt1361",
+    "bt2020_10", "bt2020_12", "smpte2084", "smpte428", "arib_std_b67",
+    "iec61966-2-4", "iec61966-2-1", "bt2020-10", "bt2020-12",
+    "arib-std-b67", "bt1361e",
+}
+COLOR_SPACES = {
+    "gbr", "bt709", "fcc", "bt470bg", "smpte170m", "smpte240m", "ycgco",
+    "bt2020nc", "bt2020c", "smpte2085", "chroma-derived-nc",
+    "chroma-derived-c", "ictcp",
+}
+COLOR_RANGES = {"tv", "pc", "mpeg", "jpeg"}
+
+
+def safe_color_value(value, allowed: set[str]) -> str:
+    """Normaliza uma tag de cor ou devolve "" quando não é segura."""
+    normalized = str(value or "").strip().lower()
+    return normalized if normalized in allowed else ""
+
 
 class CompressStatus(str, Enum):
     WAITING = "waiting"
@@ -787,14 +815,14 @@ def build_args(src: str, tmp: str, settings: CompressionSettings,
             "-color_range", "tv",
         ]
     elif video:
-        for source_key, option in (
-            ("color_primaries", "-color_primaries"),
-            ("color_transfer", "-color_trc"),
-            ("color_space", "-colorspace"),
-            ("color_range", "-color_range"),
+        for source_key, option, allowed in (
+            ("color_primaries", "-color_primaries", COLOR_PRIMARIES),
+            ("color_transfer", "-color_trc", COLOR_TRANSFERS),
+            ("color_space", "-colorspace", COLOR_SPACES),
+            ("color_range", "-color_range", COLOR_RANGES),
         ):
-            value = str(video.get(source_key) or "").lower()
-            if value and value != "unknown":
+            value = safe_color_value(video.get(source_key), allowed)
+            if value:
                 cmd += [option, value]
 
     preserve_hdr = bool(
