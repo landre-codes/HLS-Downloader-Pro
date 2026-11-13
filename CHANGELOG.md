@@ -32,6 +32,7 @@ e o versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 
 ### Corrigido
 - **Ícones após a extração QML**: `iconPath()` agora devolve URL absoluta; páginas e componentes não procuram mais `pages/icons` ou `components/icons`.
+- **Estilo Material na GUI extraída**: páginas, diálogos e componentes agora importam `QtQuick.Controls.Material`; ComboBox/SpinBox/Switch/CheckBox deixam de aparecer como barras pretas e voltam ao tema claro/escuro correto.
 - **Probes QSV concorrentes**: a detecção de dispositivos QSV usa cache global e lock, evitando vários `ffmpeg` simultâneos ao criar múltiplos managers; `refresh_encoders` invalida o cache.
 - **Mapeamento QSV**: o regex aceita o BDF completo (`0000:00:02.0`), então GPUs Intel Arc/UHD voltam a ser associadas ao índice `-qsv_device` correto.
 - **Download de atualização atômico**: o instalador é gravado em `.part`, verificado por SHA-256 e só então movido para o nome final; falhas removem o parcial.

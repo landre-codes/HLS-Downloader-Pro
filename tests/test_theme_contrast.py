@@ -7,6 +7,7 @@ import tempfile
 from PySide6.QtCore import QUrl
 from PySide6.QtGui import QColor
 from PySide6.QtQml import QQmlApplicationEngine, QQmlExpression
+from PySide6.QtQuick import QQuickItem
 
 from hlsdl.bridge import Bridge
 from hlsdl.config import qml_path
@@ -63,4 +64,20 @@ def test_theme_text_contrast(qapp, fake_deps):
             assert _contrast(on_accent, color(f"root.theme.{badge}")) >= 4.5, (dark, badge)
         # O corpo do diálogo precisa ser opaco e usar o fundo do tema.
         assert color("confirmDeps.contentItem.color") == bg
+
+    # Controles extraídos para arquivos próprios precisam herdar o estilo
+    # Material do app; sem isso o ComboBox cai no tema padrão (texto preto).
+    bridge.setDark(True)
+    qapp.processEvents()
+    combo = next(
+        item for item in root.findChildren(QQuickItem)
+        if item.property("visible")
+        and ("AppQualityCombo" in item.metaObject().className()
+             or "AppComboBox" in item.metaObject().className())
+    )
+    content = combo.property("contentItem")
+    assert content is not None
+    text_color = content.property("color")
+    assert isinstance(text_color, QColor)
+    assert text_color.lightnessF() > 0.5, text_color.name()
     bridge.shutdown()

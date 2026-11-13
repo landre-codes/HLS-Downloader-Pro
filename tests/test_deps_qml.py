@@ -90,6 +90,16 @@ def test_qml_icon_paths_are_absolute(qapp, fake_deps):
     bridge.shutdown()
 
 
+def test_qml_controls_usam_estilo_material():
+    ui = Path(qml_path()).parent
+    missing = []
+    for path in sorted(ui.rglob("*.qml")):
+        text = path.read_text(encoding="utf-8")
+        if "import QtQuick.Controls\n" in text and "import QtQuick.Controls.Material\n" not in text:
+            missing.append(str(path.relative_to(ui)))
+    assert not missing, f"QML sem import Material: {missing}"
+
+
 class _NoopWorker(DownloadWorker):
     def run(self) -> None:  # type: ignore[override]
         self.statusChanged.emit("analyzing")
