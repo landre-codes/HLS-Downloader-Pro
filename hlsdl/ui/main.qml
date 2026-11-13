@@ -325,7 +325,7 @@ ApplicationWindow {
     function estimateSaving(codec) {
         var base = codec === "av1" ? 58 : (codec === "hevc" ? 48 : 26)
         return Math.max(5, Math.min(85,
-            Math.round(base - (bridge.compressionQuality - 24) * 1.1)))
+            Math.round(base + (bridge.compressionQuality - 24) * 1.1)))
     }
 
     // Resumo compacto do perfil de download (aba Lote).

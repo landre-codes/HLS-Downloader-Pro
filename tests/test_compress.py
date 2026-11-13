@@ -66,7 +66,7 @@ def test_auto_prefers_discrete_gpu_encoders():
 def test_estimate_saving_order():
     assert estimate_saving("av1", 24) > estimate_saving("hevc", 24)
     assert estimate_saving("hevc", 24) > estimate_saving("h264", 24)
-    assert estimate_saving("hevc", 40) < estimate_saving("hevc", 20)
+    assert estimate_saving("hevc", 40) > estimate_saving("hevc", 20)
 
 
 def test_hardware_encoders_follow_gpu_vendor(monkeypatch):

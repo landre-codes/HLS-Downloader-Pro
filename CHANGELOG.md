@@ -28,7 +28,7 @@ e o versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 - Presets agora resetam filtros/políticas e permanecem selecionados; alterações individuais marcam “Personalizado”.
 - Atualização de dependências bloqueada com jobs ativos e PySide6 não é mais atualizado in-process.
 - Extração de ffmpeg/ffprobe e downloads de ferramentas agora são atômicas.
-- **Aba Compressão redesenhada**: opções divididas em **Geral**, **Vídeo**, **Áudio e legendas** e **Avançado**, com grid responsivo (2–4 colunas), presets sempre visíveis, altura adaptativa ao conteúdo da seção e mais espaço para a fila. A seleção da seção usa sublinhado no accent do tema.
+- **Aba Compressão redesenhada**: opções divididas em **Geral**, **Vídeo**, **Áudio e legendas** e **Avançado**, com grid responsivo (2–4 colunas), presets sempre visíveis, altura adaptativa ao conteúdo da seção e mais espaço para a fila. As abas internas usam o mesmo `TabBar`/`AppTabButton` das abas superiores.
 - `pyproject.toml` inclui `hlsdl.bridge_parts` e todo o QML modular no pacote instalável.
 
 ### Corrigido
@@ -36,6 +36,7 @@ e o versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 - **Estilo Material na GUI extraída**: páginas, diálogos e componentes agora importam `QtQuick.Controls.Material`; ComboBox/SpinBox/Switch/CheckBox deixam de aparecer como barras pretas e voltam ao tema claro/escuro correto.
 - **Probes QSV concorrentes**: a detecção de dispositivos QSV usa cache global e lock, evitando vários `ffmpeg` simultâneos ao criar múltiplos managers; `refresh_encoders` invalida o cache.
 - **Mapeamento QSV**: o regex aceita o BDF completo (`0000:00:02.0`), então GPUs Intel Arc/UHD voltam a ser associadas ao índice `-qsv_device` correto.
+- **Economia estimada**: a estimativa agora cresce com o RF/quantização (arquivo menor); antes estava invertida e reduzia a economia ao aumentar o RF.
 - **Download de atualização atômico**: o instalador é gravado em `.part`, verificado por SHA-256 e só então movido para o nome final; falhas removem o parcial.
 
 ## [Não lançado] — integridade, similares e recuperação

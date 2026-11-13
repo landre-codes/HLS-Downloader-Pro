@@ -363,7 +363,8 @@ def available_vendors(codec: str, names: set[str]) -> dict[str, bool]:
 def estimate_saving(codec: str, quality: int) -> int:
     """Estimativa grosseira de redução (%) em relação ao original."""
     base = ESTIMATE_BASE.get(codec, 35)
-    return max(5, min(85, round(base - (int(quality) - 24) * 1.1)))
+    # RF maior = mais quantiza??o = arquivo menor; a economia cresce com o RF.
+    return max(5, min(85, round(base + (int(quality) - 24) * 1.1)))
 
 
 def quality_max_for_codec(codec: str) -> int:

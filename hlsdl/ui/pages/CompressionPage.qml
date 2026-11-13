@@ -110,42 +110,36 @@ import "../components"
                             }
                         }
 
-                        RowLayout {
+                        TabBar {
                             id: compTabsRow
                             Layout.fillWidth: true
-                            spacing: 6
-                            Repeater {
-                                model: [
-                                    { label: strings.compress_tab_general, index: 0 },
-                                    { label: strings.compress_tab_video, index: 1 },
-                                    { label: strings.compress_tab_tracks, index: 2 },
-                                    { label: strings.compress_tab_advanced, index: 3 }
-                                ]
-                                delegate: Item {
-                                    implicitWidth: tabButton.implicitWidth
-                                    implicitHeight: tabButton.height + 4
-                                    AppButton {
-                                        id: tabButton
-                                        anchors.top: parent.top
-                                        anchors.horizontalCenter: parent.horizontalCenter
-                                        text: modelData.label
-                                        highlighted: page.compSection === modelData.index
-                                        height: 32
-                                        onClicked: page.compSection = modelData.index
-                                    }
-                                    Rectangle {
-                                        anchors.bottom: parent.bottom
-                                        anchors.horizontalCenter: parent.horizontalCenter
-                                        width: tabButton.width
-                                        height: 2
-                                        radius: 1
-                                        color: page.compSection === modelData.index
-                                               ? appRoot.theme.accentText
-                                               : "transparent"
-                                    }
-                                }
+                            contentHeight: 40
+                            currentIndex: page.compSection
+                            onCurrentIndexChanged: page.compSection = currentIndex
+                            background: Rectangle {
+                                color: appRoot.theme.tabBg
+                                radius: 8
                             }
-                            Item { Layout.fillWidth: true }
+                            AppTabButton {
+                                text: strings.compress_tab_general
+                                font.pixelSize: 13
+                                implicitWidth: 115
+                            }
+                            AppTabButton {
+                                text: strings.compress_tab_video
+                                font.pixelSize: 13
+                                implicitWidth: 105
+                            }
+                            AppTabButton {
+                                text: strings.compress_tab_tracks
+                                font.pixelSize: 13
+                                implicitWidth: 170
+                            }
+                            AppTabButton {
+                                text: strings.compress_tab_advanced
+                                font.pixelSize: 13
+                                implicitWidth: 130
+                            }
                         }
 
                         StackLayout {
