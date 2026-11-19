@@ -54,15 +54,13 @@ Dialog {
                 Layout.fillWidth: true
                 spacing: 8
                 Label { text: strings.similar_threshold; font.pixelSize: 12; color: appRoot.theme.textSecondary }
-                SpinBox {
+                AppSpinBox {
                     from: 50; to: 100; stepSize: 5
                     value: bridge.similarityThreshold
                     editable: true
                     onValueChanged: if (value !== bridge.similarityThreshold)
                                         bridge.setSimilarityThreshold(value)
-                    ToolTip.text: strings.similar_threshold_tip
-                    ToolTip.visible: hovered
-                    ToolTip.delay: 500
+                    tipText: strings.similar_threshold_tip
                 }
                 AppButton {
                     text: strings.similar_scan_queue
@@ -167,9 +165,7 @@ Dialog {
                                         width: 26; height: 24
                                         text: "…"
                                         Accessible.name: strings.similar_open
-                                        ToolTip.text: strings.similar_open
-                                        ToolTip.visible: hovered
-                                        ToolTip.delay: 500
+                                        tipText: strings.similar_open
                                         onClicked: bridge.openDownloadPath(modelData.path)
                                     }
                                 }

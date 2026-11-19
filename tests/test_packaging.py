@@ -54,3 +54,40 @@ def test_sbom_cyclonedx_e_gerado(tmp_path: Path) -> None:
     assert data["specVersion"] == "1.5"
     assert data["metadata"]["component"]["name"] == "HLS Downloader Pro"
     assert any(item["name"].lower() == "pyside6" for item in data["components"])
+
+
+def test_sbom_inclui_hash_do_bundle(tmp_path: Path) -> None:
+    import hashlib
+
+    bundle = tmp_path / "HLS-Downloader-Pro"
+    bundle.mkdir()
+    (bundle / "app.exe").write_bytes(b"binary")
+    (bundle / "data.bin").write_bytes(b"data")
+    target = tmp_path / "sbom.json"
+    subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "gen_sbom.py"),
+            str(target),
+            "--bundle",
+            str(bundle),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    data = json.loads(target.read_text(encoding="utf-8"))
+    files = [item for item in data["components"] if item["type"] == "file"]
+    assert {item["name"] for item in files} == {
+        "HLS-Downloader-Pro/app.exe",
+        "HLS-Downloader-Pro/data.bin",
+    }
+    by_name = {item["name"]: item for item in files}
+    assert by_name["HLS-Downloader-Pro/app.exe"]["hashes"][0]["content"] == (
+        hashlib.sha256(b"binary").hexdigest()
+    )
+    scope = next(
+        prop for prop in data["metadata"]["properties"]
+        if prop["name"] == "hlsdl:inventoryScope"
+    )
+    assert "pyinstaller-bundle" in scope["value"]

@@ -24,6 +24,7 @@ import os
 import re
 import subprocess
 import urllib.request
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -54,6 +55,39 @@ _VIMEO_RE = re.compile(r"(?i)vimeo\.com/(?:video/)?(\d+)")
 # ---------------------------------------------------------------------------
 # Probing
 # ---------------------------------------------------------------------------
+def _probe_first_frame_side_data(ffprobe: str, path: str) -> list[dict]:
+    """Lê side data HDR10 do primeiro frame (SEI do HEVC/AV1).
+
+    Em MP4/MKV com x265/HEVC, o ffprobe costuma expor mastering display e
+    content-light em ``frames[0].side_data_list``, e não em
+    ``stream.side_data_list``. Sem esta segunda leitura o app não enxerga
+    metadados HDR10 reais.
+    """
+    cmd = [
+        ffprobe, "-v", "error", "-print_format", "json",
+        "-select_streams", "v:0", "-read_intervals", "%+#1",
+        "-show_frames", "-show_entries", "frame=side_data_list", path,
+    ]
+    try:
+        out = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=20,
+            encoding="utf-8", errors="replace", **popen_kwargs(),
+        )
+        payload = json.loads(out.stdout or "{}")
+    except Exception:
+        return []
+    frames = payload.get("frames") or []
+    return list((frames[0] or {}).get("side_data_list") or []) if frames else []
+
+
+def _side_data_has_hdr(items: list[dict]) -> bool:
+    for item in items or []:
+        kind = str(item.get("side_data_type") or "").lower()
+        if "mastering display" in kind or "content light" in kind:
+            return True
+    return False
+
+
 def probe_media(path: str) -> dict | None:
     """Return ffprobe JSON for ``path`` (local file or URL), or ``None``."""
     ffprobe = which("ffprobe")
@@ -68,9 +102,18 @@ def probe_media(path: str) -> dict | None:
             cmd, capture_output=True, text=True, timeout=60,
             encoding="utf-8", errors="replace", **popen_kwargs(),
         )
-        return json.loads(out.stdout or "{}")
+        data = json.loads(out.stdout or "{}")
     except Exception:
         return None
+    videos, _audios, _subs, _duration = analyze(data)
+    if videos:
+        transfer = str(videos[0].get("color_transfer") or "").lower()
+        stream_side_data = list(videos[0].get("side_data_list") or [])
+        if transfer in HDR_TRANSFERS and not _side_data_has_hdr(stream_side_data):
+            frame_side_data = _probe_first_frame_side_data(ffprobe, path)
+            if frame_side_data:
+                data["frames"] = [{"side_data_list": frame_side_data}]
+    return data
 
 
 def analyze(probe: dict | None) -> tuple[list, list, list, float]:
@@ -130,7 +173,13 @@ def hdr_metadata(probe: dict | None) -> dict:
     if not videos:
         return {}
     result: dict = {}
-    for item in videos[0].get("side_data_list") or []:
+    side_data = list(videos[0].get("side_data_list") or [])
+    if not _side_data_has_hdr(side_data):
+        for frame in (probe or {}).get("frames") or []:
+            side_data.extend((frame or {}).get("side_data_list") or [])
+            if _side_data_has_hdr(side_data):
+                break
+    for item in side_data:
         kind = str(item.get("side_data_type") or "").lower()
         if "mastering display" in kind:
             result["mastering"] = {
@@ -149,6 +198,51 @@ def hdr_metadata(probe: dict | None) -> dict:
                 if item.get(key) is not None
             }
     return result
+
+
+def _metadata_value(value) -> float | None:
+    return _rational_float(value)
+
+
+def hdr_metadata_matches(source: dict, output: dict) -> tuple[bool, str]:
+    """Compara metadados HDR10 estáticos preservados entre origem e saída.
+
+    Master display e content-light precisam sobreviver ao encode sempre que a
+    interface promete preservação HDR10. A ausência de uma etiqueta na saída
+    não é tratada como "formato não suporta" quando a origem a tinha: o
+    chamador deve recusar a saída ou pedir confirmação explícita.
+    """
+    source_mastering = (source or {}).get("mastering") or {}
+    output_mastering = (output or {}).get("mastering") or {}
+    if source_mastering:
+        if not output_mastering:
+            return False, "mastering_missing"
+        for key, raw in source_mastering.items():
+            if key not in output_mastering:
+                return False, f"mastering_{key}_missing"
+            expected = _metadata_value(raw)
+            actual = _metadata_value(output_mastering.get(key))
+            if expected is None or actual is None:
+                continue
+            tolerance = max(0.0005, abs(expected) * 0.001)
+            if abs(expected - actual) > tolerance:
+                return False, f"mastering_{key}_mismatch"
+    source_light = (source or {}).get("content_light") or {}
+    output_light = (output or {}).get("content_light") or {}
+    if source_light:
+        if not output_light:
+            return False, "content_light_missing"
+        for key, raw in source_light.items():
+            if key not in output_light:
+                return False, f"content_light_{key}_missing"
+            try:
+                expected = int(float(str(raw)))
+                actual = int(float(str(output_light.get(key))))
+            except (TypeError, ValueError):
+                continue
+            if expected != actual:
+                return False, f"content_light_{key}_mismatch"
+    return True, "ok"
 
 
 def x265_hdr_params(metadata: dict) -> list[str]:
@@ -291,7 +385,9 @@ def ahash_from_gray(raw: bytes, width: int = 9, height: int = 8) -> str:
     return f"{bits:016x}"
 
 
-def frame_hashes(path: str, samples: int = 5) -> tuple[list[str], list[str]]:
+def frame_hashes(path: str, samples: int = 5,
+                 cancel: Callable[[], bool] | None = None) -> tuple[list[str], list[str]]:
+    """Sample frame dHash/aHash, stopping early when ``cancel()`` is true."""
     """Sample frames across the file and return dHash/aHash lists.
 
     Uses fast seeks before ``-i`` and a tiny grayscale scale.  This is the
@@ -312,6 +408,8 @@ def frame_hashes(path: str, samples: int = 5) -> tuple[list[str], list[str]]:
     dhashes: list[str] = []
     ahashes: list[str] = []
     for timestamp in dict.fromkeys(round(t, 3) for t in timestamps):
+        if cancel is not None and cancel():
+            return [], []
         raw = _run_ffmpeg_raw([
             "-ss", f"{timestamp:.3f}", "-i", path,
             "-frames:v", "1", "-an", "-sn",
@@ -497,15 +595,26 @@ class MediaSignature:
 
 
 def build_signature(path: str, with_frames: bool = True,
-                    with_audio: bool = True) -> MediaSignature:
-    """Build a perceptual/metadata signature, degrading gracefully."""
+                    with_audio: bool = True,
+                    cancel: Callable[[], bool] | None = None) -> MediaSignature:
+    """Build a perceptual/metadata signature, degrading gracefully.
+
+    ``cancel`` é consultado entre etapas caras (hash, frames, áudio) para que o
+    encerramento do app não espere uma análise longa terminar.
+    """
     signature = MediaSignature(path=path)
+    if cancel is not None and cancel():
+        signature.error = "cancelled"
+        return signature
     try:
         signature.size = os.path.getsize(path)
     except OSError:
         signature.error = "missing"
         return signature
     signature.quick_hash = _quick_hash(path)
+    if cancel is not None and cancel():
+        signature.error = "cancelled"
+        return signature
     probe = probe_media(path) or {}
     signature.probe = probe
     videos, audios, _subs, duration = analyze(probe)
@@ -518,11 +627,14 @@ def build_signature(path: str, with_frames: bool = True,
         signature.pix_fmt = str(video.get("pix_fmt") or "")
         if with_frames:
             try:
-                dhashes, ahashes = frame_hashes(path)
+                dhashes, ahashes = frame_hashes(path, cancel=cancel)
                 signature.frame_dhashes = tuple(dhashes)
                 signature.frame_ahashes = tuple(ahashes)
             except Exception:
                 log.debug("frame signature failed for %s", path, exc_info=True)
+    if cancel is not None and cancel():
+        signature.error = "cancelled"
+        return signature
     signature.audio_codecs = tuple(
         str(track.get("codec_name") or "") for track in audios
     )
@@ -641,7 +753,8 @@ def compare_signatures(a: MediaSignature, b: MediaSignature) -> tuple[float, str
     return round(max(0.0, min(1.0, score)) * 100.0, 1), method, details
 
 
-def group_similar(signatures: list[MediaSignature], threshold: float = 85.0) -> list[dict]:
+def group_similar(signatures: list[MediaSignature], threshold: float = 85.0,
+                  cancel: Callable[[], bool] | None = None) -> list[dict]:
     """Cluster signatures using pairwise similarity (union-find)."""
     parent = list(range(len(signatures)))
 
@@ -658,7 +771,11 @@ def group_similar(signatures: list[MediaSignature], threshold: float = 85.0) -> 
 
     pair_scores: dict[tuple[int, int], tuple[float, str, dict]] = {}
     for i in range(len(signatures)):
+        if cancel is not None and cancel():
+            return []
         for j in range(i + 1, len(signatures)):
+            if cancel is not None and cancel():
+                return []
             a, b = signatures[i], signatures[j]
             # Cheap prefilter: wildly different durations/resolutions are not
             # worth running the expensive comparisons.

@@ -46,8 +46,45 @@ def _valid_probe() -> dict:
     }
 
 
-def test_ffmpeg_fallback_audio_respects_mode_and_headers(
-    monkeypatch, tmp_path
+def test_ytdlp_never_retries_with_allow_unsafe_ext(monkeypatch, tmp_path):
+    worker = DownloadWorker("https://site/file.php", str(tmp_path))
+    monkeypatch.setattr(worker, "_ytdlp_argv", lambda: ["yt-dlp"])
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, *args, **kwargs):
+        calls.append(cmd)
+        return False, "Unsupported URL: unusual file extension"
+
+    monkeypatch.setattr(worker, "_run_process", fake_run)
+    ok, message = worker._run_ytdlp("https://site/file.php")
+    assert ok is False
+    assert "unusual" in message
+    assert len(calls) == 1
+    assert all("allow-unsafe-ext" not in cmd for cmd in calls)
+
+
+def test_allow_unsafe_ext_validation_rejects_disguised_content(monkeypatch, tmp_path):
+    worker = DownloadWorker("https://site/page", str(tmp_path))
+    html = tmp_path / "fake.mp4"
+    html.write_bytes(b"<html><body>login</body></html>")
+    assert worker._looks_like_non_video(str(html)) is True
+
+    playlist = tmp_path / "playlist.mp4"
+    playlist.write_bytes(b"#EXTM3U\n#EXT-X-VERSION:3\n")
+    assert worker._looks_like_non_video(str(playlist)) is True
+
+    unknown = tmp_path / "binary.mp4"
+    unknown.write_bytes(b"MZ\x90\x00fake executable")
+    monkeypatch.setattr("hlsdl.downloader.probe_media", lambda path: None)
+    assert worker._looks_like_non_video(str(unknown)) is True
+
+    video = tmp_path / "video.mp4"
+    video.write_bytes(b"\x00\x00\x00\x18ftypisom" + b"\x00" * 32)
+    monkeypatch.setattr("hlsdl.downloader.probe_media", lambda path: _valid_probe())
+    assert worker._looks_like_non_video(str(video)) is False
+
+
+def test_ffmpeg_fallback_audio_respects_mode_and_headers(    monkeypatch, tmp_path
 ):
     worker = DownloadWorker(
         "https://site/page", str(tmp_path),
@@ -70,14 +107,39 @@ def test_ffmpeg_fallback_audio_respects_mode_and_headers(
     assert ok and path.endswith(".mp3") and os.path.exists(path)
     cmd = captured["cmd"]
     assert "-vn" in cmd and "libmp3lame" in cmd
-    assert "-referer" in cmd and "https://site/page" in cmd
+    # A página de origem (site) e o CDN (cdn.site) são origens diferentes:
+    # a política não encaminha Referer entre origens.
+    assert "-referer" not in cmd
+    assert "https://site/page" not in cmd
     assert "-i" in cmd
     # -loglevel info is what keeps the stall watchdog fed with time= lines.
     assert "-loglevel" in cmd and "info" in cmd
 
 
-def test_ffmpeg_fallback_video_only_removes_audio(
-    monkeypatch, tmp_path
+def test_ffmpeg_same_origin_referer_is_sanitized(monkeypatch, tmp_path):
+    worker = DownloadWorker(
+        "https://cdn/site/page?token=CANARY_SECRET#frag", str(tmp_path),
+        format_mode="audio_only", container="mp3",
+    )
+    monkeypatch.setattr("hlsdl.downloader.which", lambda name: "/usr/bin/ffmpeg")
+    monkeypatch.setattr("hlsdl.downloader.probe_duration", lambda url: 10.0)
+    monkeypatch.setattr("hlsdl.downloader.probe_media", lambda path: _valid_probe())
+    captured = {}
+
+    def fake_run(cmd, duration=None, is_ffmpeg=False):
+        captured["cmd"] = list(cmd)
+        return _fake_ffmpeg_process(cmd, duration, is_ffmpeg)
+
+    monkeypatch.setattr(worker, "_run_process", fake_run)
+    ok, _path = worker._run_ffmpeg("https://cdn/site/master.m3u8")
+    assert ok
+    cmd = captured["cmd"]
+    assert "-referer" in cmd
+    assert cmd[cmd.index("-referer") + 1] == "https://cdn/site/page"
+    assert "CANARY_SECRET" not in " ".join(cmd)
+
+
+def test_ffmpeg_fallback_video_only_removes_audio(    monkeypatch, tmp_path
 ):
     worker = DownloadWorker(
         "https://site/page", str(tmp_path),

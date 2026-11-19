@@ -1,4 +1,4 @@
-﻿# ruff: noqa: F401, F403, F405
+# ruff: noqa: F401, F403, F405
 
 from __future__ import annotations
 
@@ -21,6 +21,7 @@ from ..formats import (
     VIDEO_CONTAINERS,
 )
 from ..i18n import LANGUAGE_NAMES, LANGUAGES
+from ..integrity import cleanup_sidecars, set_sidecars_enabled
 from .signals import *
 
 
@@ -45,7 +46,7 @@ class SettingsMixin(BridgeSignals):
 
     @Property(list, constant=True)
     def languages(self) -> list:
-        """Idiomas disponÃ­veis para o seletor (cÃ³digo + nome)."""
+        """Idiomas disponíveis para o seletor (código + nome)."""
         return [{"code": code, "name": LANGUAGE_NAMES[code]} for code in LANGUAGES]
 
     @Property(str, notify=outputFolderChanged)
@@ -55,6 +56,25 @@ class SettingsMixin(BridgeSignals):
     @Property(bool, notify=darkChanged)
     def dark(self) -> bool:
         return self._dark
+
+    @Property(bool, notify=sidecarsChanged)
+    def sidecarsEnabled(self) -> bool:
+        return self._sidecars_enabled
+
+    @Slot(bool)
+    def setSidecarsEnabled(self, value: bool) -> None:
+        value = bool(value)
+        if value == self._sidecars_enabled:
+            return
+        self._sidecars_enabled = value
+        set_sidecars_enabled(value)
+        self._save("integrity/sidecars", value)
+        self.sidecarsChanged.emit(value)
+
+    @Slot()
+    def cleanupSidecars(self) -> None:
+        removed = cleanup_sidecars(self._output_folder)
+        self.notifyText.emit(self._tr("sidecars_cleaned", n=removed))
 
     @Property(int, notify=concurrencyChanged)
     def concurrency(self) -> int:
@@ -93,7 +113,7 @@ class SettingsMixin(BridgeSignals):
         self.manager.setFormatMode(mode)
         self.single_manager.setFormatMode(mode)
         self._save("download/format_mode", mode)
-        # Ajusta o contÃªiner se ele nÃ£o fizer sentido no novo modo.
+        # Ajusta o contêiner se ele não fizer sentido no novo modo.
         valid = AUDIO_CONTAINERS if mode == "audio_only" else VIDEO_CONTAINERS
         if self._container not in valid:
             self.setContainer(
@@ -200,12 +220,21 @@ class SettingsMixin(BridgeSignals):
         )
         if path:
             path = os.path.abspath(os.path.expanduser(path))
+            if not os.path.isdir(path) or not os.access(path, os.W_OK):
+                self.notifyText.emit(self._tr("output_folder_readonly"))
+                return
             self._output_folder = path
             self.manager.setOutdir(path)
             self.single_manager.setOutdir(path)
             self._save("download/folder", path)
             self.outputFolderChanged.emit(path)
             self.notifyText.emit(self._tr("output_folder", path=path))
+
+    @Slot()
+    def openOutputFolder(self) -> None:
+        opener = getattr(self, "_open_directory", None)
+        if callable(opener):
+            opener(self._output_folder)
 
     @Slot(int)
     def setConcurrency(self, n: int) -> None:

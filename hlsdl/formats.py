@@ -24,7 +24,7 @@ NAMING_MODES = ("id", "title")
 
 # CRF por codec/nível (menor = melhor qualidade e maior tamanho).
 CRF = {
-    "h264": {"light": 18, "medium": 23, "strong": 28},
-    "h265": {"light": 22, "medium": 28, "strong": 32},
+    "h264": {"light": 18, "medium": 21, "strong": 24},
+    "h265": {"light": 20, "medium": 24, "strong": 27},
 }
 

@@ -10,6 +10,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from hlsdl import __version__
 from hlsdl import updater as updater_module
+from hlsdl.release_manifest import ReleaseAsset
 from hlsdl.update_trust import verify_update_manifest
 from hlsdl.updater import Updater, version_tuple
 
@@ -20,6 +21,48 @@ def test_version_tuple():
     assert version_tuple("v2.0.0-beta") == (2, 0, 0)
 
 
+def test_version_key_orders_prereleases_and_ignores_build():
+    assert updater_module.version_key("v1.5.0") == updater_module.version_key("1.5")
+    assert updater_module.version_key("1.5.0") > updater_module.version_key("1.5.0-rc1")
+    assert updater_module.version_key("1.5.0-rc2") > updater_module.version_key("1.5.0-rc1")
+    assert updater_module.version_key("1.5.0-beta.2") < updater_module.version_key("1.5.0-rc1")
+    assert updater_module.version_key("1.5.0+build.7") == updater_module.version_key("1.5.0")
+    assert updater_module.version_key("not-a-version") < updater_module.version_key("0.0.1")
+
+
+def test_release_urls_restrict_to_github_hosts():
+    assert updater_module._trusted_release_url(
+        "https://github.com/landre-codes/HLS-Downloader-Pro/releases/download/v1/a.exe"
+    )
+    assert updater_module._trusted_release_url(
+        "https://objects.githubusercontent.com/asset.exe"
+    )
+    assert not updater_module._trusted_release_url("https://evil.example/a.exe")
+    assert not updater_module._trusted_release_url("http://github.com/a.exe")
+
+
+def test_get_bytes_limits_manifest_size(monkeypatch):
+    monkeypatch.setattr(
+        updater_module.urllib.request, "urlopen",
+        lambda request, timeout: _Response(b"0123456789"),
+    )
+    try:
+        updater_module._get_bytes("https://github.com/x", max_bytes=5)
+    except RuntimeError as exc:
+        assert str(exc) == "response_too_large"
+    else:
+        raise AssertionError("manifesto grande foi aceito")
+
+
+def test_get_bytes_rejects_untrusted_host():
+    try:
+        updater_module._get_bytes("https://evil.example/x")
+    except RuntimeError as exc:
+        assert str(exc) == "untrusted_release_host"
+    else:
+        raise AssertionError("host não confiável foi aceito")
+
+
 def test_check_detects_new_version(qapp, monkeypatch):
     payload = {
         "tag_name": "v99.0.0",
@@ -28,7 +71,7 @@ def test_check_detects_new_version(qapp, monkeypatch):
         "assets": [
             {
                 "name": "HLS-Downloader-Pro-99.0.0-setup.exe",
-                "browser_download_url": "https://example/setup.exe",
+                "browser_download_url": "https://github.com/landre-codes/HLS-Downloader-Pro/releases/download/v1/setup.exe",
             },
             {
                 "name": "SHA256SUMS-windows.txt",
@@ -100,6 +143,9 @@ class _Response:
     def __exit__(self, *exc):
         return False
 
+    def geturl(self) -> str:
+        return "https://github.com/landre-codes/HLS-Downloader-Pro/releases/download/v1/HLS-setup.exe"
+
     def read(self, size: int) -> bytes:
         chunk = self._payload[self._pos:self._pos + size]
         self._pos += len(chunk)
@@ -115,15 +161,15 @@ def test_download_instala_apenas_apos_hash(qapp, monkeypatch, tmp_path):
         lambda request, timeout: _Response(payload),
     )
     monkeypatch.setattr(
-        Updater, "_verified_expected_hash",
-        classmethod(lambda cls, info, name: digest),
+        Updater, "_verified_asset",
+        classmethod(lambda cls, info, name: ReleaseAsset(name, digest, len(payload))),
     )
     updater = Updater()
     ready: list[str] = []
     updater.ready.connect(ready.append)
 
     updater._download({
-        "installer_url": "https://example/setup.exe",
+        "installer_url": "https://github.com/landre-codes/HLS-Downloader-Pro/releases/download/v1/setup.exe",
         "installer_name": "HLS-Downloader-Pro-setup.exe",
         "checksums_url": "https://example/SHA256SUMS.txt",
         "signature_url": "https://example/SHA256SUMS.txt.sig",
@@ -143,15 +189,15 @@ def test_download_descarta_parcial_quando_hash_falha(qapp, monkeypatch, tmp_path
         lambda request, timeout: _Response(payload),
     )
     monkeypatch.setattr(
-        Updater, "_verified_expected_hash",
-        classmethod(lambda cls, info, name: "0" * 64),
+        Updater, "_verified_asset",
+        classmethod(lambda cls, info, name: ReleaseAsset(name, "0" * 64, len(payload))),
     )
     updater = Updater()
     failed: list[str] = []
     updater.failed.connect(failed.append)
 
     updater._download({
-        "installer_url": "https://example/setup.exe",
+        "installer_url": "https://github.com/landre-codes/HLS-Downloader-Pro/releases/download/v1/setup.exe",
         "installer_name": "HLS-Downloader-Pro-setup.exe",
         "checksums_url": "https://example/SHA256SUMS.txt",
         "signature_url": "https://example/SHA256SUMS.txt.sig",
@@ -172,6 +218,11 @@ def test_verify_update_manifest_ed25519():
     data = b"abc123  HLS-Downloader-Pro-1.4.0-setup.exe\n"
     signature = base64.b64encode(key.sign(data)).decode("ascii")
     assert verify_update_manifest(data, signature, public_b64) == (True, "ok")
+    assert verify_update_manifest(data, signature + "\n", public_b64) == (True, "ok")
+    assert verify_update_manifest(data, "  " + signature + "  ", public_b64) == (
+        True,
+        "ok",
+    )
     assert verify_update_manifest(data + b"x", signature, public_b64) == (
         False, "invalid_signature"
     )
@@ -210,4 +261,47 @@ def test_verified_hash_aceita_manifesto_assinado(monkeypatch):
     assert Updater._verified_expected_hash({
         "checksums_url": "https://example/SHA256SUMS.txt",
         "signature_url": "https://example/SHA256SUMS.txt.sig",
+        "latest": "1.4.0",
+        "release_tag": "v1.4.0",
     }, "HLS-Downloader-Pro-1.4.0-setup.exe") == "abc123"
+
+
+def test_legacy_manifest_cannot_be_replayed_under_new_tag(monkeypatch):
+    data = b"abc123  HLS-Downloader-Pro-1.4.0-setup.exe\n"
+    monkeypatch.setattr(updater_module, "_get_bytes", lambda url: data)
+    monkeypatch.setattr(updater_module, "_get_text", lambda url: "assinatura")
+    monkeypatch.setattr(
+        updater_module, "verify_update_manifest",
+        lambda manifest, signature: (True, "ok"),
+    )
+    try:
+        Updater._verified_expected_hash({
+            "checksums_url": "https://example/SHA256SUMS.txt",
+            "signature_url": "https://example/SHA256SUMS.txt.sig",
+            "latest": "9.9.9",
+            "release_tag": "v9.9.9",
+        }, "HLS-Downloader-Pro-1.4.0-setup.exe")
+    except RuntimeError as exc:
+        assert str(exc) == "manifest_asset_mismatch"
+    else:
+        raise AssertionError("manifesto antigo aceito sob tag nova")
+
+
+def test_updater_shutdown_joins_auxiliary_thread(qapp):
+    import threading
+    import time
+
+    updater = Updater()
+    started = threading.Event()
+
+    def worker():
+        started.set()
+        while not updater._cancel.wait(0.05):
+            time.sleep(0.01)
+
+    thread = threading.Thread(target=worker, daemon=True)
+    updater._thread = thread
+    thread.start()
+    assert started.wait(1)
+    updater.shutdown(timeout=2)
+    assert not thread.is_alive()

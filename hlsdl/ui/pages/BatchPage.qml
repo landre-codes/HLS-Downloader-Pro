@@ -6,11 +6,108 @@ import "../components"
 
         Item {
     id: page
+    objectName: "batchPage"
     property var appRoot
     property var strings: ({})
     property alias inputArea: inputArea
     property alias listView: listView
     property alias queueFilter: queueFilter
+    property alias filterField: queueFilter
+    readonly property bool showHero: width >= 1050 && height >= 650
+    readonly property string batchSortKey: bridge.batchModel
+                                               ? bridge.batchModel.sortKey : ""
+    readonly property bool batchSortAscending: bridge.batchModel
+                                                ? bridge.batchModel.sortAscending : true
+    readonly property int batchTotalCount: appRoot ? appRoot.statTotal : 0
+
+    function syncProxyStatusLabels() {
+        if (!bridge.batchModel)
+            return
+        bridge.batchModel.statusLabels = {
+            "waiting": appRoot.statusText("waiting"),
+            "analyzing": appRoot.statusText("analyzing"),
+            "downloading": appRoot.statusText("downloading"),
+            "encoding": appRoot.statusText("encoding"),
+            "verifying": appRoot.statusText("verifying"),
+            "paused": appRoot.statusText("paused"),
+            "done": appRoot.statusText("done"),
+            "error": appRoot.statusText("error"),
+            "cancelled": appRoot.statusText("cancelled"),
+            "skipped": appRoot.statusText("skipped")
+        }
+    }
+
+    function batchSourceIndex(displayIndex) {
+        return bridge.batchModel ? bridge.batchModel.sourceIndexAt(displayIndex) : -1
+    }
+
+    function rowTitleAt(displayIndex) {
+        return bridge.batchModel ? bridge.batchModel.titleAt(displayIndex) : ""
+    }
+
+    function rowProgressAt(displayIndex) {
+        return bridge.batchModel ? bridge.batchModel.progressAt(displayIndex) : -1
+    }
+
+    function rowSourceAt(displayIndex) {
+        return batchSourceIndex(displayIndex)
+    }
+
+    function rowCellXsAt(displayIndex) {
+        var item = listView.itemAtIndex(displayIndex)
+        if (!item)
+            return []
+        var layout = null
+        for (var c = 0; c < item.children.length; c++) {
+            if (item.children[c].objectName === "batchRowLayout") {
+                layout = item.children[c]
+                break
+            }
+        }
+        if (!layout)
+            return []
+        var xs = []
+        for (var i = 0; i < layout.children.length; i++)
+            xs.push(layout.children[i].x)
+        return xs
+    }
+
+    function rowCellRectsAt(displayIndex) {
+        var item = listView.itemAtIndex(displayIndex)
+        if (!item)
+            return []
+        var layout = null
+        for (var c = 0; c < item.children.length; c++) {
+            if (item.children[c].objectName === "batchRowLayout") {
+                layout = item.children[c]
+                break
+            }
+        }
+        if (!layout)
+            return []
+        var rects = []
+        for (var i = 0; i < layout.children.length; i++) {
+            var cell = layout.children[i]
+            rects.push({ x: cell.x, width: cell.width })
+        }
+        return rects
+    }
+
+    onStringsChanged: syncProxyStatusLabels()
+
+    Connections {
+        target: appRoot
+        function onQueueFilterTextChanged() {
+            if (bridge.batchModel)
+                bridge.batchModel.filterText = appRoot.queueFilterText
+        }
+    }
+
+    Component.onCompleted: {
+        syncProxyStatusLabels()
+        if (bridge.batchModel)
+            bridge.batchModel.filterText = appRoot.queueFilterText
+    }
 
     ColumnLayout {
                 anchors.fill: parent
@@ -28,15 +125,21 @@ import "../components"
                     ColumnLayout {
                         id: batchEntryCol
                         anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
-                        anchors.margins: 16
-                        spacing: 8
+                        anchors.margins: page.showHero ? 16 : 12
+                        spacing: page.showHero ? 8 : 6
 
-                        Label { text: strings.entry_title; font.pixelSize: 15; font.weight: Font.DemiBold }
+                        PageHero {
+                            Layout.fillWidth: true
+                            compact: !page.showHero
+                            theme: appRoot.theme
+                            title: strings.entry_title
+                            description: strings.hero_batch_desc
+                        }
 
                         AppHintArea {
                             id: inputArea
                             Layout.fillWidth: true
-                            Layout.preferredHeight: 66
+                            Layout.preferredHeight: page.showHero ? 66 : 60
                             hint: strings.entry_placeholder
                             wrapMode: TextEdit.Wrap
                             selectByMouse: true
@@ -50,7 +153,9 @@ import "../components"
                                 icon.source: appRoot.iconPath("add")
                                 icon.width: 16; icon.height: 16
                                 display: AbstractButton.TextBesideIcon
-                                ToolTip.text: strings.btn_add_tip; ToolTip.visible: hovered; ToolTip.delay: 500
+                                tipTitle: strings.btn_add
+                                tipText: strings.btn_add_tip
+                                tipShortcut: "Ctrl+Enter"
                                 onClicked: {
                                     if (bridge.addLinks(inputArea.text) > 0)
                                         inputArea.clear()
@@ -58,10 +163,13 @@ import "../components"
                             }
                             AppButton {
                                 text: strings.btn_paste
+                                variant: "secondary"
                                 icon.source: appRoot.iconPath("copy")
                                 icon.width: 16; icon.height: 16
                                 display: AbstractButton.TextBesideIcon
-                                ToolTip.text: strings.btn_paste_tip; ToolTip.visible: hovered; ToolTip.delay: 500
+                                tipTitle: strings.btn_paste
+                                tipText: strings.btn_paste_tip
+                                tipShortcut: "Ctrl+V"
                                 onClicked: {
                                     if (bridge.pasteFromClipboard() > 0)
                                         inputArea.clear()
@@ -69,46 +177,56 @@ import "../components"
                             }
                             AppButton {
                                 text: strings.btn_import
+                                variant: "secondary"
                                 icon.source: appRoot.iconPath("file")
                                 icon.width: 16; icon.height: 16
                                 display: AbstractButton.TextBesideIcon
-                                ToolTip.text: strings.btn_import_tip; ToolTip.visible: hovered; ToolTip.delay: 500
+                                tipTitle: strings.btn_import
+                                tipText: strings.btn_import_tip
                                 onClicked: bridge.importTxt()
                             }
                             AppButton {
-                                text: strings.btn_clear; flat: true
+                                text: strings.btn_clear; variant: "tertiary"; flat: true
                                 icon.source: appRoot.iconPath("trash")
                                 icon.width: 16; icon.height: 16
                                 display: AbstractButton.TextBesideIcon
-                                ToolTip.text: strings.btn_clear_tip; ToolTip.visible: hovered; ToolTip.delay: 500
+                                tipTitle: strings.btn_clear
+                                tipText: strings.btn_clear_tip
                                 onClicked: inputArea.clear()
                             }
                         }
 
-                        Flow {
+                        RowLayout {
                             Layout.fillWidth: true
                             spacing: 10
                             Label {
                                 text: strings.batch_fmt_label; font.pixelSize: 13
                                 color: appRoot.theme.textSecondary
+                                Layout.alignment: Qt.AlignVCenter
                             }
                             AppFormatSelector {
-                            strings: page.strings }
+                                strings: page.strings
+                                Layout.alignment: Qt.AlignVCenter
+                            }
                             Label {
                                 text: appRoot.downloadSummary()
                                 font.pixelSize: 11
                                 color: appRoot.theme.textSecondary
                                 elide: Text.ElideRight
-                                width: 260
+                                Layout.fillWidth: true
+                                Layout.alignment: Qt.AlignVCenter
                             }
                             AppButton {
                                 text: strings.batch_options
+                                variant: "secondary"
+                                Layout.alignment: Qt.AlignVCenter
                                 onClicked: appRoot.openBatchOptions()
                             }
                         }
 
                         Label {
                             text: strings.entry_hint
+                            visible: page.showHero
                             font.pixelSize: 11
                             color: appRoot.theme.textSecondary
                             wrapMode: Text.Wrap
@@ -173,13 +291,15 @@ import "../components"
                             Item { Layout.fillWidth: true }
                             AppHintField {
                                 id: queueFilter
-                                Layout.preferredWidth: 280
-                                hint: strings.filter_placeholder
+                                objectName: "batchFilter"
+                                Layout.preferredWidth: 310
+                                Layout.preferredHeight: 38
+                                hint: strings.queue_filter_placeholder
                                 leadingIcon: appRoot.iconPath("search")
                                 selectByMouse: true
-                                ToolTip.text: strings.filter_tip
-                                ToolTip.visible: hovered
-                                ToolTip.delay: 500
+                                tipTitle: strings.queue_filter_title
+                                tipText: strings.queue_filter_tip
+                                tipShortcut: "Ctrl+F"
                                 onTextChanged: {
                                     if (text.length === 0) {
                                         filterDebounce.stop()
@@ -188,11 +308,12 @@ import "../components"
                                         filterDebounce.restart()
                                     }
                                 }
+                                Keys.onEscapePressed: clear()
                             }
                             Timer {
                                 id: filterDebounce
-                                interval: 220
-                                onTriggered: appRoot.queueFilterText = queueFilter.text.toLowerCase()
+                                interval: 180
+                                onTriggered: appRoot.queueFilterText = queueFilter.text
                             }
                             AppToolButton {
                                 display: AbstractButton.IconOnly
@@ -201,10 +322,10 @@ import "../components"
                                 icon.height: 14
                                 opacity: queueFilter.text.length > 0 ? 1 : 0
                                 enabled: queueFilter.text.length > 0
-                                Accessible.name: strings.btn_clear
-                                ToolTip.text: strings.btn_clear
-                                ToolTip.visible: hovered
-                                ToolTip.delay: 500
+                                Accessible.name: strings.filter_clear
+                                tipTitle: strings.filter_clear
+                                tipText: strings.filter_clear_tip
+                                tipShortcut: "Esc"
                                 onClicked: queueFilter.clear()
                             }
                         }
@@ -220,11 +341,107 @@ import "../components"
                                 anchors.leftMargin: 12
                                 anchors.rightMargin: 12
                                 spacing: 10
-                                Item { Layout.fillWidth: true; Layout.minimumWidth: 180 }
-                                Label { text: strings.h_status; Layout.preferredWidth: 104; font.pixelSize: 13; font.bold: true; color: appRoot.theme.tableHeaderText }
-                                Label { text: strings.h_progress; Layout.preferredWidth: 150; font.pixelSize: 13; font.bold: true; color: appRoot.theme.tableHeaderText; horizontalAlignment: Text.AlignHCenter }
-                                Label { text: strings.h_speed_size; Layout.preferredWidth: 130; font.pixelSize: 13; font.bold: true; color: appRoot.theme.tableHeaderText }
-                                Item { Layout.preferredWidth: 136 }
+
+                                TableSortHeader {
+                                    objectName: "batchHeaderName"
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    Layout.minimumWidth: 180
+                                    labelLeftMargin: 80
+                                    label: strings.h_title
+                                    sortKey: "name"
+                                    activeKey: page.batchSortKey
+                                    ascending: page.batchSortAscending
+                                    textColor: appRoot.theme.tableHeaderText
+                                    mutedColor: appRoot.theme.textMuted
+                                    hoverColor: appRoot.theme.hover
+                                    accentColor: appRoot.theme.accentText
+                                    tipTitle: strings.h_title
+                                    tipText: strings.sort_tip
+                                    tipFooter: strings.sort_name_tip
+                                    sortStateText: page.batchSortAscending
+                                                   ? strings.sort_ascending
+                                                   : strings.sort_descending
+                                    onActivated: bridge.batchModel.sortBy("name")
+                                }
+                                TableSortHeader {
+                                    objectName: "batchHeaderStatus"
+                                    Layout.preferredWidth: 104
+                                    Layout.minimumWidth: 104
+                                    Layout.maximumWidth: 104
+                                    Layout.fillHeight: true
+                                    label: strings.h_status
+                                    sortKey: "status"
+                                    activeKey: page.batchSortKey
+                                    ascending: page.batchSortAscending
+                                    horizontalAlignment: Text.AlignHCenter
+                                    textColor: appRoot.theme.tableHeaderText
+                                    mutedColor: appRoot.theme.textMuted
+                                    hoverColor: appRoot.theme.hover
+                                    accentColor: appRoot.theme.accentText
+                                    tipTitle: strings.h_status
+                                    tipText: strings.sort_tip
+                                    tipFooter: strings.sort_status_tip
+                                    sortStateText: page.batchSortAscending
+                                                   ? strings.sort_ascending
+                                                   : strings.sort_descending
+                                    onActivated: bridge.batchModel.sortBy("status")
+                                }
+                                TableSortHeader {
+                                    objectName: "batchHeaderProgress"
+                                    Layout.preferredWidth: 150
+                                    Layout.minimumWidth: 150
+                                    Layout.maximumWidth: 150
+                                    Layout.fillHeight: true
+                                    label: strings.h_progress
+                                    sortKey: "progress"
+                                    activeKey: page.batchSortKey
+                                    ascending: page.batchSortAscending
+                                    horizontalAlignment: Text.AlignHCenter
+                                    textColor: appRoot.theme.tableHeaderText
+                                    mutedColor: appRoot.theme.textMuted
+                                    hoverColor: appRoot.theme.hover
+                                    accentColor: appRoot.theme.accentText
+                                    tipTitle: strings.h_progress
+                                    tipText: strings.sort_tip
+                                    tipFooter: strings.sort_progress_tip
+                                    sortStateText: page.batchSortAscending
+                                                   ? strings.sort_ascending
+                                                   : strings.sort_descending
+                                    onActivated: bridge.batchModel.sortBy("progress")
+                                }
+                                Item {
+                                    objectName: "batchHeaderSpeed"
+                                    Layout.preferredWidth: 130
+                                    Layout.minimumWidth: 130
+                                    Layout.maximumWidth: 130
+                                    Layout.fillHeight: true
+                                    Text {
+                                        anchors.left: parent.left
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: strings.h_speed_size
+                                        color: appRoot.theme.tableHeaderText
+                                        font.pixelSize: 13
+                                        font.bold: true
+                                        elide: Text.ElideRight
+                                    }
+                                }
+                                Item {
+                                    objectName: "batchHeaderActions"
+                                    Layout.preferredWidth: 136
+                                    Layout.minimumWidth: 136
+                                    Layout.maximumWidth: 136
+                                    Layout.fillHeight: true
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: strings.h_actions
+                                        color: appRoot.theme.tableHeaderText
+                                        font.pixelSize: 13
+                                        font.bold: true
+                                        horizontalAlignment: Text.AlignHCenter
+                                        verticalAlignment: Text.AlignVCenter
+                                    }
+                                }
                             }
                         }
 
@@ -235,7 +452,7 @@ import "../components"
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             clip: true
-                            model: downloadModel
+                            model: bridge.batchModel
                             delegate: downloadDelegate
                             spacing: 0
                             ScrollBar.vertical: ScrollBar {}
@@ -248,7 +465,7 @@ import "../components"
 
                             Rectangle {
                                 anchors.fill: parent
-                                visible: listView.count === 0
+                                visible: page.batchTotalCount === 0
                                 color: "transparent"
                                 Column {
                                     anchors.centerIn: parent
@@ -259,18 +476,29 @@ import "../components"
                                     }
                                     Label {
                                         anchors.horizontalCenter: parent.horizontalCenter
+                                        visible: listView.height >= 90
                                         text: strings.empty_hint; font.pixelSize: 12; color: appRoot.theme.textSecondary
                                     }
                                 }
                             }
-                            Label {
+                            Column {
                                 anchors.centerIn: parent
-                                visible: listView.count > 0
-                                         && appRoot.queueFilterText.length > 0
-                                         && listView.contentHeight <= 0
-                                text: strings.filter_no_results
-                                font.pixelSize: 13
-                                color: appRoot.theme.textSecondary
+                                spacing: 4
+                                visible: page.batchTotalCount > 0
+                                         && page.batchFilterTokens.length > 0
+                                         && listView.count === 0
+                                Label {
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    text: strings.filter_no_results
+                                    font.pixelSize: 13
+                                    color: appRoot.theme.textSecondary
+                                }
+                                Label {
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    text: strings.filter_no_results_hint
+                                    font.pixelSize: 11
+                                    color: appRoot.theme.textMuted
+                                }
                             }
                         }
                     }
@@ -290,11 +518,14 @@ import "../components"
                               + " · " + appRoot.statCancelled + " " + strings.stat_cancelled
                         font.pixelSize: 12
                         color: appRoot.theme.textSecondary
+                        wrapMode: Text.Wrap
+                        maximumLineCount: 2
                         elide: Text.ElideRight
                     }
 
                     ProgressBar {
                         Layout.preferredWidth: 180
+                        visible: appRoot.width >= 1050
                         value: {
                             var total = appRoot.statTotal
                             return total > 0
@@ -311,7 +542,10 @@ import "../components"
                         icon.width: 16; icon.height: 16
                         display: AbstractButton.TextBesideIcon
                         visible: !bridge.queueActive
-                        ToolTip.text: strings.btn_start_tip; ToolTip.visible: hovered; ToolTip.delay: 500
+                        enabled: appRoot.statWaiting > 0
+                        tipTitle: strings.btn_start
+                        tipText: strings.btn_start_tip
+                        tipShortcut: "F5"
                         onClicked: bridge.startQueue()
                     }
                     AppButton {
@@ -320,7 +554,8 @@ import "../components"
                         icon.width: 16; icon.height: 16
                         display: AbstractButton.TextBesideIcon
                         visible: bridge.queueActive && !bridge.queuePaused
-                        ToolTip.text: strings.btn_pause_tip; ToolTip.visible: hovered; ToolTip.delay: 500
+                        tipTitle: strings.btn_pause
+                        tipText: strings.btn_pause_tip
                         onClicked: bridge.pauseQueue()
                     }
                     AppButton {
@@ -330,23 +565,30 @@ import "../components"
                         display: AbstractButton.TextBesideIcon
                         visible: bridge.queueActive && bridge.queuePaused
                         highlighted: true
-                        ToolTip.text: strings.btn_resume_tip; ToolTip.visible: hovered; ToolTip.delay: 500
+                        tipTitle: strings.btn_resume
+                        tipText: strings.btn_resume_tip
                         onClicked: bridge.resumeQueue()
                     }
                     AppButton {
                         text: strings.btn_cancel_all
+                        variant: "secondary"
                         icon.source: appRoot.iconPath("stop")
                         icon.width: 16; icon.height: 16
                         display: AbstractButton.TextBesideIcon
-                        ToolTip.text: strings.btn_cancel_all_tip; ToolTip.visible: hovered; ToolTip.delay: 500
+                        enabled: appRoot.statWaiting + appRoot.statDownloading > 0
+                        tipTitle: strings.btn_cancel_all
+                        tipText: strings.btn_cancel_all_tip
                         onClicked: appRoot.openConfirmCancel()
                     }
                     AppButton {
                         text: strings.btn_clear_finished
+                        variant: "secondary"
                         icon.source: appRoot.iconPath("trash")
                         icon.width: 16; icon.height: 16
                         display: AbstractButton.TextBesideIcon
-                        ToolTip.text: strings.btn_clear_finished_tip; ToolTip.visible: hovered; ToolTip.delay: 500
+                        enabled: appRoot.statDone + appRoot.statError + appRoot.statCancelled > 0
+                        tipTitle: strings.btn_clear_finished
+                        tipText: strings.btn_clear_finished_tip
                         onClicked: appRoot.openConfirmClear()
                     }
                 }
@@ -360,12 +602,9 @@ import "../components"
             property bool editing: false
             property bool cancelEdit: false
             property string st: model.status
-            property string filterText: appRoot.queueFilterText
-            property bool matches: filterText.length === 0
-                || String(model.title).toLowerCase().indexOf(filterText) !== -1
-                || String(model.url).toLowerCase().indexOf(filterText) !== -1
-            height: matches ? 64 : 0
-            visible: matches
+            property int sourceIndex: model.sourceIndex
+            height: 64
+            visible: true
             property bool active: appRoot.isActive(st)
             property bool final: appRoot.isFinal(st)
             property bool canEdit: st === "waiting" || st === "error" || st === "cancelled"
@@ -384,12 +623,13 @@ import "../components"
                 MenuItem { text: strings.ctx_copy; onTriggered: bridge.copyLink(model.url) }
                 MenuItem { text: strings.ctx_edit; visible: rowItem.canEdit; onTriggered: rowItem.editing = true }
                 MenuItem { text: strings.ctx_open; visible: rowItem.st === "done"; onTriggered: bridge.openDownloadPath(model.path) }
-                MenuItem { text: strings.ctx_retry; visible: rowItem.final; onTriggered: bridge.retryItem(index) }
-                MenuItem { text: strings.ctx_cancel; visible: rowItem.active || rowItem.st === "waiting"; onTriggered: bridge.cancelItem(index) }
-                MenuItem { text: strings.ctx_remove; onTriggered: bridge.removeItem(index) }
+                MenuItem { text: strings.ctx_retry; visible: rowItem.final; onTriggered: bridge.retryItem(rowItem.sourceIndex) }
+                MenuItem { text: strings.ctx_cancel; visible: rowItem.active || rowItem.st === "waiting"; onTriggered: bridge.cancelItem(rowItem.sourceIndex) }
+                MenuItem { text: strings.ctx_remove; onTriggered: bridge.removeItem(rowItem.sourceIndex) }
             }
 
             RowLayout {
+                objectName: "batchRowLayout"
                 anchors.fill: parent
                 anchors.leftMargin: 12
                 anchors.rightMargin: 12
@@ -458,7 +698,7 @@ import "../components"
                                 }
                                 if (!rowItem.editing)
                                     return
-                                if (bridge.editUrl(index, text)) {
+                                if (bridge.editUrl(rowItem.sourceIndex, text)) {
                                     rowItem.editing = false
                                 } else {
                                     // Mantém o campo aberto para o usuário
@@ -494,6 +734,7 @@ import "../components"
                     Layout.alignment: Qt.AlignVCenter
                     spacing: 3
                     Rectangle {
+                        id: statusBadge
                         width: 104; height: 24; radius: 12
                         color: appRoot.badgeColor(rowItem.st)
                         Label {
@@ -507,11 +748,12 @@ import "../components"
                             verticalAlignment: Text.AlignVCenter
                             elide: Text.ElideRight
                         }
-                        MouseArea {
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            ToolTip.text: model.error
-                            ToolTip.visible: containsMouse && model.error.length > 0
+                        AppToolTip {
+                            target: statusBadge
+                            title: appRoot.statusText(rowItem.st)
+                            text: model.error
+                            available: model.error.length > 0
+                            delay: 400
                         }
                     }
                     Label {
@@ -568,7 +810,8 @@ import "../components"
                             icon.width: 16; icon.height: 16
                             visible: rowItem.canEdit
                             Accessible.name: strings.tip_edit
-                            ToolTip.text: strings.tip_edit; ToolTip.visible: hovered; ToolTip.delay: 500
+                            tipTitle: strings.tip_edit
+                            tipText: strings.tip_edit_tip
                             onClicked: rowItem.editing = true
                         }
                         AppToolButton {
@@ -577,7 +820,8 @@ import "../components"
                             icon.source: appRoot.iconPath("copy")
                             icon.width: 16; icon.height: 16
                             Accessible.name: strings.tip_copy
-                            ToolTip.text: strings.tip_copy; ToolTip.visible: hovered; ToolTip.delay: 500
+                            tipTitle: strings.tip_copy
+                            tipText: model.url
                             onClicked: bridge.copyLink(model.url)
                         }
                         AppToolButton {
@@ -587,8 +831,9 @@ import "../components"
                             icon.width: 16; icon.height: 16
                             visible: rowItem.final
                             Accessible.name: strings.tip_retry
-                            ToolTip.text: strings.tip_retry; ToolTip.visible: hovered; ToolTip.delay: 500
-                            onClicked: bridge.retryItem(index)
+                            tipTitle: strings.tip_retry
+                            tipText: strings.tip_retry_tip
+                            onClicked: bridge.retryItem(rowItem.sourceIndex)
                         }
                         AppToolButton {
                             width: 32; height: 28
@@ -597,8 +842,9 @@ import "../components"
                             icon.width: 16; icon.height: 16
                             visible: rowItem.active || rowItem.st === "waiting"
                             Accessible.name: strings.tip_cancel
-                            ToolTip.text: strings.tip_cancel; ToolTip.visible: hovered; ToolTip.delay: 500
-                            onClicked: bridge.cancelItem(index)
+                            tipTitle: strings.tip_cancel
+                            tipText: strings.tip_cancel_tip
+                            onClicked: bridge.cancelItem(rowItem.sourceIndex)
                         }
                         AppToolButton {
                             width: 32; height: 28
@@ -607,7 +853,8 @@ import "../components"
                             icon.width: 16; icon.height: 16
                             visible: rowItem.st === "done"
                             Accessible.name: strings.tip_open
-                            ToolTip.text: strings.tip_open; ToolTip.visible: hovered; ToolTip.delay: 500
+                            tipTitle: strings.tip_open
+                            tipText: model.path
                             onClicked: bridge.openDownloadPath(model.path)
                         }
                     }

@@ -10,6 +10,7 @@ from hlsdl.integrity import (
     FileGuard,
     JobJournal,
     build_completion,
+    cleanup_sidecars,
     create_backup,
     install_output,
     read_completion,
@@ -17,7 +18,9 @@ from hlsdl.integrity import (
     recover_journals,
     release_output_path,
     reserve_output_path,
+    set_sidecars_enabled,
     sha256_file,
+    sidecar_path,
     verify_completion,
     write_completion,
 )
@@ -33,6 +36,42 @@ def _probe(duration: str = "10") -> dict:
         ],
         "format": {"duration": duration},
     }
+
+
+def test_sidecar_path_posix_is_hidden_and_legacy_remains_readable(tmp_path, monkeypatch):
+    from hlsdl.integrity import legacy_sidecar_path
+
+    media = tmp_path / "video.mp4"
+    media.write_bytes(b"content")
+    posix_path = sidecar_path(str(media), posix=True)
+    assert os.path.basename(posix_path) == ".video.mp4.hlsdl.json"
+    assert legacy_sidecar_path(str(media)).endswith("video.mp4.hlsdl.json")
+    assert sidecar_path(str(media), posix=False).endswith("video.mp4.hlsdl.json")
+
+    monkeypatch.setattr("hlsdl.integrity.probe_media", lambda path: _probe())
+    record = build_completion(str(media), source_key="legacy")
+    from hlsdl.integrity import write_json_atomic
+
+    write_json_atomic(legacy_sidecar_path(str(media)), record.to_dict())
+    loaded = read_completion(str(media))
+    assert loaded is not None and loaded.source_key == "legacy"
+
+
+def test_sidecars_can_be_disabled_and_cleaned(tmp_path, monkeypatch):
+    monkeypatch.setattr("hlsdl.integrity.probe_media", lambda path: _probe())
+    media = tmp_path / "video.mp4"
+    media.write_bytes(b"content")
+    record = build_completion(str(media), source_key="key")
+    try:
+        set_sidecars_enabled(False)
+        assert write_completion(str(media), record) == ""
+        assert not os.path.exists(sidecar_path(str(media)))
+    finally:
+        set_sidecars_enabled(True)
+    assert write_completion(str(media), record)
+    assert os.path.exists(sidecar_path(str(media)))
+    assert cleanup_sidecars(str(tmp_path)) == 1
+    assert not os.path.exists(sidecar_path(str(media)))
 
 
 def test_completion_roundtrip_and_hash_verification(tmp_path, monkeypatch):
@@ -158,6 +197,31 @@ def test_install_output_refuses_if_source_changed(tmp_path):
     assert source.read_bytes() == b"changed"
 
 
+def test_install_output_rejects_final_equal_to_source(tmp_path):
+    """P3-01: a colisão não pode apagar a saída já validada."""
+    source = tmp_path / "same.mp4"
+    source.write_bytes(b"original")
+    temp = tmp_path / "encoded.part.mp4"
+    temp.write_bytes(b"encoded")
+    journal = JobJournal.create(
+        str(tmp_path / "journals"), 4, str(source), str(source), str(temp),
+    )
+    try:
+        install_output(
+            str(temp), str(source), str(source),
+            replace_original=True,
+            expected_hash=sha256_file(str(temp)),
+            expected_size=os.path.getsize(temp),
+            journal=journal,
+        )
+        raise AssertionError("expected collision failure")
+    except RuntimeError as exc:
+        assert str(exc) == "source_equals_final"
+    assert source.read_bytes() == b"original"
+    assert temp.read_bytes() == b"encoded"
+    assert journal.stage_name != "done"
+
+
 def test_recover_installing_keeps_verified_final(tmp_path):
     source = tmp_path / "source.mp4"
     source.write_bytes(b"original")
@@ -249,7 +313,7 @@ def test_download_finalize_writes_completion(tmp_path, monkeypatch):
     worker = DownloadWorker("https://youtu.be/abc123", str(tmp_path))
     result = worker._finalize_download(str(media))
     assert result == str(media)
-    assert os.path.exists(str(media) + ".hlsdl.json")
+    assert os.path.exists(sidecar_path(str(media)))
     ok, reason = verify_completion(str(media))
     assert ok, reason
 

@@ -33,3 +33,6 @@ diagnostico-hlsdl.txt
 # IDEs
 .vscode/
 .idea/
+
+# Estado local da fila
+/queue.json

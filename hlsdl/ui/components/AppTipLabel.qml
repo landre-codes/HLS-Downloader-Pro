@@ -5,8 +5,12 @@ import QtQuick.Controls.Material
 Label {
     id: tipLabel
     property string tip: ""
-    ToolTip.text: tip
-    ToolTip.visible: tipHover.hovered
-    ToolTip.delay: 500
+    property string tipTitle: ""
     HoverHandler { id: tipHover }
+    AppToolTip {
+        target: tipLabel
+        title: tipLabel.tipTitle
+        text: tipLabel.tip
+        available: tipLabel.tip.length > 0
+    }
 }

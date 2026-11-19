@@ -1,5 +1,8 @@
 # Versões fixas usadas no CI e nos builds de release.
 # Atualize junto com requirements.txt e valide com a suíte completa.
+# PySide6 6.12.0: advisories upstream em QXmlSimpleReader/QWebSockets têm
+# correção prevista em 6.12.1; atualizar assim que a wheel for publicada e
+# validar o bundle (o app não usa esses módulos diretamente).
 PySide6==6.12.0
 PySide6-Essentials==6.12.0
 PySide6-Addons==6.12.0
@@ -18,4 +21,6 @@ cffi==2.1.1
 pycparser==3.12
 pyinstaller==6.22.3
 pytest==9.1.1
+pytest-cov==7.1.0
+mypy==2.4.1
 ruff==0.16.10

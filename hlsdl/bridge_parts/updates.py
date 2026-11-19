@@ -1,4 +1,4 @@
-﻿# ruff: noqa: F401, F403, F405
+# ruff: noqa: F401, F403, F405
 
 from __future__ import annotations
 
@@ -77,10 +77,14 @@ class UpdatesMixin(BridgeSignals):
             QDesktopServices.openUrl(QUrl(url))
 
     def _on_update_checking(self, busy: bool) -> None:
+        if getattr(self, "_shutting_down", False):
+            return
         self._update_busy = busy
         self.updateChanged.emit()
 
     def _on_update_checked(self, info: dict) -> None:
+        if getattr(self, "_shutting_down", False):
+            return
         self._update_info = info
         self._update_busy = False
         if info.get("available"):
@@ -92,10 +96,14 @@ class UpdatesMixin(BridgeSignals):
         self.updateChanged.emit()
 
     def _on_update_progress(self, pct: int) -> None:
+        if getattr(self, "_shutting_down", False):
+            return
         self._update_progress = int(pct)
         self.updateProgressChanged.emit(self._update_progress)
 
     def _on_update_failed(self, err: str) -> None:
+        if getattr(self, "_shutting_down", False):
+            return
         self._update_busy = False
         if err in (
             "missing_assets", "missing_checksum", "checksum_mismatch",
@@ -112,6 +120,8 @@ class UpdatesMixin(BridgeSignals):
         self.updateChanged.emit()
 
     def _on_update_ready(self, path: str) -> None:
+        if getattr(self, "_shutting_down", False):
+            return
         self._update_busy = False
         self._update_status = self._tr("update_ready")
         self.updateChanged.emit()

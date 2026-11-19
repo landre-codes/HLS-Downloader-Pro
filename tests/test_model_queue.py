@@ -7,7 +7,7 @@ Antes, ``DownloadModel._items`` e ``QueueManager.items`` eram listas distintas;
 
 from __future__ import annotations
 
-from hlsdl.model import DownloadModel
+from hlsdl.model import DownloadFilterProxyModel, DownloadModel, make_item
 from hlsdl.queue import QueueManager
 from hlsdl.status import Status
 
@@ -16,6 +16,31 @@ def _make():
     model = DownloadModel([])
     manager = QueueManager(model, outdir="out")
     return model, manager
+
+
+def test_download_proxy_filters_sorts_and_keeps_source_index(qapp):
+    model = DownloadModel([])
+    first = make_item(1, "https://example.com/b")
+    first["title"] = "Beta"
+    first["status"] = Status.DONE
+    second = make_item(2, "https://example.com/a")
+    second["title"] = "Aula"
+    second["status"] = Status.DOWNLOADING
+    model.add(first)
+    model.add(second)
+
+    proxy = DownloadFilterProxyModel()
+    proxy.setSourceModel(model)
+    proxy.statusLabels = {"done": "Concluído", "downloading": "Baixando"}
+    proxy.sortBy("name")
+    assert proxy.rowCount() == 2
+    assert proxy.titleAt(0) == "Aula"
+    assert proxy.sourceIndexAt(0) == 1
+
+    proxy.filterText = "status:concluido"
+    assert proxy.rowCount() == 1
+    assert proxy.titleAt(0) == "Beta"
+    assert proxy.sourceIndexAt(0) == 0
 
 
 def test_model_and_manager_share_list(qapp):

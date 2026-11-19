@@ -120,6 +120,14 @@ class SimilarityScanner(QObject):
     def cancel(self) -> None:
         self._cancel = True
 
+    def shutdown(self, timeout: float = 2.0) -> None:
+        """Cancela e aguarda a thread de similaridade antes do teardown do Qt."""
+        self._cancel = True
+        thread = self._thread
+        if thread is not None and thread.is_alive() and thread is not threading.current_thread():
+            thread.join(timeout=max(0.0, timeout))
+        self._thread = None
+
     def _run(self, paths: list[str], threshold: float, frames: int,
              with_audio: bool) -> None:
         try:
@@ -129,8 +137,15 @@ class SimilarityScanner(QObject):
                     self.failed.emit("cancelled")
                     return
                 self.progress.emit(index, total, path)
-                signature = build_signature(path, with_frames=frames > 0,
-                                            with_audio=with_audio)
+                signature = build_signature(
+                    path,
+                    with_frames=frames > 0,
+                    with_audio=with_audio,
+                    cancel=lambda: self._cancel,
+                )
+                if self._cancel:
+                    self.failed.emit("cancelled")
+                    return
                 if frames > 1 and signature.frame_dhashes:
                     # ``build_signature`` already samples 5 points; keep the
                     # requested count by trimming deterministically.
@@ -140,7 +155,13 @@ class SimilarityScanner(QObject):
             if self._cancel:
                 self.failed.emit("cancelled")
                 return
-            groups = group_similar(self._signatures, threshold=threshold)
+            groups = group_similar(
+                self._signatures, threshold=threshold,
+                cancel=lambda: self._cancel,
+            )
+            if self._cancel:
+                self.failed.emit("cancelled")
+                return
             self._groups = groups
             self.progress.emit(total, total, "")
             self.finished.emit(groups)

@@ -1,5 +1,9 @@
 # Auditoria técnica — HLS Downloader Pro
 
+> **Nota (17/11/2026):** este documento histórico refere-se à versão 1.4.0.
+> A auditoria externa mais recente (1.5.0) e o estado da remediação estão em
+> `REMEDIATION_PLAN.md` e `REMEDIATION_LOG.md`.
+
 **Data:** 13/11/2026  
 **Versão:** 1.4.0  
 **Commit base:** `4c225c1`  
@@ -27,7 +31,7 @@ O projeto está em um nível **bom e acima da média para um app desktop Python/
 | Área | Avaliação | Observação |
 |---|---|---|
 | Integridade e recuperação | **A-** | Journal, backup, hash, sidecar e recuperação são consistentes; faltam testes de falha real em mais cenários. |
-| Compressão/HandBrake | **A-** | Boa cobertura de filtros, HDR, áudio, legendas e validação; paridade hardware ainda depende de testes manuais. |
+| Compressão | **A-** | Boa cobertura de filtros, HDR, áudio, legendas e validação; paridade hardware ainda depende de testes manuais. |
 | Concorrência/encerramento | **B-** | QThreads principais têm lifecycle; threads auxiliares ainda são daemon sem join explícito. |
 | Segurança de suprimentos | **C** | Checksums bons, mas atualização e build sem assinatura/pinagem fortes. |
 | Testes | **B** | 216 testes e boa cobertura de lógica; faltam integração real, UI e hardware no CI. |

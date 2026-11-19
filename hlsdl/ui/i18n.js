@@ -1570,7 +1570,7 @@ var extra = {
         compress_preset_quality_hevc: "Qualidade — HEVC",
         compress_preset_archive_hevc: "Arquivo — HEVC 10-bit",
         compress_preset_av1_balanced: "AV1 — equilíbrio",
-        compress_preset_tip: "Presets no estilo HandBrake; ajuste fino depois.",
+        compress_preset_tip: "Presets prontos; ajuste fino depois.",
         compress_deinterlace: "Desentrelaçar:",
         compress_deinterlace_auto: "Automático",
         compress_deinterlace_off: "Desligado",
@@ -1642,7 +1642,7 @@ var extra = {
         compress_preset_quality_hevc: "Quality — HEVC",
         compress_preset_archive_hevc: "Archive — HEVC 10-bit",
         compress_preset_av1_balanced: "AV1 — balanced",
-        compress_preset_tip: "HandBrake-style presets; fine-tune afterwards.",
+        compress_preset_tip: "Ready-made presets; fine-tune afterwards.",
         compress_deinterlace: "Deinterlace:",
         compress_deinterlace_auto: "Auto",
         compress_deinterlace_off: "Off",
@@ -1714,7 +1714,7 @@ var extra = {
         compress_preset_quality_hevc: "Calidad — HEVC",
         compress_preset_archive_hevc: "Archivo — HEVC 10-bit",
         compress_preset_av1_balanced: "AV1 — equilibrio",
-        compress_preset_tip: "Preajustes estilo HandBrake; ajusta después.",
+        compress_preset_tip: "Ajustes predefinidos; ajusta después.",
         compress_deinterlace: "Desentrelazar:",
         compress_deinterlace_auto: "Automático",
         compress_deinterlace_off: "Desactivado",
@@ -1786,7 +1786,7 @@ var extra = {
         compress_preset_quality_hevc: "Qualità — HEVC",
         compress_preset_archive_hevc: "Archivio — HEVC 10-bit",
         compress_preset_av1_balanced: "AV1 — equilibrio",
-        compress_preset_tip: "Preset in stile HandBrake; rifinisci dopo.",
+        compress_preset_tip: "Preset pronti; rifinisci dopo.",
         compress_deinterlace: "Deinterlaccia:",
         compress_deinterlace_auto: "Automatico",
         compress_deinterlace_off: "Disattivato",
@@ -1858,7 +1858,7 @@ var extra = {
         compress_preset_quality_hevc: "Qualité — HEVC",
         compress_preset_archive_hevc: "Archive — HEVC 10-bit",
         compress_preset_av1_balanced: "AV1 — équilibré",
-        compress_preset_tip: "Préréglages inspirés de HandBrake ; affinez ensuite.",
+        compress_preset_tip: "Préréglages prêts ; affinez ensuite.",
         compress_deinterlace: "Désentrelacer :",
         compress_deinterlace_auto: "Automatique",
         compress_deinterlace_off: "Désactivé",
@@ -1930,7 +1930,7 @@ var extra = {
         compress_preset_quality_hevc: "Качество — HEVC",
         compress_preset_archive_hevc: "Архив — HEVC 10-bit",
         compress_preset_av1_balanced: "AV1 — баланс",
-        compress_preset_tip: "Пресеты в стиле HandBrake; затем настройте детали.",
+        compress_preset_tip: "Готовые пресеты; затем настройте детали.",
         compress_deinterlace: "Деинтерлейс:",
         compress_deinterlace_auto: "Авто",
         compress_deinterlace_off: "Выкл.",
@@ -2002,7 +2002,7 @@ var extra = {
         compress_preset_quality_hevc: "高画質 — HEVC",
         compress_preset_archive_hevc: "アーカイブ — HEVC 10-bit",
         compress_preset_av1_balanced: "AV1 — バランス",
-        compress_preset_tip: "HandBrake 風プリセット。後で微調整できます。",
+        compress_preset_tip: "プリセットです。後で微調整できます。",
         compress_deinterlace: "インターレース解除:",
         compress_deinterlace_auto: "自動",
         compress_deinterlace_off: "オフ",
@@ -2074,7 +2074,7 @@ var extra = {
         compress_preset_quality_hevc: "高质量 — HEVC",
         compress_preset_archive_hevc: "归档 — HEVC 10-bit",
         compress_preset_av1_balanced: "AV1 — 均衡",
-        compress_preset_tip: "HandBrake 风格预设，之后可微调。",
+        compress_preset_tip: "预设已就绪，之后可微调。",
         compress_deinterlace: "去隔行：",
         compress_deinterlace_auto: "自动",
         compress_deinterlace_off: "关闭",
@@ -2978,6 +2978,639 @@ var extraQuality = {
     },
 }
 
+var extraMinBitrate = {
+    "pt": {
+        compress_min_bitrate: "Bitrate alvo:",
+        compress_min_bitrate_tip: "Alvo VBR aproximado em % do original; não é piso garantido e é ignorado no AV1 QSV. 0 desativa.",
+        compress_min_bitrate_off: "Desativado",
+        compress_min_bitrate_av1_qsv: "Indisponível para AV1 QSV; use qualidade constante (ICQ).",
+    },
+    "en": {
+        compress_min_bitrate: "Target bitrate:",
+        compress_min_bitrate_tip: "Approximate VBR target as % of source; not a guaranteed floor and ignored for AV1 QSV. 0 disables.",
+        compress_min_bitrate_off: "Disabled",
+        compress_min_bitrate_av1_qsv: "Unavailable for AV1 QSV; use constant quality (ICQ).",
+    },
+    "es": {
+        compress_min_bitrate: "Bitrate objetivo:",
+        compress_min_bitrate_tip: "Objetivo VBR aproximado en % del original; no es un piso garantizado y se ignora en AV1 QSV. 0 lo desactiva.",
+        compress_min_bitrate_off: "Desactivado",
+        compress_min_bitrate_av1_qsv: "No disponible para AV1 QSV; usa calidad constante (ICQ).",
+    },
+    "it": {
+        compress_min_bitrate: "Bitrate obiettivo:",
+        compress_min_bitrate_tip: "Obiettivo VBR approssimativo in % dell'originale; non è un limite minimo garantito e viene ignorato per AV1 QSV. 0 disattiva.",
+        compress_min_bitrate_off: "Disattivato",
+        compress_min_bitrate_av1_qsv: "Non disponibile per AV1 QSV; usa qualità costante (ICQ).",
+    },
+    "fr": {
+        compress_min_bitrate: "Débit cible :",
+        compress_min_bitrate_tip: "Cible VBR approximative en % de l'original ; ce n'est pas un plancher garanti et elle est ignorée pour AV1 QSV. 0 désactive.",
+        compress_min_bitrate_off: "Désactivé",
+        compress_min_bitrate_av1_qsv: "Indisponible pour AV1 QSV ; utilisez la qualité constante (ICQ).",
+    },
+    "ru": {
+        compress_min_bitrate: "Целевой битрейт:",
+        compress_min_bitrate_tip: "Приблизительная цель VBR в % от исходного; это не гарантированный минимум и игнорируется для AV1 QSV. 0 отключает.",
+        compress_min_bitrate_off: "Отключено",
+        compress_min_bitrate_av1_qsv: "Недоступно для AV1 QSV; используйте постоянное качество (ICQ).",
+    },
+    "ja": {
+        compress_min_bitrate: "目標ビットレート:",
+        compress_min_bitrate_tip: "元ファイルに対する VBR のおおよその目標値です。下限保証ではなく、AV1 QSV では無視されます。0 で無効。",
+        compress_min_bitrate_off: "無効",
+        compress_min_bitrate_av1_qsv: "AV1 QSV では使用できません。固定品質 (ICQ) を使用してください。",
+    },
+    "zh": {
+        compress_min_bitrate: "目标比特率：",
+        compress_min_bitrate_tip: "约为源文件百分比的 VBR 目标；不保证最低值，AV1 QSV 会忽略。0 表示关闭。",
+        compress_min_bitrate_off: "已关闭",
+        compress_min_bitrate_av1_qsv: "AV1 QSV 不可用；请使用恒定质量 (ICQ)。",
+    }
+}
+
+var extraTable = {
+    "pt": { compress_col_file: "Arquivo" },
+    "en": { compress_col_file: "File" },
+    "es": { compress_col_file: "Archivo" },
+    "it": { compress_col_file: "File" },
+    "fr": { compress_col_file: "Fichier" },
+    "ru": { compress_col_file: "Файл" },
+    "ja": { compress_col_file: "ファイル" },
+    "zh": { compress_col_file: "文件" }
+}
+
+var extraSidecars = {
+    "pt": {
+        cfg_sidecars: "Salvar sidecars .hlsdl.json",
+        cfg_sidecars_tip: "Arquivos JSON ocultos ao lado de cada mídia para integridade e deduplicação. Desative para manter a pasta limpa; o catálogo SQLite continua registrando os metadados.",
+        cfg_sidecars_cleanup: "Remover sidecars existentes"
+    },
+    "en": {
+        cfg_sidecars: "Save .hlsdl.json sidecars",
+        cfg_sidecars_tip: "Hidden JSON files next to each media file for integrity and deduplication. Disable to keep the folder clean; the SQLite catalog still records metadata.",
+        cfg_sidecars_cleanup: "Remove existing sidecars"
+    },
+    "es": {
+        cfg_sidecars: "Guardar sidecars .hlsdl.json",
+        cfg_sidecars_tip: "Archivos JSON ocultos junto a cada medio para integridad y deduplicación. Desactívalo para mantener la carpeta limpia; el catálogo SQLite sigue registrando metadatos.",
+        cfg_sidecars_cleanup: "Eliminar sidecars existentes"
+    },
+    "it": {
+        cfg_sidecars: "Salva sidecar .hlsdl.json",
+        cfg_sidecars_tip: "File JSON nascosti accanto a ogni media per integrità e deduplicazione. Disattiva per mantenere la cartella pulita; il catalogo SQLite continua a registrare i metadati.",
+        cfg_sidecars_cleanup: "Rimuovi sidecar esistenti"
+    },
+    "fr": {
+        cfg_sidecars: "Enregistrer les sidecars .hlsdl.json",
+        cfg_sidecars_tip: "Fichiers JSON masqués à côté de chaque média pour l’intégrité et la déduplication. Désactivez pour garder le dossier propre ; le catalogue SQLite continue d’enregistrer les métadonnées.",
+        cfg_sidecars_cleanup: "Supprimer les sidecars existants"
+    },
+    "ru": {
+        cfg_sidecars: "Сохранять sidecar .hlsdl.json",
+        cfg_sidecars_tip: "Скрытые JSON-файлы рядом с каждым медиафайлом для целостности и дедупликации. Отключите, чтобы папка оставалась чистой; каталог SQLite продолжит хранить метаданные.",
+        cfg_sidecars_cleanup: "Удалить существующие sidecar-файлы"
+    },
+    "ja": {
+        cfg_sidecars: ".hlsdl.json sidecar を保存",
+        cfg_sidecars_tip: "整合性と重複排除のため、各メディアの横に隠し JSON を保存します。オフにするとフォルダが整理されますが、SQLite カタログにはメタデータが残ります。",
+        cfg_sidecars_cleanup: "既存の sidecar を削除"
+    },
+    "zh": {
+        cfg_sidecars: "保存 .hlsdl.json sidecar",
+        cfg_sidecars_tip: "在每个媒体文件旁保存隐藏的 JSON，用于完整性和去重。关闭可保持文件夹整洁；SQLite 目录仍会记录元数据。",
+        cfg_sidecars_cleanup: "删除现有 sidecar"
+    }
+}
+
+var extraPageHero = {
+    "pt": {
+        hero_single_desc: "Cole a URL, escolha o formato e baixe um vídeo ou áudio agora.",
+        hero_batch_desc: "Cole vários links ou importe um .txt e acompanhe a fila em tempo real.",
+        hero_playlist_desc: "Carregue os itens, selecione o que quiser e envie para a fila.",
+        hero_compress_desc: "Converta seus vídeos preservando o original e comparando tamanho e qualidade.",
+        hero_settings_desc: "Tema, downloads, cookies, integridade e dependências em um só lugar."
+    },
+    "en": {
+        hero_single_desc: "Paste the URL, choose a format and download video or audio now.",
+        hero_batch_desc: "Paste multiple links or import a .txt and track the queue in real time.",
+        hero_playlist_desc: "Load the items, select what you want and send them to the queue.",
+        hero_compress_desc: "Convert your videos while preserving the original and comparing size and quality.",
+        hero_settings_desc: "Theme, downloads, cookies, integrity and dependencies in one place."
+    },
+    "es": {
+        hero_single_desc: "Pega la URL, elige el formato y descarga vídeo o audio ahora.",
+        hero_batch_desc: "Pega varios enlaces o importa un .txt y sigue la cola en tiempo real.",
+        hero_playlist_desc: "Carga los elementos, selecciona los que quieras y envíalos a la cola.",
+        hero_compress_desc: "Convierte tus vídeos conservando el original y comparando tamaño y calidad.",
+        hero_settings_desc: "Tema, descargas, cookies, integridad y dependencias en un solo lugar."
+    },
+    "it": {
+        hero_single_desc: "Incolla l'URL, scegli il formato e scarica subito video o audio.",
+        hero_batch_desc: "Incolla più link o importa un .txt e segui la coda in tempo reale.",
+        hero_playlist_desc: "Carica gli elementi, seleziona quelli che vuoi e inviali alla coda.",
+        hero_compress_desc: "Converti i video conservando l'originale e confrontando dimensioni e qualità.",
+        hero_settings_desc: "Tema, download, cookie, integrità e dipendenze in un unico posto."
+    },
+    "fr": {
+        hero_single_desc: "Collez l'URL, choisissez le format et téléchargez vidéo ou audio maintenant.",
+        hero_batch_desc: "Collez plusieurs liens ou importez un .txt et suivez la file en temps réel.",
+        hero_playlist_desc: "Chargez les éléments, sélectionnez ceux voulus et envoyez-les à la file.",
+        hero_compress_desc: "Convertissez vos vidéos en conservant l'original et en comparant taille et qualité.",
+        hero_settings_desc: "Thème, téléchargements, cookies, intégrité et dépendances au même endroit."
+    },
+    "ru": {
+        hero_single_desc: "Вставьте URL, выберите формат и сразу скачайте видео или аудио.",
+        hero_batch_desc: "Вставьте несколько ссылок или импортируйте .txt и следите за очередью.",
+        hero_playlist_desc: "Загрузите элементы, выберите нужные и отправьте их в очередь.",
+        hero_compress_desc: "Конвертируйте видео, сохраняя оригинал и сравнивая размер и качество.",
+        hero_settings_desc: "Тема, загрузки, cookies, целостность и зависимости в одном месте."
+    },
+    "ja": {
+        hero_single_desc: "URL を貼り、形式を選んで動画または音声を今すぐダウンロードします。",
+        hero_batch_desc: "複数のリンクを貼るか .txt を読み込み、キューをリアルタイムで確認します。",
+        hero_playlist_desc: "項目を読み込み、必要なものを選んでキューに送ります。",
+        hero_compress_desc: "元ファイルを保持し、サイズと品質を比較しながら動画を変換します。",
+        hero_settings_desc: "テーマ、ダウンロード、Cookie、整合性、依存関係を一箇所で管理します。"
+    },
+    "zh": {
+        hero_single_desc: "粘贴 URL，选择格式，立即下载视频或音频。",
+        hero_batch_desc: "粘贴多个链接或导入 .txt，实时查看队列。",
+        hero_playlist_desc: "加载项目，选择所需内容并发送到队列。",
+        hero_compress_desc: "在保留原文件的同时转换视频，并比较大小和质量。",
+        hero_settings_desc: "主题、下载、Cookie、完整性和依赖项集中管理。"
+    }
+}
+
+var extraFilter = {
+    "pt": {
+        filter_field_all: "Todos os campos",
+        filter_field_name: "Nome/arquivo",
+        filter_field_status: "Status",
+        filter_field_progress: "Progresso",
+        filter_field_size: "Tamanho",
+        filter_field_saving: "Economia",
+        filter_field_error: "Erro",
+        filter_field_tip: "Escolha o campo usado pelo filtro."
+    },
+    "en": {
+        filter_field_all: "All fields",
+        filter_field_name: "Name/file",
+        filter_field_status: "Status",
+        filter_field_progress: "Progress",
+        filter_field_size: "Size",
+        filter_field_saving: "Saving",
+        filter_field_error: "Error",
+        filter_field_tip: "Choose the field used by the filter."
+    },
+    "es": {
+        filter_field_all: "Todos los campos",
+        filter_field_name: "Nombre/archivo",
+        filter_field_status: "Estado",
+        filter_field_progress: "Progreso",
+        filter_field_size: "Tamaño",
+        filter_field_saving: "Ahorro",
+        filter_field_error: "Error",
+        filter_field_tip: "Elige el campo usado por el filtro."
+    },
+    "it": {
+        filter_field_all: "Tutti i campi",
+        filter_field_name: "Nome/file",
+        filter_field_status: "Stato",
+        filter_field_progress: "Avanzamento",
+        filter_field_size: "Dimensione",
+        filter_field_saving: "Risparmio",
+        filter_field_error: "Errore",
+        filter_field_tip: "Scegli il campo usato dal filtro."
+    },
+    "fr": {
+        filter_field_all: "Tous les champs",
+        filter_field_name: "Nom/fichier",
+        filter_field_status: "Statut",
+        filter_field_progress: "Progression",
+        filter_field_size: "Taille",
+        filter_field_saving: "Économie",
+        filter_field_error: "Erreur",
+        filter_field_tip: "Choisissez le champ utilisé par le filtre."
+    },
+    "ru": {
+        filter_field_all: "Все поля",
+        filter_field_name: "Имя/файл",
+        filter_field_status: "Статус",
+        filter_field_progress: "Прогресс",
+        filter_field_size: "Размер",
+        filter_field_saving: "Экономия",
+        filter_field_error: "Ошибка",
+        filter_field_tip: "Выберите поле для фильтра."
+    },
+    "ja": {
+        filter_field_all: "すべての項目",
+        filter_field_name: "名前/ファイル",
+        filter_field_status: "状態",
+        filter_field_progress: "進行状況",
+        filter_field_size: "サイズ",
+        filter_field_saving: "節約",
+        filter_field_error: "エラー",
+        filter_field_tip: "フィルターに使う項目を選択します。"
+    },
+    "zh": {
+        filter_field_all: "所有字段",
+        filter_field_name: "名称/文件",
+        filter_field_status: "状态",
+        filter_field_progress: "进度",
+        filter_field_size: "大小",
+        filter_field_saving: "节省",
+        filter_field_error: "错误",
+        filter_field_tip: "选择筛选使用的字段。"
+    }
+}
+
+// Ferramentas de tabela: filtro dinâmico, ordenação e tooltips contextuais.
+var extraTableTools = {
+    "pt": {
+        h_title: "Título",
+        h_actions: "Ações",
+        queue_filter_title: "Filtrar fila",
+        queue_filter_placeholder: "Filtrar título, URL, status…",
+        queue_filter_tip: "Busca em todas as colunas. Prefixos: status: / titulo: / url: / erro: / tamanho:. Vários termos funcionam como E (todos precisam casar).",
+        compress_filter_title: "Filtrar fila de compressão",
+        compress_filter_placeholder: "Filtrar arquivo, status, erro…",
+        compress_filter_tip: "Busca em todas as colunas. Prefixos: status: / nome: / erro: / tamanho: / economia:. Vários termos funcionam como E.",
+        filter_clear: "Limpar filtro",
+        filter_clear_tip: "Apaga a busca e mostra todas as linhas.",
+        filter_no_results_hint: "Ajuste a busca ou limpe o filtro para ver a fila completa.",
+        compress_empty_hint: "Use “Adicionar arquivos” ou “Adicionar pasta” para começar.",
+        compress_settings_hide: "Ocultar ajustes",
+        compress_settings_show: "Mostrar ajustes",
+        compress_settings_hide_tip: "Recolhe os ajustes para liberar espaço para a fila.",
+        compress_settings_show_tip: "Mostra novamente os ajustes de compressão.",
+        compress_scanning: "Verificando pasta…",
+        compress_scan_cancel: "Cancelar varredura",
+        compress_scan_cancel_tip: "Interrompe a varredura; nenhum arquivo parcial é adicionado.",
+        compress_start_tip: "Inicia a compressão dos itens aguardando na fila.",
+        compress_cancel_tip: "Interrompe este item e preserva o arquivo original.",
+        compress_retry_tip: "Tenta comprimir novamente com os ajustes atuais.",
+        compress_remove_tip: "Remove o item da fila; arquivos já gerados não são apagados.",
+        compress_clear_finished_tip: "Remove da fila os itens concluídos, com erro ou cancelados.",
+        sort_tip: "Clique para ordenar por esta coluna; clique de novo para inverter.",
+        sort_ascending: "crescente",
+        sort_descending: "decrescente",
+        sort_name_tip: "Ordena por nome do arquivo ou título.",
+        sort_status_tip: "Agrupa por estado: ativos, aguardando, concluídos e erros.",
+        sort_progress_tip: "Ordena pelo percentual concluído.",
+        sort_result_tip: "Ordena pelo tamanho final do arquivo.",
+        tip_edit_tip: "Permite corrigir a URL antes de baixar.",
+        tip_retry_tip: "Recoloca o item na fila e baixa novamente.",
+        tip_cancel_tip: "Interrompe este download; o arquivo parcial é descartado."
+    },
+    "en": {
+        h_title: "Title",
+        h_actions: "Actions",
+        queue_filter_title: "Filter queue",
+        queue_filter_placeholder: "Filter title, URL, status…",
+        queue_filter_tip: "Searches every column. Prefixes: status: / title: / url: / error: / size:. Multiple terms are combined with AND.",
+        compress_filter_title: "Filter compression queue",
+        compress_filter_placeholder: "Filter file, status, error…",
+        compress_filter_tip: "Searches every column. Prefixes: status: / name: / error: / size: / saving:. Multiple terms are combined with AND.",
+        filter_clear: "Clear filter",
+        filter_clear_tip: "Clears the search and shows every row.",
+        filter_no_results_hint: "Adjust the search or clear the filter to see the whole queue.",
+        compress_empty_hint: "Use “Add files” or “Add folder” to get started.",
+        compress_settings_hide: "Hide settings",
+        compress_settings_show: "Show settings",
+        compress_settings_hide_tip: "Collapses settings to make room for the queue.",
+        compress_settings_show_tip: "Shows the compression settings again.",
+        compress_scanning: "Scanning folder…",
+        compress_scan_cancel: "Cancel scan",
+        compress_scan_cancel_tip: "Stops the scan; no partial files are added.",
+        compress_start_tip: "Starts compressing the items waiting in the queue.",
+        compress_cancel_tip: "Stops this item and preserves the original file.",
+        compress_retry_tip: "Tries to compress again with the current settings.",
+        compress_remove_tip: "Removes the item from the queue; generated files are not deleted.",
+        compress_clear_finished_tip: "Removes finished, failed and cancelled items from the queue.",
+        sort_tip: "Click to sort by this column; click again to reverse.",
+        sort_ascending: "ascending",
+        sort_descending: "descending",
+        sort_name_tip: "Sorts by file name or title.",
+        sort_status_tip: "Groups by state: active, waiting, finished and failed.",
+        sort_progress_tip: "Sorts by completion percentage.",
+        sort_result_tip: "Sorts by final file size.",
+        tip_edit_tip: "Lets you fix the URL before downloading.",
+        tip_retry_tip: "Puts the item back in the queue and downloads it again.",
+        tip_cancel_tip: "Stops this download; the partial file is discarded."
+    },
+    "es": {
+        h_title: "Título",
+        h_actions: "Acciones",
+        queue_filter_title: "Filtrar cola",
+        queue_filter_placeholder: "Filtrar título, URL, estado…",
+        queue_filter_tip: "Busca en todas las columnas. Prefijos: status: / titulo: / url: / error: / tamaño:. Varios términos se combinan con Y.",
+        compress_filter_title: "Filtrar cola de compresión",
+        compress_filter_placeholder: "Filtrar archivo, estado, error…",
+        compress_filter_tip: "Busca en todas las columnas. Prefijos: status: / nombre: / error: / tamaño: / ahorro:. Varios términos se combinan con Y.",
+        filter_clear: "Limpiar filtro",
+        filter_clear_tip: "Borra la búsqueda y muestra todas las filas.",
+        filter_no_results_hint: "Ajusta la búsqueda o limpia el filtro para ver la cola completa.",
+        compress_empty_hint: "Usa «Añadir archivos» o «Añadir carpeta» para empezar.",
+        compress_settings_hide: "Ocultar ajustes",
+        compress_settings_show: "Mostrar ajustes",
+        compress_settings_hide_tip: "Contrae los ajustes para dejar espacio a la cola.",
+        compress_settings_show_tip: "Vuelve a mostrar los ajustes de compresión.",
+        compress_scanning: "Analizando carpeta…",
+        compress_scan_cancel: "Cancelar análisis",
+        compress_scan_cancel_tip: "Detiene el análisis; no se añaden archivos parciales.",
+        compress_start_tip: "Inicia la compresión de los elementos en espera.",
+        compress_cancel_tip: "Detiene este elemento y conserva el archivo original.",
+        compress_retry_tip: "Intenta comprimir de nuevo con los ajustes actuales.",
+        compress_remove_tip: "Quita el elemento de la cola; los archivos generados no se borran.",
+        compress_clear_finished_tip: "Quita de la cola los elementos terminados, con error o cancelados.",
+        sort_tip: "Haz clic para ordenar por esta columna; vuelve a hacer clic para invertir.",
+        sort_ascending: "ascendente",
+        sort_descending: "descendente",
+        sort_name_tip: "Ordena por nombre de archivo o título.",
+        sort_status_tip: "Agrupa por estado: activos, en espera, terminados y con error.",
+        sort_progress_tip: "Ordena por porcentaje completado.",
+        sort_result_tip: "Ordena por tamaño final del archivo.",
+        tip_edit_tip: "Permite corregir la URL antes de descargar.",
+        tip_retry_tip: "Vuelve a poner el elemento en la cola y lo descarga de nuevo.",
+        tip_cancel_tip: "Detiene esta descarga; el archivo parcial se descarta."
+    },
+    "it": {
+        h_title: "Titolo",
+        h_actions: "Azioni",
+        queue_filter_title: "Filtra coda",
+        queue_filter_placeholder: "Filtra titolo, URL, stato…",
+        queue_filter_tip: "Cerca in tutte le colonne. Prefissi: status: / titolo: / url: / errore: / dimensione:. Più termini si combinano con E.",
+        compress_filter_title: "Filtra coda di compressione",
+        compress_filter_placeholder: "Filtra file, stato, errore…",
+        compress_filter_tip: "Cerca in tutte le colonne. Prefissi: status: / nome: / errore: / dimensione: / risparmio:. Più termini si combinano con E.",
+        filter_clear: "Cancella filtro",
+        filter_clear_tip: "Cancella la ricerca e mostra tutte le righe.",
+        filter_no_results_hint: "Modifica la ricerca o cancella il filtro per vedere tutta la coda.",
+        compress_empty_hint: "Usa «Aggiungi file» o «Aggiungi cartella» per iniziare.",
+        compress_settings_hide: "Nascondi impostazioni",
+        compress_settings_show: "Mostra impostazioni",
+        compress_settings_hide_tip: "Riduce le impostazioni per lasciare spazio alla coda.",
+        compress_settings_show_tip: "Mostra di nuovo le impostazioni di compressione.",
+        compress_scanning: "Scansione cartella…",
+        compress_scan_cancel: "Annulla scansione",
+        compress_scan_cancel_tip: "Interrompe la scansione; nessun file parziale viene aggiunto.",
+        compress_start_tip: "Avvia la compressione degli elementi in attesa.",
+        compress_cancel_tip: "Interrompe questo elemento e conserva il file originale.",
+        compress_retry_tip: "Prova a comprimere di nuovo con le impostazioni attuali.",
+        compress_remove_tip: "Rimuove l'elemento dalla coda; i file generati non vengono eliminati.",
+        compress_clear_finished_tip: "Rimuove dalla coda gli elementi completati, falliti o annullati.",
+        sort_tip: "Fai clic per ordinare per questa colonna; fai di nuovo clic per invertire.",
+        sort_ascending: "crescente",
+        sort_descending: "decrescente",
+        sort_name_tip: "Ordina per nome file o titolo.",
+        sort_status_tip: "Raggruppa per stato: attivi, in attesa, completati ed errori.",
+        sort_progress_tip: "Ordina per percentuale completata.",
+        sort_result_tip: "Ordina per dimensione finale del file.",
+        tip_edit_tip: "Consente di correggere l'URL prima del download.",
+        tip_retry_tip: "Rimette l'elemento in coda e lo scarica di nuovo.",
+        tip_cancel_tip: "Interrompe questo download; il file parziale viene scartato."
+    },
+    "fr": {
+        h_title: "Titre",
+        h_actions: "Actions",
+        queue_filter_title: "Filtrer la file",
+        queue_filter_placeholder: "Filtrer titre, URL, statut…",
+        queue_filter_tip: "Recherche dans toutes les colonnes. Préfixes : status: / titre: / url: / erreur: / taille:. Plusieurs termes sont combinés avec ET.",
+        compress_filter_title: "Filtrer la file de compression",
+        compress_filter_placeholder: "Filtrer fichier, statut, erreur…",
+        compress_filter_tip: "Recherche dans toutes les colonnes. Préfixes : status: / nom: / erreur: / taille: / économie:. Plusieurs termes sont combinés avec ET.",
+        filter_clear: "Effacer le filtre",
+        filter_clear_tip: "Efface la recherche et affiche toutes les lignes.",
+        filter_no_results_hint: "Ajustez la recherche ou effacez le filtre pour voir toute la file.",
+        compress_empty_hint: "Utilisez « Ajouter des fichiers » ou « Ajouter un dossier » pour commencer.",
+        compress_settings_hide: "Masquer les réglages",
+        compress_settings_show: "Afficher les réglages",
+        compress_settings_hide_tip: "Réduit les réglages pour libérer de la place pour la file.",
+        compress_settings_show_tip: "Affiche à nouveau les réglages de compression.",
+        compress_scanning: "Analyse du dossier…",
+        compress_scan_cancel: "Annuler l'analyse",
+        compress_scan_cancel_tip: "Arrête l'analyse ; aucun fichier partiel n'est ajouté.",
+        compress_start_tip: "Lance la compression des éléments en attente.",
+        compress_cancel_tip: "Arrête cet élément et conserve le fichier d'origine.",
+        compress_retry_tip: "Réessaie de compresser avec les réglages actuels.",
+        compress_remove_tip: "Retire l'élément de la file ; les fichiers générés ne sont pas supprimés.",
+        compress_clear_finished_tip: "Retire de la file les éléments terminés, en erreur ou annulés.",
+        sort_tip: "Cliquez pour trier par cette colonne ; cliquez à nouveau pour inverser.",
+        sort_ascending: "croissant",
+        sort_descending: "décroissant",
+        sort_name_tip: "Trie par nom de fichier ou titre.",
+        sort_status_tip: "Regroupe par état : actifs, en attente, terminés et en erreur.",
+        sort_progress_tip: "Trie par pourcentage d'avancement.",
+        sort_result_tip: "Trie par taille finale du fichier.",
+        tip_edit_tip: "Permet de corriger l'URL avant le téléchargement.",
+        tip_retry_tip: "Remet l'élément dans la file et le télécharge à nouveau.",
+        tip_cancel_tip: "Arrête ce téléchargement ; le fichier partiel est supprimé."
+    },
+    "ru": {
+        h_title: "Название",
+        h_actions: "Действия",
+        queue_filter_title: "Фильтр очереди",
+        queue_filter_placeholder: "Фильтр: название, URL, статус…",
+        queue_filter_tip: "Поиск по всем столбцам. Префиксы: status: / название: / url: / ошибка: / размер:. Несколько слов объединяются по И.",
+        compress_filter_title: "Фильтр очереди сжатия",
+        compress_filter_placeholder: "Фильтр: файл, статус, ошибка…",
+        compress_filter_tip: "Поиск по всем столбцам. Префиксы: status: / имя: / ошибка: / размер: / экономия:. Несколько слов объединяются по И.",
+        filter_clear: "Сбросить фильтр",
+        filter_clear_tip: "Очищает поиск и показывает все строки.",
+        filter_no_results_hint: "Измените запрос или сбросьте фильтр, чтобы увидеть всю очередь.",
+        compress_empty_hint: "Нажмите «Добавить файлы» или «Добавить папку», чтобы начать.",
+        compress_settings_hide: "Скрыть настройки",
+        compress_settings_show: "Показать настройки",
+        compress_settings_hide_tip: "Сворачивает настройки, освобождая место для очереди.",
+        compress_settings_show_tip: "Снова показывает настройки сжатия.",
+        compress_scanning: "Сканирование папки…",
+        compress_scan_cancel: "Отменить сканирование",
+        compress_scan_cancel_tip: "Останавливает сканирование; частичные файлы не добавляются.",
+        compress_start_tip: "Запускает сжатие элементов, ожидающих в очереди.",
+        compress_cancel_tip: "Останавливает этот элемент и сохраняет исходный файл.",
+        compress_retry_tip: "Повторяет сжатие с текущими настройками.",
+        compress_remove_tip: "Удаляет элемент из очереди; созданные файлы не удаляются.",
+        compress_clear_finished_tip: "Удаляет из очереди завершённые, ошибочные и отменённые элементы.",
+        sort_tip: "Нажмите, чтобы отсортировать по столбцу; нажмите снова для обратного порядка.",
+        sort_ascending: "по возрастанию",
+        sort_descending: "по убыванию",
+        sort_name_tip: "Сортировка по имени файла или названию.",
+        sort_status_tip: "Группировка по состоянию: активные, ожидающие, завершённые и с ошибкой.",
+        sort_progress_tip: "Сортировка по проценту выполнения.",
+        sort_result_tip: "Сортировка по итоговому размеру файла.",
+        tip_edit_tip: "Позволяет исправить URL перед загрузкой.",
+        tip_retry_tip: "Возвращает элемент в очередь и загружает снова.",
+        tip_cancel_tip: "Останавливает загрузку; частичный файл удаляется."
+    },
+    "ja": {
+        h_title: "タイトル",
+        h_actions: "操作",
+        queue_filter_title: "キューを絞り込む",
+        queue_filter_placeholder: "タイトル、URL、状態で絞り込み…",
+        queue_filter_tip: "すべての列を検索します。接頭辞: status:、タイトル:、url:、エラー:、サイズ:。複数の語は AND 条件です。",
+        compress_filter_title: "圧縮キューを絞り込む",
+        compress_filter_placeholder: "ファイル、状態、エラーで絞り込み…",
+        compress_filter_tip: "すべての列を検索します。接頭辞: status:、名前:、エラー:、サイズ:、節約:。複数の語は AND 条件です。",
+        filter_clear: "フィルターを解除",
+        filter_clear_tip: "検索を消去してすべての行を表示します。",
+        filter_no_results_hint: "検索語を変えるかフィルターを解除して、キュー全体を表示します。",
+        compress_empty_hint: "「ファイルを追加」または「フォルダーを追加」から始めます。",
+        compress_settings_hide: "設定を隠す",
+        compress_settings_show: "設定を表示",
+        compress_settings_hide_tip: "設定を折りたたんでキュー用のスペースを空けます。",
+        compress_settings_show_tip: "圧縮設定を再表示します。",
+        compress_scanning: "フォルダーをスキャン中…",
+        compress_scan_cancel: "スキャンをキャンセル",
+        compress_scan_cancel_tip: "スキャンを停止します。途中のファイルは追加されません。",
+        compress_start_tip: "待機中の項目の圧縮を開始します。",
+        compress_cancel_tip: "この項目を停止し、元のファイルを保持します。",
+        compress_retry_tip: "現在の設定でもう一度圧縮します。",
+        compress_remove_tip: "キューから項目を削除します。生成済みファイルは削除されません。",
+        compress_clear_finished_tip: "完了・失敗・キャンセルした項目をキューから削除します。",
+        sort_tip: "クリックでこの列を並べ替え、もう一度クリックで逆順にします。",
+        sort_ascending: "昇順",
+        sort_descending: "降順",
+        sort_name_tip: "ファイル名またはタイトルで並べ替えます。",
+        sort_status_tip: "状態ごとにまとめます: 実行中、待機中、完了、エラー。",
+        sort_progress_tip: "完了率で並べ替えます。",
+        sort_result_tip: "最終ファイルサイズで並べ替えます。",
+        tip_edit_tip: "ダウンロード前に URL を修正できます。",
+        tip_retry_tip: "項目をキューに戻して再ダウンロードします。",
+        tip_cancel_tip: "このダウンロードを停止し、部分ファイルを破棄します。"
+    },
+    "zh": {
+        h_title: "标题",
+        h_actions: "操作",
+        queue_filter_title: "筛选队列",
+        queue_filter_placeholder: "筛选标题、URL、状态…",
+        queue_filter_tip: "搜索所有列。前缀：status:、标题:、url:、错误:、大小:。多个词按“且”组合。",
+        compress_filter_title: "筛选压缩队列",
+        compress_filter_placeholder: "筛选文件、状态、错误…",
+        compress_filter_tip: "搜索所有列。前缀：status:、名称:、错误:、大小:、节省:。多个词按“且”组合。",
+        filter_clear: "清除筛选",
+        filter_clear_tip: "清除搜索并显示所有行。",
+        filter_no_results_hint: "调整搜索词或清除筛选以查看完整队列。",
+        compress_empty_hint: "使用“添加文件”或“添加文件夹”开始。",
+        compress_settings_hide: "隐藏设置",
+        compress_settings_show: "显示设置",
+        compress_settings_hide_tip: "折叠设置，为队列腾出空间。",
+        compress_settings_show_tip: "重新显示压缩设置。",
+        compress_scanning: "正在扫描文件夹…",
+        compress_scan_cancel: "取消扫描",
+        compress_scan_cancel_tip: "停止扫描；不会添加部分文件。",
+        compress_start_tip: "开始压缩队列中等待的项目。",
+        compress_cancel_tip: "停止此项目并保留原始文件。",
+        compress_retry_tip: "使用当前设置再次压缩。",
+        compress_remove_tip: "从队列中移除该项目；已生成的文件不会被删除。",
+        compress_clear_finished_tip: "从队列中移除已完成、失败或取消的项目。",
+        sort_tip: "点击按此列排序；再次点击可反向排序。",
+        sort_ascending: "升序",
+        sort_descending: "降序",
+        sort_name_tip: "按文件名或标题排序。",
+        sort_status_tip: "按状态分组：进行中、等待、已完成和错误。",
+        sort_progress_tip: "按完成百分比排序。",
+        sort_result_tip: "按最终文件大小排序。",
+        tip_edit_tip: "允许在下载前修正 URL。",
+        tip_retry_tip: "将项目重新加入队列并再次下载。",
+        tip_cancel_tip: "停止此下载；部分文件将被丢弃。"
+    }
+}
+
+var extraFolder = {
+    "pt": {
+        folder_output_label: "Salvar downloads em",
+        folder_change: "Alterar",
+        folder_open: "Abrir",
+        folder_copy: "Copiar caminho"
+    },
+    "en": {
+        folder_output_label: "Save downloads to",
+        folder_change: "Change",
+        folder_open: "Open",
+        folder_copy: "Copy path"
+    },
+    "es": {
+        folder_output_label: "Guardar descargas en",
+        folder_change: "Cambiar",
+        folder_open: "Abrir",
+        folder_copy: "Copiar ruta"
+    },
+    "it": {
+        folder_output_label: "Salva i download in",
+        folder_change: "Cambia",
+        folder_open: "Apri",
+        folder_copy: "Copia percorso"
+    },
+    "fr": {
+        folder_output_label: "Enregistrer les téléchargements dans",
+        folder_change: "Modifier",
+        folder_open: "Ouvrir",
+        folder_copy: "Copier le chemin"
+    },
+    "ru": {
+        folder_output_label: "Сохранять загрузки в",
+        folder_change: "Изменить",
+        folder_open: "Открыть",
+        folder_copy: "Копировать путь"
+    },
+    "ja": {
+        folder_output_label: "ダウンロードの保存先",
+        folder_change: "変更",
+        folder_open: "開く",
+        folder_copy: "パスをコピー"
+    },
+    "zh": {
+        folder_output_label: "下载保存到",
+        folder_change: "更改",
+        folder_open: "打开",
+        folder_copy: "复制路径"
+    }
+}
+
+var extraErrors = {
+    "pt": {
+        err_dialog_summary: "O aplicativo encontrou um erro e interrompeu a operação.",
+        err_dialog_details: "Detalhes técnicos",
+        err_dialog_hide: "Ocultar detalhes"
+    },
+    "en": {
+        err_dialog_summary: "The application encountered an error and stopped the operation.",
+        err_dialog_details: "Technical details",
+        err_dialog_hide: "Hide details"
+    },
+    "es": {
+        err_dialog_summary: "La aplicación encontró un error y detuvo la operación.",
+        err_dialog_details: "Detalles técnicos",
+        err_dialog_hide: "Ocultar detalles"
+    },
+    "it": {
+        err_dialog_summary: "L'applicazione ha rilevato un errore e interrotto l'operazione.",
+        err_dialog_details: "Dettagli tecnici",
+        err_dialog_hide: "Nascondi dettagli"
+    },
+    "fr": {
+        err_dialog_summary: "L'application a rencontré une erreur et a arrêté l'opération.",
+        err_dialog_details: "Détails techniques",
+        err_dialog_hide: "Masquer les détails"
+    },
+    "ru": {
+        err_dialog_summary: "Приложение обнаружило ошибку и остановило операцию.",
+        err_dialog_details: "Технические детали",
+        err_dialog_hide: "Скрыть детали"
+    },
+    "ja": {
+        err_dialog_summary: "アプリでエラーが発生したため、操作を中断しました。",
+        err_dialog_details: "技術的な詳細",
+        err_dialog_hide: "詳細を隠す"
+    },
+    "zh": {
+        err_dialog_summary: "应用遇到错误并中止了操作。",
+        err_dialog_details: "技术详情",
+        err_dialog_hide: "隐藏详情"
+    }
+}
+
 function getAll() {
     var out = {}
     var base = dict["pt"]
@@ -3019,6 +3652,30 @@ function getAll() {
     var quality = extraQuality[lang] || {}
     for (var k13 in quality)
         out[k13] = quality[k13]
+    var minBitrate = extraMinBitrate[lang] || {}
+    for (var k14 in minBitrate)
+        out[k14] = minBitrate[k14]
+    var table = extraTable[lang] || {}
+    for (var k15 in table)
+        out[k15] = table[k15]
+    var sidecars = extraSidecars[lang] || {}
+    for (var k16 in sidecars)
+        out[k16] = sidecars[k16]
+    var hero = extraPageHero[lang] || {}
+    for (var k17 in hero)
+        out[k17] = hero[k17]
+    var errors = extraErrors[lang] || {}
+    for (var k18 in errors)
+        out[k18] = errors[k18]
+    var folder = extraFolder[lang] || {}
+    for (var k19 in folder)
+        out[k19] = folder[k19]
+    var filterFields = extraFilter[lang] || {}
+    for (var k20 in filterFields)
+        out[k20] = filterFields[k20]
+    var tableTools = extraTableTools[lang] || {}
+    for (var k21 in tableTools)
+        out[k21] = tableTools[k21]
     return out
 }
 

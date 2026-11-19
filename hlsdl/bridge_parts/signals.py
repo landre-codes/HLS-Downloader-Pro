@@ -1,4 +1,4 @@
-﻿# ruff: noqa: F401, F403, F405
+# ruff: noqa: F401, F403, F405
 from PySide6.QtCore import Signal
 
 
@@ -33,6 +33,9 @@ class BridgeSignals:
     compressionEffectiveEncoderChanged = Signal()
     compressionQsvDevicesChanged = Signal()
     compressionQualityPromptChanged = Signal()
+    compressionScanChanged = Signal()
+    compressionScanFinished = Signal(object)
+    sidecarsChanged = Signal(bool)
     updateChanged = Signal()
     updateProgressChanged = Signal(int)
     depsChanged = Signal()
@@ -72,6 +75,9 @@ compressionEncodersChanged = BridgeSignals.compressionEncodersChanged
 compressionEffectiveEncoderChanged = BridgeSignals.compressionEffectiveEncoderChanged
 compressionQsvDevicesChanged = BridgeSignals.compressionQsvDevicesChanged
 compressionQualityPromptChanged = BridgeSignals.compressionQualityPromptChanged
+compressionScanChanged = BridgeSignals.compressionScanChanged
+compressionScanFinished = BridgeSignals.compressionScanFinished
+sidecarsChanged = BridgeSignals.sidecarsChanged
 updateChanged = BridgeSignals.updateChanged
 updateProgressChanged = BridgeSignals.updateProgressChanged
 depsChanged = BridgeSignals.depsChanged
@@ -80,5 +86,6 @@ depsInstallFinished = BridgeSignals.depsInstallFinished
 similarityChanged = BridgeSignals.similarityChanged
 recoveryChanged = BridgeSignals.recoveryChanged
 
-__all__ = ["BridgeSignals"] + ['statsChanged', 'notifyText', 'outputFolderChanged', 'darkChanged', 'concurrencyChanged', 'limitRateChanged', 'fragmentsChanged', 'cookiesEnabledChanged', 'cookiesBrowserIndexChanged', 'cookiesFileChanged', 'languageChanged', 'queueActiveChanged', 'queuePausedChanged', 'formatModeChanged', 'qualityChanged', 'containerChanged', 'codecChanged', 'compressLevelChanged', 'namingModeChanged', 'ytdlpVariantChanged', 'lastItemChanged', 'playlistChanged', 'playlistLoadingChanged', 'compressionStatsChanged', 'compressionStateChanged', 'compressionConfigChanged', 'compressionEncodersChanged', 'compressionEffectiveEncoderChanged', 'compressionQsvDevicesChanged', 'compressionQualityPromptChanged', 'updateChanged', 'updateProgressChanged', 'depsChanged', 'depsOutput', 'depsInstallFinished', 'similarityChanged', 'recoveryChanged']
+__all__ = ["BridgeSignals"] + ['statsChanged', 'notifyText', 'outputFolderChanged', 'darkChanged', 'concurrencyChanged', 'limitRateChanged', 'fragmentsChanged', 'cookiesEnabledChanged', 'cookiesBrowserIndexChanged', 'cookiesFileChanged', 'languageChanged', 'queueActiveChanged', 'queuePausedChanged', 'formatModeChanged', 'qualityChanged', 'containerChanged', 'codecChanged', 'compressLevelChanged', 'namingModeChanged', 'ytdlpVariantChanged', 'lastItemChanged', 'playlistChanged', 'playlistLoadingChanged', 'compressionStatsChanged', 'compressionStateChanged', 'compressionConfigChanged', 'compressionEncodersChanged', 'compressionEffectiveEncoderChanged', 'compressionQsvDevicesChanged', 'compressionQualityPromptChanged',
+    'compressionScanChanged', 'compressionScanFinished', 'sidecarsChanged', 'updateChanged', 'updateProgressChanged', 'depsChanged', 'depsOutput', 'depsInstallFinished', 'similarityChanged', 'recoveryChanged']
 

@@ -3,7 +3,7 @@ import QtQuick.Controls
 import QtQuick.Controls.Material
 import QtQuick.Layouts
 
-ComboBox {
+AppComboBox {
     property var strings: ({})
     property var items: [
         { text: strings.q_best || "Best", value: "best" },

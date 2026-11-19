@@ -1,4 +1,4 @@
-﻿# ruff: noqa: F401, F403, F405
+# ruff: noqa: F401, F403, F405
 
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ class DependenciesMixin(BridgeSignals):
 
     @Slot()
     def dismissDepsPrompt(self) -> None:
-        """NÃ£o volta a perguntar sobre dependÃªncias nesta mÃ¡quina."""
+        """Não volta a perguntar sobre dependências nesta máquina."""
         if not self._deps_prompt_dismissed:
             self._deps_prompt_dismissed = True
             self._save("deps/prompt_dismissed", True)
@@ -65,7 +65,7 @@ class DependenciesMixin(BridgeSignals):
             self.notifyText.emit(self._tr("dep_install_failed", name=name))
         self.depsInstallFinished.emit(key, ok, name)
         if ok and key == "ffmpeg":
-            # A lista de encoders foi detectada antes da instalaÃ§Ã£o; o
+            # A lista de encoders foi detectada antes da instalação; o
             # refresh roda fora da thread da GUI porque sonda ffmpeg/GPU.
             self.refreshCompressionEncoders()
         self.depsChanged.emit()

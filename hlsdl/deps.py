@@ -8,8 +8,9 @@ conhecimento de Python** do usuário:
   atualizado via pip.
 * ``ffmpeg``/``ffprobe`` — instalado pelo gerenciador de pacotes do sistema
   quando disponível; caso contrário, baixado como build estático.
-* ``requests`` e ``beautifulsoup4`` — em build empacotado já vêm embutidos; em
-  ambiente de desenvolvimento, atualizáveis via pip.
+* ``requests`` e ``beautifulsoup4`` — opcionais em runtime; em build empacotado
+  já vêm embutidos e, em ambiente de desenvolvimento, são dependências pip do
+  projeto (podem ser atualizadas por aqui).
 * ``PySide6`` — embutido no build empacotado.
 
 A instalação **sempre exige confirmação do usuário** e roda em thread separada,
@@ -61,10 +62,16 @@ FFMPEG_MAC_INFO = "https://evermeet.cx/ffmpeg/info/{name}/release"
 
 # Sidecars publicados pelos fornecedores. O yt-dlp publica SHA-256 de todos
 # os assets; o Gyan publica um SHA-256 único do ZIP e o johnvansickle publica
-# MD5 (o SHA-256 não existe para esse build Linux).
+# apenas MD5 (o SHA-256 não existe para esse build Linux).
 YTDLP_CHECKSUMS = "SHA2-256SUMS"
 FFMPEG_WIN_SHA256 = FFMPEG_WIN_ZIP + ".sha256"
 FFMPEG_LINUX_MD5 = FFMPEG_LINUX_TAR + ".md5"
+# evermeet.cx publica assinatura GPG e tamanho, mas não um SHA-256 estável por
+# nome. Pins explícitos podem ser adicionados aqui quando a release for
+# verificada manualmente; sem pin, o download estático no macOS é considerado
+# não autenticado e só roda com consentimento explícito.
+FFMPEG_MAC_SHA256: dict[str, str] = {}
+_FFMPEG_MAC_UNVERIFIED_ENV = "HLSDL_ALLOW_UNVERIFIED_FFMPEG"
 
 _HEX_DIGEST = re.compile(r"^[0-9a-fA-F]{32,128}$")
 _HASH_CHUNK = 1024 * 1024
@@ -331,6 +338,8 @@ class DependencyManager(QObject):
         self._busy = False
         self._cancel = False
         self._proc = None
+        self._thread: threading.Thread | None = None
+        self._closing = False
         self.variant = "stable"  # canal do yt-dlp: stable | nightly | master
 
     def set_variant(self, variant: str) -> None:
@@ -407,7 +416,7 @@ class DependencyManager(QObject):
 
     def install(self, key: str) -> bool:
         """Inicia a instalação/atualização de ``key``. Retorna False se ocupado."""
-        if self._busy or self._cancel:
+        if self._busy or self._cancel or self._closing:
             return False
         spec = self._spec(key)
         if spec is None:
@@ -418,7 +427,10 @@ class DependencyManager(QObject):
             return False
         self._busy = True
         self.installStarted.emit(key)
-        threading.Thread(target=self._run_job, args=(key, spec.name, job), daemon=True).start()
+        self._thread = threading.Thread(
+            target=self._run_job, args=(key, spec.name, job), daemon=True
+        )
+        self._thread.start()
         return True
 
     def _job_for(self, spec: ToolSpec):
@@ -460,8 +472,10 @@ class DependencyManager(QObject):
             self.installOutput.emit(f"erro: {exc}")
         finally:
             self._busy = False
-            self.installFinished.emit(key, ok, name)
-            self.check_all()
+            if not self._closing:
+                self.installFinished.emit(key, ok, name)
+                self.check_all()
+            self._thread = None
 
     def _run_install(self, cmd: list[str]) -> bool:
         log.info("instalando: %s", " ".join(cmd))
@@ -495,6 +509,15 @@ class DependencyManager(QObject):
         """Encerra a instalação em andamento (chamado ao fechar o app)."""
         self._cancel = True
         terminate_tree(self._proc)
+
+    def shutdown(self, timeout: float = 3.0) -> None:
+        """Cancela e aguarda a thread de instalação antes do teardown do Qt."""
+        self._closing = True
+        self.cancel()
+        thread = self._thread
+        if thread is not None and thread.is_alive() and thread is not threading.current_thread():
+            thread.join(timeout=max(0.0, timeout))
+        self._thread = None
 
     # -------------------------------------------------------------- download
     def _fetch_text(self, url: str, timeout: int = 30) -> str:
@@ -686,8 +709,32 @@ class DependencyManager(QObject):
                         raise RuntimeError(f"URL de download ausente para {name}")
                     archive = os.path.join(tmp_dir, f"{name}.zip")
                     self._download(url, archive)
-                    # O evermeet não publica hash; confere ao menos o tamanho
-                    # exato informado pela API para detectar truncamento.
+                    # O evermeet não publica SHA-256 estável. Um pin explícito
+                    # (FFMPEG_MAC_SHA256) autentica a release; sem pin, exigimos
+                    # consentimento explícito e nunca tratamos tamanho como
+                    # garantia de integridade.
+                    expected_hash = FFMPEG_MAC_SHA256.get(name, "")
+                    if expected_hash:
+                        verify_checksum(archive, expected_hash, "sha256")
+                        self.installOutput.emit(
+                            f"SHA-256 de {name} verificado contra pin do projeto"
+                        )
+                    else:
+                        allow_unverified = os.environ.get(
+                            _FFMPEG_MAC_UNVERIFIED_ENV, ""
+                        ).strip().lower() in ("1", "true", "yes")
+                        if not allow_unverified:
+                            raise RuntimeError(
+                                "download estático do ffmpeg no macOS não tem "
+                                "SHA-256 publicado; instale pelo Homebrew ou "
+                                f"defina {_FFMPEG_MAC_UNVERIFIED_ENV}=1 para "
+                                "aceitar o risco"
+                            )
+                        digest = _hash_file(archive, "sha256")
+                        self.installOutput.emit(
+                            "AVISO: ffmpeg do evermeet sem hash autenticado; "
+                            f"SHA-256 observado: {digest}"
+                        )
                     expected_size = int(info.get("size") or 0)
                     if expected_size <= 0:
                         raise RuntimeError(
@@ -697,10 +744,6 @@ class DependencyManager(QObject):
                         raise RuntimeError(
                             f"tamanho do download de {name} não confere"
                         )
-                    self.installOutput.emit(
-                        f"tamanho de {name} verificado "
-                        "(evermeet não publica hash)"
-                    )
                     found |= self._extract_members(archive, {name}, target_dir)
                 needed = "ffmpeg"
             else:
@@ -708,6 +751,14 @@ class DependencyManager(QObject):
                 self._download(FFMPEG_LINUX_TAR, archive)
                 self._verify_download(
                     archive, FFMPEG_LINUX_MD5, algorithm="md5"
+                )
+                # O fornecedor não publica SHA-256. Registramos o fingerprint
+                # observado e deixamos claro o nível de garantia; o caminho
+                # preferido em Linux é o gerenciador de pacotes do sistema.
+                self.installOutput.emit(
+                    "AVISO: build Linux do ffmpeg verificado apenas por MD5 "
+                    "(fornecedor não publica SHA-256); SHA-256 observado: "
+                    + _hash_file(archive, "sha256")
                 )
                 found = self._extract_members(archive, {"ffmpeg", "ffprobe"}, target_dir)
                 needed = "ffmpeg"

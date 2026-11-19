@@ -1,4 +1,4 @@
-"""Testes do compressor no estilo HandBrake: filtros, streams e validação."""
+﻿"""Testes do compressor: presets, filtros, streams e validação."""
 
 from __future__ import annotations
 
@@ -161,14 +161,14 @@ def test_download_compression_uses_part_and_does_not_reuse_stale_output(
         seen["cmd"] = list(cmd)
         seen["tmp"] = cmd[-1]
         with open(cmd[-1], "wb") as fh:
-            fh.write(b"compressed")
+            fh.write(b"compressed" * 8)
         return True, cmd[-1]
 
     monkeypatch.setattr(w, "_run_process", fake_run)
     out = w._maybe_compress(str(src))
     assert out is not None
     assert out.endswith("a_h264-2.mp4")
-    assert os.path.exists(out) and os.path.getsize(out) == 10
+    assert os.path.exists(out) and os.path.getsize(out) == 80
     assert stale.read_bytes() == b"stale"
     assert src.exists()
     assert ".part." in os.path.basename(seen["tmp"])
@@ -226,7 +226,7 @@ def test_bridge_applies_preset_and_persists_new_choices(qapp, tmp_path, fake_dep
     assert bridge.compressionEncoder == "software"
     assert bridge.compressionCodec == "hevc"
     assert bridge.compressionContainer == "mkv"
-    assert bridge.compressionQuality == 18
+    assert bridge.compressionQuality == 16
     assert bridge.compressionTenBit is True
     assert bridge.compressionPreset == "archive_hevc"
     bridge.setCompressionQuality(23)
@@ -260,3 +260,22 @@ def test_presets_are_known(qapp, tmp_path, fake_deps, key):
     assert key in bridge.compressionPresets
     bridge.applyCompressionPreset(key)
     assert bridge.compressionEffectiveEncoder != ""
+
+
+def test_bridge_min_bitrate_setting_persists(qapp, tmp_path, fake_deps):
+    path = str(tmp_path / "min_bitrate.ini")
+    bridge = Bridge(
+        QueueManager(DownloadModel([]), outdir="out"), "out",
+        settings_path=path, deps=fake_deps,
+    )
+    assert bridge.compressionMinBitrate == 0
+    bridge.setCompressionMinBitrate(30)
+    assert bridge.compressionMinBitrate == 30
+
+    restored = Bridge(
+        QueueManager(DownloadModel([]), outdir="out"), "out",
+        settings_path=path, deps=fake_deps,
+    )
+    assert restored.compressionMinBitrate == 30
+    restored.setCompressionMinBitrate(0)
+    assert restored.compressionMinBitrate == 0

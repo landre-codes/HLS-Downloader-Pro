@@ -3,7 +3,7 @@ import QtQuick.Controls
 import QtQuick.Controls.Material
 import QtQuick.Layouts
 
-ComboBox {
+AppComboBox {
     property var strings: ({})
     property var items: [
         { text: strings.codec_copy || "Original", value: "copy" },
@@ -21,7 +21,5 @@ ComboBox {
     }
     onActivated: bridge.setCodec(currentValue)
     Layout.preferredWidth: 210
-    ToolTip.text: strings.codec_keep_original || ""
-    ToolTip.visible: hovered
-    ToolTip.delay: 500
+    tipText: strings.codec_keep_original || ""
 }

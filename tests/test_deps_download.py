@@ -7,7 +7,10 @@ import io
 import os
 import sys
 import tarfile
+import threading
+import time
 import zipfile
+from pathlib import Path
 
 import pytest
 
@@ -205,3 +208,68 @@ def test_detect_ytdlp_counts_python_module(monkeypatch):
     spec = next(s for s in deps.SPECS if s.key == "ytdlp")
     status = deps.DependencyManager().detect(spec)
     assert status.found is True
+
+
+def _mac_download_fixture(tmp_path, monkeypatch):
+    tools = tmp_path / "tools"
+    tools.mkdir()
+    payload = b"mac-ffmpeg"
+    monkeypatch.setattr(deps.sys, "platform", "darwin")
+    monkeypatch.setattr(deps.os, "name", "posix")
+    monkeypatch.setattr(config, "tools_dir", lambda: str(tools))
+    monkeypatch.setattr(config, "ensure_tools_on_path", lambda: None)
+    monkeypatch.setattr(
+        deps.DependencyManager,
+        "_mac_ffmpeg_zip",
+        staticmethod(lambda name: {"url": f"https://example/{name}.zip", "size": len(payload)}),
+    )
+    monkeypatch.setattr(
+        deps.DependencyManager,
+        "_download",
+        lambda self, url, dest: Path(dest).write_bytes(payload),
+    )
+    monkeypatch.setattr(
+        deps.DependencyManager,
+        "_extract_members",
+        lambda self, archive, wanted, target: set(wanted),
+    )
+    monkeypatch.setattr(
+        deps, "_binary_version", lambda spec, path: "9.9"
+    )
+    return tools, payload
+
+
+def test_macos_static_ffmpeg_requires_pin_or_explicit_consent(tmp_path, monkeypatch):
+    _tools, _payload = _mac_download_fixture(tmp_path, monkeypatch)
+    monkeypatch.delenv("HLSDL_ALLOW_UNVERIFIED_FFMPEG", raising=False)
+    manager = deps.DependencyManager()
+    with pytest.raises(RuntimeError, match="SHA-256"):
+        manager._install_ffmpeg_download()
+
+
+def test_macos_unverified_ffmpeg_opt_in_reports_fingerprint(tmp_path, monkeypatch):
+    _tools, payload = _mac_download_fixture(tmp_path, monkeypatch)
+    monkeypatch.setenv("HLSDL_ALLOW_UNVERIFIED_FFMPEG", "1")
+    manager = deps.DependencyManager()
+    output: list[str] = []
+    manager.installOutput.connect(output.append)
+    assert manager._install_ffmpeg_download() is True
+    expected = hashlib.sha256(payload).hexdigest()
+    assert any("AVISO" in line and expected in line for line in output)
+
+
+def test_deps_shutdown_joins_install_thread(qapp):
+    manager = deps.DependencyManager()
+    started = threading.Event()
+
+    def worker():
+        started.set()
+        while not manager._cancel:
+            time.sleep(0.01)
+
+    thread = threading.Thread(target=worker, daemon=True)
+    manager._thread = thread
+    thread.start()
+    assert started.wait(1)
+    manager.shutdown(timeout=2)
+    assert not thread.is_alive()

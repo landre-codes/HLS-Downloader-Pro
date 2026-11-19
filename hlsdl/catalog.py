@@ -13,12 +13,15 @@ import logging
 import os
 import sqlite3
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from . import config
 from .integrity import CompletionRecord
 
 log = logging.getLogger("hlsdl")
+
+SCHEMA_VERSION = 1
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS media (
@@ -62,6 +65,31 @@ CREATE TABLE IF NOT EXISTS jobs (
     updated_at REAL
 );
 """
+
+# Migrações incrementais. A chave é a versão de destino; cada função deve ser
+# idempotente o suficiente para rodar uma única vez dentro da transação.
+MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {}
+
+
+def _apply_migrations(connection: sqlite3.Connection) -> None:
+    version = int(connection.execute("PRAGMA user_version").fetchone()[0] or 0)
+    if version > SCHEMA_VERSION:
+        log.warning(
+            "catálogo com schema %s mais novo que o suportado (%s); "
+            "nenhuma migração será aplicada",
+            version,
+            SCHEMA_VERSION,
+        )
+        return
+    if version == 0:
+        connection.executescript(SCHEMA)
+        connection.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
+        return
+    for target in range(version + 1, SCHEMA_VERSION + 1):
+        migration = MIGRATIONS.get(target)
+        if migration is not None:
+            migration(connection)
+        connection.execute(f"PRAGMA user_version={target}")
 
 
 @dataclass
@@ -107,14 +135,24 @@ class Catalog:
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA journal_mode=WAL")
         connection.execute("PRAGMA synchronous=NORMAL")
+        # Necessário em cada conexão; sem isso a FK declarada em ``files`` não
+        # é aplicada pelo SQLite.
+        connection.execute("PRAGMA foreign_keys=ON")
         return connection
 
     def initialize(self) -> None:
         try:
             with self._connect() as connection:
-                connection.executescript(SCHEMA)
+                _apply_migrations(connection)
         except sqlite3.Error:
             log.exception("falha ao inicializar catálogo %s", self.path)
+
+    def schema_version(self) -> int:
+        try:
+            with self._connect() as connection:
+                return int(connection.execute("PRAGMA user_version").fetchone()[0] or 0)
+        except sqlite3.Error:
+            return 0
 
     def register(self, record: CompletionRecord, kind: str = "") -> None:
         """Index a completion sidecar (media + file rows)."""

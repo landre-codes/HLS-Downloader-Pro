@@ -6,6 +6,62 @@ e o versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 
 ## [Não lançado] — padrão-ouro: catálogo, SSIM, HDR, fila e CLI
 
+### Interface e tabelas (R5)
+
+- **Tooltips ricos e acessíveis**: novo `AppToolTip` com título, descrição,
+  atalho, ícone e rodapé; abre por hover ou foco de teclado, reposiciona dentro
+  da janela e fecha ao sair/pressionar. Botões, combos, spins, campos, abas e
+  barra de título expõem `tipTitle`/`tipText`/`tipShortcut`; o texto também
+  alimenta `Accessible.description`. O bloco de conteúdo é centralizado
+  horizontal e verticalmente, com teste de geometria dedicado.
+- **Filtro dinâmico nas tabelas**: Lote e Compressão buscam em todas as colunas
+  enquanto se digita, com normalização de acentos e prefixos (`status:`,
+  `nome:`/`titulo:`, `erro:`, `tamanho:`, `economia:`). O combobox de campo foi
+  removido; `Ctrl+F` foca o filtro da aba ativa e `Esc` limpa.
+- **Ordenação por cabeçalho**: Lote ordena por título, status e progresso;
+  Compressão por arquivo, status, progresso e tamanho final. Cabeçalhos são
+  focáveis, respondem a Enter/Espaço e exibem ▲/▼ junto ao rótulo.
+- **Varredura de pastas assíncrona**: `scan_media_paths()` roda em thread
+  auxiliar; a UI mostra progresso, permite cancelar e resume adicionados,
+  ignorados, duplicados e erros. Symlinks de diretório não são seguidos.
+- **Ordenação por status previsível**: rank de fluxo em vez de ordem
+  alfabética; a fila do Lote usa throttle adaptativo (120/250/500 ms) para
+  projeções grandes.
+- **CI/qmllint**: o workflow bloqueia erros reais e tolera avisos conhecidos de
+  `unqualified access`/`missing-property`.
+- **Tabela de Compressão alinhada**: larguras compartilhadas entre cabeçalho e
+  delegate, todos os títulos no mesmo Y, coluna “Ações” explícita e correção do
+  “Arquivo” fora de posição. Teste compara a geometria real em 1160×800 e
+  940×620.
+- **Compressão em 940×620**: “Ocultar ajustes”/“Mostrar ajustes” recolhe o
+  painel de configuração e devolve a altura para a fila; estados vazios e de
+  filtro sem resultado são distintos.
+- **Rastreabilidade da fila**: `DownloadModel.snapshot()` é somente leitura e
+  inclui `sourceIndex`; as ordenações do Lote e da Compressão são visuais e
+  não alteram a ordem de agendamento dos managers.
+- **Fallback inseguro removido (R8)**: o downloader não usa mais
+  `--compat-options allow-unsafe-ext`; extensões incomuns são recusadas e o
+  fluxo seguro de raspagem/ffmpeg é preservado, com teste de regressão.
+- **Clipboard e Playlist (R7-L)**: `copyLink` usa o clipboard importado e
+  informa indisponibilidade; `loadPlaylist(url, limit)` elimina a dependência de
+  ids internos entre `main.qml` e `PlaylistPage.qml`.
+- **AV1 QSV e rate control (R7-L)**: alvo VBR desabilitado/ignorado no
+  `av1_qsv`; qualidade limitada a 51 nesse encoder (63 no AV1 software);
+  “bitrate alvo” substitui a nomenclatura enganosa de “piso”.
+- **Fila**: sincronização com coalescência (`start()` sem `restart()`), teto de
+  100 mil arquivos na varredura (sem adição parcial ao truncar) e benchmark
+  reproduzível da projeção.
+- **Modelo da aba Lote**: `DownloadFilterProxyModel` em Python substitui a
+  projeção em `ListModel`/JavaScript; filtro, ordenação e `sourceIndex` estável
+  no mesmo ambiente do backend.
+- **Motion/título**: tooltips compactos na barra de título, animação de
+  minimizar/restaurar e tokens de duração em `hlsdl/ui/motion.js`. Os controles
+  de janela usam `Qt.TabFocus` e anel de foco apenas com `visualFocus`, sem
+  ficarem “selecionados” após o clique do mouse.
+- **Testes**: `tests/test_table_tools.py` (filtro/ordenação/geometria),
+  `tests/test_tooltips.py` (abertura, limites e atalhos) e regressões de
+  clipboard/Playlist/AV1; capturas em `docs/ui-review/r5/`.
+
 ### Adicionado
 - **Catálogo SQLite** (`catalog.sqlite3`) indexando source key, SHA-256/BLAKE3, probe/validação, arquivos e jobs; consulta por identidade/hash e `prune_missing`.
 - **BLAKE3 opcional** ao lado do SHA-256 obrigatório, no sidecar e na verificação.
@@ -17,7 +73,18 @@ e o versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 - **Fila persistente** (`queue.json`): restaura downloads e compressão ao abrir, omitindo concluídos.
 - **CLI `hlsdl`** com `probe`, `verify`, `similar`, `compress` e `download`.
 - **Arquitetura modular**: `bridge.py` dividido em mixins (`hlsdl/bridge_parts/`), páginas QML em `hlsdl/ui/pages/`, componentes compartilhados em `hlsdl/ui/components/` e todos os diálogos globais (erro, confirmações, dependências, lote, sugestões, similaridade e recuperação) em `hlsdl/ui/dialogs/`; `main.qml` ficou só com o shell da janela.
-- **Atualizações assinadas**: o manifesto `SHA256SUMS-windows.txt` é assinado com Ed25519; o app valida a assinatura com a chave pública embutida antes de aceitar o instalador. Inclui `scripts/gen_update_key.py` e `scripts/sign_release.py`.
+- **Atualizações assinadas**: os manifestos `SHA256SUMS-windows.txt` e `SHA256SUMS-linux.txt` são assinados com Ed25519; o app valida a assinatura do Windows com a chave pública embutida antes de aceitar o instalador, e o pacote Linux publica o `.sig` para verificação manual. Inclui `scripts/gen_update_key.py` e `scripts/sign_release.py`.
+- **Manifesto de release canônico** (`release-manifest-*.json`): assinatura Ed25519 cobre `schema_version`, `version`, `tag` e assets (nome, tamanho e SHA-256). O app verifica a assinatura antes do parsing e exige igualdade estrita com a API do GitHub; replay de manifesto antigo e downgrade são rejeitados. Gerado por `scripts/gen_release_manifest.py`.
+- **Política de rede única** (`hlsdl/netpolicy.py`): somente HTTP/HTTPS, `Referer` same-origin sem query/fragmento/credenciais, redirects manuais revalidados e bloqueio de salto público → loopback/rede privada.
+- **Limite de resposta do scraper**: leitura em streaming com teto de 4 MiB descompactados e validação de `Content-Type`.
+- **Proveniência do FFmpeg**: macOS exige pin de SHA-256 ou consentimento explícito (`HLSDL_ALLOW_UNVERIFIED_FFMPEG=1`); Linux registra o fingerprint e alerta que o fornecedor só publica MD5; gerenciador de pacotes do sistema continua preferido.
+- **Paridade integral de i18n** no backend e nos 15 catálogos JS da UI, com teste que também verifica chaves referenciadas no QML.
+- **Migrações versionadas do catálogo SQLite** (`PRAGMA user_version`) e `foreign_keys=ON` por conexão.
+- **SBOM do bundle**: `scripts/gen_sbom.py --bundle` inclui cada arquivo do PyInstaller com SHA-256 e tamanho, além do inventário do ambiente.
+- **Teste HDR10 real com QSV**: fixture sintético com mastering display/max-cll gera saída HEVC QSV em MKV/MP4 e valida a preservação dos metadados; roda no workflow de hardware com `HLSDL_TEST_QSV=1` e é skipado fora dele.
+- **Cabeçalho descritivo por aba** (`PageHero`): título, frase de contexto e degradê sutil; ações contextuais na Compressão. Em janelas menores que 1050×650, mantém o título simples para preservar a densidade.
+- **Harness de screenshots** (`scripts/ui_snapshot.py`): captura as 5 abas em temas/resoluções/escalas, além de toast e diálogo de erro; evidências em `docs/ui-review/`.
+- **Toast persistente para mensagens longas**: até 3 linhas, duração proporcional ao texto e dispensa por clique.
 - **Build fixado**: `constraints.txt` pina PySide6, yt-dlp, requests, cryptography, PyInstaller e ferramentas de teste; Actions e o fallback do Inno Setup foram fixados/detectados.
 - **Teste de hardware**: workflow semanal/manual roda encode QSV real em runner self-hosted; CI Linux instala ffmpeg para executar os testes reais de software.
 - **QML no CI**: `pyside6-qmllint` bloqueia erros de sintaxe/tipo em todas as telas.
@@ -29,14 +96,44 @@ e o versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 - Ciclo de vida de QThreads centralizado em `hlsdl/jobs.py`.
 - `detect_encoders` passou a considerar apenas encoders de vídeo.
 - Presets agora resetam filtros/políticas e permanecem selecionados; alterações individuais marcam “Personalizado”.
+- **Presets e RF mais conservadores**: os presets prontos usam RF menor (Equilibrado HEVC 22, Qualidade HEVC 18, Arquivo 16, Rápido H.264 21, AV1 27) e o reencode automático do download usa H.264 18/21/24 e H.265 20/24/27 por nível. O objetivo é reduzir a perda de bitrate sem sacrificar a qualidade percebida.
+- **Bitrate mínimo opcional**: o ajuste (padrão **0**, desativado) aplica um piso VBR (`-b:v`/`-maxrate`/`-bufsize`) em QSV/NVENC/AMF para quem quiser limitar a redução. O padrão volta a ser qualidade constante: CRF/ICQ controlam a qualidade e o bitrate é consequência. O aviso de queda só aparece quando o SSIM também está abaixo de 0,95.
+- **Sem referências externas na UI**: textos e documentação falam apenas em presets prontos, sem comparação com outros aplicativos.
 - Atualização de dependências bloqueada com jobs ativos e PySide6 não é mais atualizado in-process.
 - Extração de ffmpeg/ffprobe e downloads de ferramentas agora são atômicas.
 - **Metadados de cor inválidos**: tags `reserved`/`unknown`/`unspecified` deixam de ser repassadas como `-color_primaries`/`-color_trc`/`-colorspace`/`-color_range`; isso corrige a falha do `hevc_qsv` (`Unable to parse "color_primaries" option value "reserved"`).
-- **Barra de título**: botões de minimizar/maximizar/restaurar/fechar redesenhados com ícones vetoriais consistentes, estado de restaurar correto ao maximizar, cursor de mão, foco removido e tooltips traduzidos em todos os botões.
+- **Barra de título**: botões de minimizar/maximizar/restaurar/fechar redesenhados com ícones vetoriais consistentes, estado de restaurar correto ao maximizar, cursor de mão, **foco visível e navegável por teclado** e tooltips traduzidos em todos os botões.
 - **Aba Compressão redesenhada**: opções divididas em **Geral**, **Vídeo**, **Áudio e legendas** e **Avançado**, com grid responsivo (2–4 colunas), presets sempre visíveis, altura adaptativa ao conteúdo da seção e mais espaço para a fila. As abas internas usam o mesmo `TabBar`/`AppTabButton` das abas superiores.
 - `pyproject.toml` inclui `hlsdl.bridge_parts` e todo o QML modular no pacote instalável.
 
 ### Corrigido
+- **P1-01 — vazamento de `Referer`**: o cabeçalho não é mais montado com a URL crua. Scraper, yt-dlp e FFmpeg recebem apenas `Referer` da mesma origem, sem query string, fragmento ou userinfo; redirecionamentos cross-origin não o encaminham.
+- **P2-01 — esquemas perigosos**: `file://`, `ftp://`, `data:` e URLs sem host válido são recusados antes da fila e novamente antes de yt-dlp/ffmpeg.
+- **P2-02 — SSRF/HTML ilimitado**: redirects do scraper são revalidados a cada salto; destino privado a partir de página pública é bloqueado; corpo tem limite de bytes.
+- **P2-03/P2-04 — verificação de release e HDR**: manifesto assinado vincula versão/tag/asset; HDR10 compara mastering display e content-light na saída para todos os encoders que prometem preservação. Metadados HDR10 reais são lidos também do primeiro frame (SEI), não apenas de `stream.side_data_list`; QSV foi validado em MKV e MP4 com fixture HDR10.
+- **P3-01 — colisão de caminhos**: `install_output()` rejeita `final == source` (também symlink/hardlink) antes de criar backup ou remover arquivos.
+- **P2-06 — gates da CI**: `qmllint` e smoke tests deixam de usar `|| true`; exit code, encerramento prematuro e marcador de inicialização são verificados em Linux e Windows.
+- **P2-07 — shutdown**: updater, dependências, scanner de similaridade e detecção QSV do compressor têm cancelamento cooperativo, `join` com timeout e supressão de callbacks após o teardown; threads auxiliares do Bridge são rastreadas.
+- **Reauditoria 18/11 — update**: download limitado aos hosts do GitHub, manifesto/assinatura com tetos de bytes, instalador conferido pelo tamanho durante o streaming e redirect final revalidado; comparador de versão semântico com prerelease/build metadata.
+- **Reauditoria 18/11 — `allow-unsafe-ext`**: retry só publica arquivo que passe por `ffprobe` com vídeo/áudio ou assinatura de contêiner conhecida; HTML, playlist crua e binário desconhecido são descartados.
+- **Reauditoria 18/11 — barra de título e botões**: gradiente sutil, versão em pill, divisor; hover, mousedown, escala e transição de cor em `TitleBarButton`, `AppButton` e `AppToolButton`.
+- **Reauditoria 18/11 — diálogo de erro**: resumo humano, detalhes técnicos expansíveis, área rolável e copiar/fechar.
+- **Reauditoria 18/11 — PageHero compacto**: o cabeçalho degradê permanece em 940×620 em versão compacta (40/52 px), em vez de desaparecer.
+- **Reauditoria R3 — botões semânticos**: `AppButton` com variantes primary/secondary/tertiary/danger e tamanho compact/normal; `highlighted` continua compatível. Ações secundárias de Lote, Compressão, Playlist, erros e pasta ganharam superfície/borda em repouso.
+- **Reauditoria R3 — pasta de saída**: novo `FolderPickerField` com caminho elidido/tooltip, Alterar/Abrir/Copiar, validação de escrita e feedback; abrir pasta usa helper único com notificação de erro.
+- **Reauditoria R3 — fila e feedback**: Iniciar/Cancelar/Limpar desabilitam sem operação aplicável; adicionar pasta de compressão sem mídia elegível informa o usuário.
+- **Revisão R4 — acabamento Material**: botões maiores (44 px normal/36 compact), variantes semânticas com superfície/borda visível, ícones 18 px e estados hover/pressed; “Atualizar tudo”, “Verificar novamente”, “Verificar atualizações” e “Escolher…” deixam de parecer labels.
+- **Revisão R4 — compressão**: cabeçalho Status centralizado sobre o badge e filtro por campo (todos, nome/arquivo, status, progresso, tamanho, economia, erro).
+- **Revisão R4 — Lote**: linha de formato com RowLayout alinhado verticalmente entre label, seletores, resumo e “Opções…”.
+- **Revisão R4 — Download individual**: botão Cancelar visível enquanto o download individual está ativo ou aguardando.
+- **Revisão R4 — cookies/pastas**: botão de arquivo de cookies sempre visível com ícone; cada dependência tem botão Atualizar com ícone; correção de encoding em QML/bridge_parts.
+- **Reauditoria R3 — estado vazio do Lote**: em 940×620 o hint/filtro são ocultados quando não há itens, preservando a mensagem “Nenhum link na fila” e o rodapé.
+- **Acessibilidade**: botões da barra de título voltam a receber foco por teclado e cabeçalhos ordenáveis da compressão são `Button` com foco, Enter/Espaço e nome acessível.
+- **Tema claro**: botões primários deixavam de exibir texto/fundo legível porque `Material.background` da janela pintava os botões `highlighted`; fundo da janela separado e `AppButton` com cores explícitas para normal, hover, pressionado e desabilitado.
+- **Responsividade 940×620**: contadores do Lote quebram em duas linhas e a barra de progresso some em larguras menores; painel de Compressão mantém o rodapé visível, com scrollbars explícitos.
+- **Diálogos**: `AppDialogSurface` ganhou margens internas de 16 px, corrigindo conteúdo colado às bordas.
+- **BOM UTF-8** removido de `hlsdl/bridge_parts/*.py`; documentação alinhada sobre `requests`/`beautifulsoup4` e sidecars POSIX.
+- **Sidecars POSIX**: novos sidecars usam ponto inicial (`.video.mp4.hlsdl.json`) no Linux/macOS; sidecars antigos continuam legíveis e são limpos normalmente.
 - **Ícones após a extração QML**: `iconPath()` agora devolve URL absoluta; páginas e componentes não procuram mais `pages/icons` ou `components/icons`.
 - **Estilo Material na GUI extraída**: páginas, diálogos e componentes agora importam `QtQuick.Controls.Material`; ComboBox/SpinBox/Switch/CheckBox deixam de aparecer como barras pretas e voltam ao tema claro/escuro correto.
 - **Probes QSV concorrentes**: a detecção de dispositivos QSV usa cache global e lock, evitando vários `ffmpeg` simultâneos ao criar múltiplos managers; `refresh_encoders` invalida o cache.
@@ -44,7 +141,10 @@ e o versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 - **Economia estimada**: a estimativa agora cresce com o RF/quantização (arquivo menor); antes estava invertida e reduzia a economia ao aumentar o RF.
 - **Download de atualização atômico**: o instalador é gravado em `.part`, verificado por SHA-256 e só então movido para o nome final; falhas removem o parcial.
 - **Qualidade mensurável**: bitrate/resolução/SSIM de origem e saída ficam no log, na linha da fila e no tooltip; o gate SSIM subiu para 0,90 e quedas extremas de bitrate com resolução/FPS iguais geram aviso e confirmação antes de instalar. No CLI, o padrão é recusar; `--allow-quality-drop` aceita explicitamente.
-- **Filtro na fila de compressão**: busca por nome, caminho ou encoder, com limpar e mensagem de “nenhum resultado”.
+- **Bitrate não é métrica de qualidade**: a compressão automática do download aceita quedas grandes quando o SSIM permanece alto; o corte artificial de 90% foi removido. O SSIM mínimo de 0,90 continua valendo.
+- **JSONs de integridade opcionais**: sidecars `.hlsdl.json` passam a ser gerados somente com a opção ativa (padrão desligado). O catálogo SQLite continua centralizando os metadados, e Configurações → Integridade tem um botão para remover sidecars antigos da pasta de saída.
+- **Tabela de compressão ordenável**: cabeçalhos de nome, status, progresso e resultado alternam ordem crescente/decrescente, com indicador visual. Os separadores da linha de qualidade passaram de `?` para `·`.
+- **Filtro na fila de compressão**: busca por nome, caminho, encoder, saída, erro e status traduzido, com limpar e mensagem de “nenhum resultado”.
 - **Sidecars JSON ocultos**: os `.hlsdl.json` de integridade continuam ao lado da mídia para portabilidade, mas recebem atributo oculto no Windows.
 
 ## [Não lançado] — integridade, similares e recuperação
@@ -68,7 +168,7 @@ e o versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 - **Pasta de logs** correta em modo portátil/dev.
 - **`single_busy`** traduzido nos 8 idiomas.
 
-## [Não lançado] — compressor inspirado no HandBrake
+## [Não lançado] — compressor com presets, filtros, HDR e validação
 
 ### Adicionado
 - **Presets de compressão** (Rápido H.264, Equilibrado HEVC, Qualidade HEVC,

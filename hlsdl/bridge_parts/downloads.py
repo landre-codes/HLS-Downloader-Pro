@@ -1,10 +1,10 @@
-﻿# ruff: noqa: F401, F403, F405
+# ruff: noqa: F401, F403, F405
 
 from __future__ import annotations
 
 import os
 
-from PySide6.QtCore import Property, Slot
+from PySide6.QtCore import Property, QObject, Slot
 from PySide6.QtWidgets import QApplication, QFileDialog
 
 from ..status import FINAL as FINAL_STATUSES
@@ -14,12 +14,16 @@ from .signals import *
 
 class DownloadsMixin(BridgeSignals):
 
+    @Property(QObject, constant=True)
+    def batchModel(self) -> QObject:
+        return self.batch_proxy
+
     @Property("QVariantMap", notify=lastItemChanged)
     def lastItem(self) -> dict:
         return self._last_item
 
     def _on_item_updated(self, item: dict) -> None:
-        # A aba Individual sÃ³ reflete o item iniciado por downloadSingle().
+        # A aba Individual só reflete o item iniciado por downloadSingle().
         if self._single_item_id is None or item.get("id") != self._single_item_id:
             return
         status = item.get("status")
@@ -28,8 +32,8 @@ class DownloadsMixin(BridgeSignals):
             "title": item.get("title") or item.get("url", ""),
             "status": getattr(status, "value", str(status)),
             "progress": round(float(item.get("progress", 0.0)), 1),
-            "speed": item.get("speed", "â€”"),
-            "size": item.get("size", "â€”"),
+            "speed": item.get("speed", "—"),
+            "size": item.get("size", "—"),
             "error": item.get("error", ""),
             "path": item.get("path", ""),
             "thumbnail": item.get("thumb", ""),
@@ -136,7 +140,7 @@ class DownloadsMixin(BridgeSignals):
 
     @Slot(str)
     def importTxtPath(self, path: str) -> None:
-        """LÃª um .txt (usado pelo botÃ£o e pelo arrastar-e-soltar)."""
+        """Lê um .txt (usado pelo botão e pelo arrastar-e-soltar)."""
         if not path:
             return
         try:
@@ -150,9 +154,9 @@ class DownloadsMixin(BridgeSignals):
 
     @Slot(str, result=bool)
     def downloadSingle(self, url: str) -> bool:
-        """Adiciona um Ãºnico link Ã  fila individual e a inicia.
+        """Adiciona um único link à fila individual e a inicia.
 
-        Retorna True apenas quando um link vÃ¡lido foi adicionado; o QML usa
+        Retorna True apenas quando um link válido foi adicionado; o QML usa
         esse retorno para limpar o campo somente em caso de sucesso.
         """
         if self._deps_busy:
@@ -171,7 +175,7 @@ class DownloadsMixin(BridgeSignals):
             return False
         url = urls[0]
         normalized = normalize_url(url)
-        # Evita baixar de novo algo que jÃ¡ estÃ¡ ativo no lote. Itens
+        # Evita baixar de novo algo que já está ativo no lote. Itens
         # finalizados podem ser reenfileirados.
         if self.manager.has_active_url(url):
             self.notifyText.emit(self._tr("links_skipped", s=1))
@@ -282,7 +286,14 @@ class DownloadsMixin(BridgeSignals):
 
     @Slot(str)
     def copyLink(self, url: str) -> None:
-        QGuiApplication.clipboard().setText(url)
+        try:
+            clipboard = QApplication.clipboard()
+            if clipboard is None:
+                raise RuntimeError("clipboard indisponível")
+            clipboard.setText(url)
+        except Exception:
+            self.notifyText.emit(self._tr("clipboard_unavailable"))
+            return
         self.notifyText.emit(self._tr("link_copied"))
 
     @Slot()

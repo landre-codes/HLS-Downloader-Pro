@@ -49,9 +49,7 @@ Rectangle {
                 enabled: term.output.length > 0
                 opacity: enabled ? 1 : 0.4
                 Accessible.name: term.strings.terminal_copy || ""
-                ToolTip.text: term.strings.terminal_copy || ""
-                ToolTip.visible: hovered
-                ToolTip.delay: 500
+                tipText: term.strings.terminal_copy || ""
                 onClicked: {
                     termArea.selectAll()
                     termArea.copy()

@@ -42,6 +42,25 @@ def test_start_without_detection_keeps_items_waiting(tmp_path):
     assert manager.last_error == "detecting"
 
 
+def test_shutdown_joins_qsv_detection_thread(qapp):
+    import threading
+
+    manager = CompressionManager(CompressionModel([]), defer_detection=True)
+    started = threading.Event()
+
+    def worker():
+        started.set()
+        while not manager._closing:
+            threading.Event().wait(0.01)
+
+    thread = threading.Thread(target=worker, daemon=True)
+    manager._qsv_thread = thread
+    thread.start()
+    assert started.wait(1)
+    manager.shutdown(timeout=2)
+    assert not thread.is_alive()
+
+
 def test_retry_refuses_while_previous_thread_is_alive(tmp_path):
     source = tmp_path / "video.mp4"
     source.write_bytes(b"x")
@@ -112,6 +131,57 @@ def test_deep_validation_requires_10bit_when_requested(tmp_path):
         str(output), settings,
     )
     assert reason == "bit_depth"
+
+
+def _hdr_probe(*, with_mastering=True, with_light=True, max_average=400):
+    probe = _probe(pix_fmt="yuv420p10le")
+    video = probe["streams"][0]
+    video.update({
+        "codec_name": "hevc",
+        "color_primaries": "bt2020",
+        "color_transfer": "smpte2084",
+        "color_space": "bt2020nc",
+        "color_range": "tv",
+    })
+    side_data = []
+    if with_mastering:
+        side_data.append({
+            "side_data_type": "Mastering display metadata",
+            "green_x": "13250/50000", "green_y": "34500/50000",
+            "blue_x": "7500/50000", "blue_y": "3000/50000",
+            "red_x": "34000/50000", "red_y": "16000/50000",
+            "white_point_x": "15635/50000", "white_point_y": "16450/50000",
+            "min_luminance": "50/10000", "max_luminance": "10000000/10000",
+        })
+    if with_light:
+        side_data.append({
+            "side_data_type": "Content light level metadata",
+            "max_content": 1000, "max_average": max_average,
+        })
+    video["side_data_list"] = side_data
+    return probe
+
+
+def test_deep_validation_preserves_hdr10_for_all_encoders(tmp_path):
+    output = tmp_path / "out.mp4"
+    output.write_bytes(b"x" * 100)
+    settings = CompressionSettings(codec="hevc", container="mp4")
+    good = _hdr_probe()
+    assert validate_output_quality(
+        _hdr_probe(), good, str(output), settings, encoder="hevc_qsv"
+    ) == ""
+    missing_light = _hdr_probe(with_light=False)
+    assert validate_output_quality(
+        _hdr_probe(), missing_light, str(output), settings, encoder="hevc_nvenc"
+    ) == "hdr_metadata:content_light_missing"
+    changed_light = _hdr_probe(max_average=200)
+    assert validate_output_quality(
+        _hdr_probe(), changed_light, str(output), settings, encoder="hevc_amf"
+    ) == "hdr_metadata:content_light_max_average_mismatch"
+    missing_mastering = _hdr_probe(with_mastering=False)
+    assert validate_output_quality(
+        _hdr_probe(), missing_mastering, str(output), settings, encoder="libx265"
+    ) == "hdr_metadata:mastering_missing"
 
 
 @pytest.mark.skipif(

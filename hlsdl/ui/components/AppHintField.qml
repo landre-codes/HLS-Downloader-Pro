@@ -7,9 +7,22 @@ TextField {
     property string hint: ""
     property string leadingIcon: ""
     property var theme: null
+    property string tipTitle: ""
+    property string tipText: ""
+    property string tipShortcut: ""
+    property bool tipEnabled: true
     placeholderText: ""
     Accessible.name: hint
     leftPadding: leadingIcon.length > 0 ? 38 : Material.textFieldHorizontalPadding
+
+    AppToolTip {
+        target: hintField
+        title: hintField.tipTitle
+        text: hintField.tipText.length > 0 ? hintField.tipText : hintField.hint
+        shortcut: hintField.tipShortcut
+        available: hintField.tipEnabled && hintField.enabled
+                   && (hintField.tipText.length > 0 || hintField.text.length === 0)
+    }
 
     Image {
         x: 12

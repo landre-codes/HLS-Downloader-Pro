@@ -28,7 +28,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt -c constraints.txt pytest ruff
+          pip install -r requirements.txt -c constraints.txt pytest ruff mypy pytest-cov
       - name: Validate version tag
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
@@ -47,13 +47,33 @@ jobs:
         run: sudo apt-get update -q && sudo apt-get install -y -q libegl1 libgl1 libxkbcommon0 libxcb-cursor0 ffmpeg
       - name: Lint
         run: ruff check hlsdl tests main.py worker.py
+      - name: Type-check security modules
+        run: mypy hlsdl/netpolicy.py hlsdl/release_manifest.py hlsdl/update_trust.py
       - name: QML syntax
         run: |
-          output=$(pyside6-qmllint hlsdl/ui/main.qml hlsdl/ui/pages/*.qml \
-            hlsdl/ui/dialogs/*.qml hlsdl/ui/components/*.qml 2>&1 || true)
-          printf '%s\n' "$output"
-          if printf '%s\n' "$output" | grep -Eq '\[syntax\]|is not a type|Could not find property|Expected token'; then
-            echo "Erro de sintaxe/tipo no QML"; exit 1
+          set +e
+          pyside6-qmllint hlsdl/ui/main.qml hlsdl/ui/pages/*.qml \
+            hlsdl/ui/dialogs/*.qml hlsdl/ui/components/*.qml > qmllint.log 2>&1
+          rc=$?
+          set -e
+          cat qmllint.log
+          # PySide6 6.12 retorna código não-zero apenas por avisos de
+          # unqualified access/missing-property. Bloqueia erros reais e
+          # qualquer linha não classificada (inclusive erro fatal que venha
+          # acompanhado de um Warning benigno).
+          if grep -Eq '\[syntax\]|is not a type|Could not find property|Expected token|^Error:' qmllint.log; then
+            echo "Erro de sintaxe/tipo no QML"
+            exit 1
+          fi
+          unknown=$(grep -Ev '^Warning: .*\[(unqualified|missing-property)\]$|^Info: .*$|^$' qmllint.log || true)
+          if [ -n "$unknown" ]; then
+            echo "Linha de qmllint não classificada:"
+            printf '%s\n' "$unknown"
+            exit 1
+          fi
+          if [ "$rc" -ne 0 ] && ! grep -q '^Warning:' qmllint.log; then
+            echo "qmllint terminou com código $rc sem avisos"
+            exit "$rc"
           fi
       - name: Wheel package data
         run: |
@@ -80,7 +100,7 @@ jobs:
       - name: Tests
         env:
           QT_QPA_PLATFORM: offscreen
-        run: python -m pytest -q
+        run: python -m pytest -q --cov=hlsdl --cov-report=term --cov-fail-under=60
 
   # ---------------------------------------------------------- testes Windows
   test-windows:
@@ -134,15 +154,30 @@ jobs:
           sudo apt-get install -y -q libegl1 libgl1 libxkbcommon0 libxcb-cursor0
           ls -lh dist/
           test -x dist/HLS-Downloader-Pro
+          set +e
           QT_QPA_PLATFORM=offscreen timeout 25 ./dist/HLS-Downloader-Pro \
-            > /tmp/app.log 2>&1 || true
-          if grep -qi "failed to load component\|No such file\|Traceback" /tmp/app.log; then
-            echo "=== falha ao iniciar ==="; cat /tmp/app.log; exit 1
+            > /tmp/app.log 2>&1
+          rc=$?
+          set -e
+          cat /tmp/app.log
+          # 124 = o timeout esperado para um app GUI que permaneceu vivo.
+          # Qualquer outra saída (inclusive 0) é encerramento prematuro.
+          if [ "$rc" -ne 124 ]; then
+            echo "app encerrou antes do timeout (rc=$rc)"
+            exit 1
           fi
-          echo "=== app rodou 25s offscreen sem erros ==="
+          if grep -qi "failed to load component\|No such file\|Traceback" /tmp/app.log; then
+            echo "=== falha ao iniciar ==="
+            exit 1
+          fi
+          if ! grep -qi "iniciando HLS Downloader Pro" /tmp/app.log; then
+            echo "=== log sem marcador de inicialização ==="
+            exit 1
+          fi
+          echo "=== app rodou 25s offscreen com marcador de inicialização ==="
       - name: Generate SBOM
         run: |
-          python scripts/gen_sbom.py dist/sbom.json
+          python scripts/gen_sbom.py dist/sbom.json --bundle dist/HLS-Downloader-Pro
           cp dist/sbom.json HLS-Downloader-Pro-linux-x86_64-sbom.json
       - name: Package release archive
         run: |
@@ -154,6 +189,36 @@ jobs:
           tar -czf HLS-Downloader-Pro-linux-x86_64.tar.gz -C package .
           sha256sum HLS-Downloader-Pro-linux-x86_64.tar.gz \
             HLS-Downloader-Pro-linux-x86_64-sbom.json > SHA256SUMS-linux.txt
+      - name: Generate signed release manifest (Linux)
+        run: |
+          version=$(python -c "import hlsdl; print(hlsdl.__version__)")
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            tag="$GITHUB_REF_NAME"
+          else
+            tag="v$version"
+          fi
+          python scripts/gen_release_manifest.py \
+            --version "$version" --tag "$tag" \
+            --output release-manifest-linux.json \
+            HLS-Downloader-Pro-linux-x86_64.tar.gz \
+            HLS-Downloader-Pro-linux-x86_64-sbom.json
+      - name: Sign Linux manifest
+        env:
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+        run: |
+          if [ -z "$UPDATE_SIGNING_KEY" ]; then
+            if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+              echo "segredo UPDATE_SIGNING_KEY ausente em uma release" >&2
+              exit 1
+            fi
+            echo "build nao-release: manifesto sem assinatura"
+            exit 0
+          fi
+          key="$RUNNER_TEMP/update_signing_key.pem"
+          printf '%s' "$UPDATE_SIGNING_KEY" > "$key"
+          trap 'rm -f "$key"' EXIT
+          python scripts/sign_release.py SHA256SUMS-linux.txt --key "$key"
+          python scripts/sign_release.py release-manifest-linux.json --key "$key"
       - name: Upload Linux artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -162,6 +227,9 @@ jobs:
             HLS-Downloader-Pro-linux-x86_64.tar.gz
             HLS-Downloader-Pro-linux-x86_64-sbom.json
             SHA256SUMS-linux.txt
+            SHA256SUMS-linux.txt.sig
+            release-manifest-linux.json
+            release-manifest-linux.json.sig
       - name: Attach to GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@da05d552573ad5aba039eaac05058a918a7bf631 # v2.2.2
@@ -170,6 +238,9 @@ jobs:
             HLS-Downloader-Pro-linux-x86_64.tar.gz
             HLS-Downloader-Pro-linux-x86_64-sbom.json
             SHA256SUMS-linux.txt
+            SHA256SUMS-linux.txt.sig
+            release-manifest-linux.json
+            release-manifest-linux.json.sig
 
   # ---------------------------------------------------------- build Windows
   build-windows:
@@ -198,11 +269,24 @@ jobs:
           $exe = ".\dist\HLS-Downloader-Pro\HLS-Downloader-Pro.exe"
           $p = Start-Process -FilePath $exe -PassThru -RedirectStandardError app.err -RedirectStandardOutput app.out
           Start-Sleep -Seconds 20
-          if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
-          if (Select-String -Path app.err -Pattern "failed to load component|No such file|Traceback" -Quiet) {
-            Write-Error "falha ao iniciar"; Get-Content app.err; exit 1
+          if ($p.HasExited) {
+            Write-Error "app encerrou antes do timeout (codigo $($p.ExitCode))"
+            Get-Content app.out, app.err -ErrorAction SilentlyContinue
+            exit 1
           }
-          Write-Host "app rodou offscreen sem erros"
+          Stop-Process -Id $p.Id -Force
+          $logs = (Get-Content app.out, app.err -ErrorAction SilentlyContinue) -join "`n"
+          if ($logs -match "failed to load component|No such file|Traceback") {
+            Write-Error "falha ao iniciar"
+            Write-Host $logs
+            exit 1
+          }
+          if ($logs -notmatch "iniciando HLS Downloader Pro") {
+            Write-Error "log sem marcador de inicialização"
+            Write-Host $logs
+            exit 1
+          }
+          Write-Host "app rodou offscreen com marcador de inicialização"
       - name: Build portable ZIP
         shell: pwsh
         run: |
@@ -240,7 +324,7 @@ jobs:
       - name: Generate SBOM
         shell: pwsh
         run: |
-          python scripts/gen_sbom.py dist/sbom.json
+          python scripts/gen_sbom.py dist/sbom.json --bundle "dist\HLS-Downloader-Pro"
           Copy-Item dist/sbom.json "HLS-Downloader-Pro-$env:VERSION-sbom.json"
       - name: Checksums
         shell: pwsh
@@ -256,6 +340,17 @@ jobs:
           }
           $lines | Set-Content "SHA256SUMS-windows.txt" -Encoding ascii
           Get-Content "SHA256SUMS-windows.txt"
+      - name: Generate signed release manifest (Windows)
+        shell: pwsh
+        run: |
+          $files = @(
+            "dist\installer\HLS-Downloader-Pro-$env:VERSION-setup.exe",
+            "HLS-Downloader-Pro-$env:VERSION-portable-win64.zip",
+            "HLS-Downloader-Pro-$env:VERSION-sbom.json"
+          )
+          $tag = if ($env:GITHUB_REF -like "refs/tags/v*") { $env:GITHUB_REF_NAME } else { "v$env:VERSION" }
+          python scripts/gen_release_manifest.py --version $env:VERSION --tag $tag --output release-manifest-windows.json $files
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Sign update manifest
         shell: pwsh
         env:
@@ -273,6 +368,8 @@ jobs:
           try {
             python scripts/sign_release.py "SHA256SUMS-windows.txt" --key $key
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            python scripts/sign_release.py "release-manifest-windows.json" --key $key
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           } finally {
             Remove-Item -Force $key -ErrorAction SilentlyContinue
           }
@@ -286,6 +383,8 @@ jobs:
             HLS-Downloader-Pro-*-sbom.json
             SHA256SUMS-windows.txt
             SHA256SUMS-windows.txt.sig
+            release-manifest-windows.json
+            release-manifest-windows.json.sig
       - name: Attach to GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@da05d552573ad5aba039eaac05058a918a7bf631 # v2.2.2
@@ -296,3 +395,5 @@ jobs:
             HLS-Downloader-Pro-*-sbom.json
             SHA256SUMS-windows.txt
             SHA256SUMS-windows.txt.sig
+            release-manifest-windows.json
+            release-manifest-windows.json.sig

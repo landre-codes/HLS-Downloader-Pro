@@ -10,6 +10,7 @@ import logging
 import os
 import subprocess
 import threading
+import time
 
 from PySide6.QtCore import (
     Property,
@@ -56,8 +57,8 @@ from .formats import (
     VIDEO_CONTAINERS,
 )
 from .i18n import detect_language, tr
-from .integrity import recover_journals, verify_completion
-from .model import DownloadModel
+from .integrity import recover_journals, set_sidecars_enabled, verify_completion
+from .model import DownloadFilterProxyModel, DownloadModel
 from .playlist import PlaylistLoader
 from .queue import QueueManager
 from .similarity import SimilarityScanner
@@ -89,9 +90,13 @@ class Bridge(
     ):
         super().__init__(parent)
         self.manager = manager
+        self.batch_proxy = DownloadFilterProxyModel(self)
+        self.batch_proxy.setSourceModel(manager.model)
         self._settings = QSettings(
             settings_path or default_settings_path(), QSettings.Format.IniFormat
         )
+        self._sidecars_enabled = self._setting_bool("integrity/sidecars", False)
+        set_sidecars_enabled(self._sidecars_enabled)
 
         # -------------------------------------------------- carrega o estado
         dark_default = True
@@ -155,6 +160,11 @@ class Bridge(
         self._playlist_loading = False
         self._comp_active = False
         self._comp_paused = False
+        self._comp_scan_busy = False
+        self._comp_scan_cancel: threading.Event | None = None
+        self.compressionScanFinished.connect(
+            self._finishCompressionScan, Qt.ConnectionType.QueuedConnection
+        )
         self._similar_groups: list = []
         self._similar_busy = False
         self._similar_progress = 0
@@ -163,6 +173,7 @@ class Bridge(
         self._similar_threshold = 85
         self._recovery_messages: list = []
         self._encoder_refresh_busy = False
+        self._aux_threads: list[threading.Thread] = []
         if state_path:
             self._queue_state_path = state_path
         else:
@@ -211,6 +222,9 @@ class Bridge(
             codec=str(self._settings.value("compress/codec", "hevc")),
             container=str(self._settings.value("compress/container", "mp4")),
             quality=self._setting_int("compress/quality", 24, 1, 51),
+            min_bitrate_percent=self._setting_int(
+                "compress/min_bitrate_percent", 0, 0, 90
+            ),
             speed=str(self._settings.value("compress/speed", "balanced")),
             parallel=self._setting_int("compress/parallel", 1, 1, 8),
             min_size_mb=self._setting_int("compress/min_size_mb", 0, 0, 100000),
@@ -254,7 +268,7 @@ class Bridge(
         self.similarity.finished.connect(self._on_similar_finished)
         self.similarity.failed.connect(self._on_similar_failed)
 
-        threading.Thread(target=self._recover_interrupted_jobs, daemon=True).start()
+        self._start_aux(self._recover_interrupted_jobs, "hlsdl-recovery")
 
         # ------------------------------------------------------ atualizações
         self._update_info: dict = {}
@@ -309,22 +323,32 @@ class Bridge(
         self.compression.itemsChanged.connect(self._schedule_persist)
 
         if defer_detection:
-            threading.Thread(
-                target=self._detect_initial_environment, daemon=True
-            ).start()
+            self._start_aux(
+                self._detect_initial_environment, "hlsdl-detect-env"
+            )
         else:
             self.deps.check_all()
+
+    def _start_aux(self, target, name: str) -> None:
+        """Inicia uma thread auxiliar rastreável pelo shutdown do Bridge."""
+        if getattr(self, "_shutting_down", False):
+            return
+        thread = threading.Thread(target=target, name=name, daemon=True)
+        self._aux_threads.append(thread)
+        thread.start()
 
     def _detect_initial_environment(self) -> None:
         """Detecta encoders/dependências fora da thread da GUI no startup."""
         try:
             self.compression.refresh_encoders()
-            self.compressionEncodersChanged.emit()
-            self.compressionEffectiveEncoderChanged.emit()
+            if not getattr(self, "_shutting_down", False):
+                self.compressionEncodersChanged.emit()
+                self.compressionEffectiveEncoderChanged.emit()
         except Exception:
             logging.getLogger("hlsdl").exception("falha ao detectar encoders")
         try:
-            self.deps.check_all()
+            if not getattr(self, "_shutting_down", False):
+                self.deps.check_all()
         except Exception:
             logging.getLogger("hlsdl").exception("falha ao detectar dependências")
 
@@ -349,7 +373,7 @@ class Bridge(
             else:
                 messages.append(self._tr("recovery_error", path=final))
         self._recovery_messages = messages
-        if messages:
+        if messages and not getattr(self, "_shutting_down", False):
             self.recoveryChanged.emit()
 
     def _restore_queue_state(self) -> None:
@@ -653,6 +677,7 @@ class Bridge(
 
     def shutdown(self) -> None:
         """Encerra download/playlist/instalação/compressão ao fechar."""
+        self._shutting_down = True
         try:
             self._persist_state()
         except Exception:
@@ -662,7 +687,11 @@ class Bridge(
         except Exception:
             pass
         try:
-            self.similarity.cancel()
+            self.similarity.shutdown()
+        except Exception:
+            pass
+        try:
+            self.updater.shutdown()
         except Exception:
             pass
         cancel = getattr(self.deps, "cancel", None)
@@ -671,16 +700,36 @@ class Bridge(
                 cancel()
             except Exception:
                 pass
+        shutdown = getattr(self.deps, "shutdown", None)
+        if callable(shutdown):
+            try:
+                shutdown(timeout=3.0)
+            except TypeError:
+                shutdown()
+            except Exception:
+                pass
+        cancel_scan = getattr(self, "_comp_scan_cancel", None)
+        if cancel_scan is not None:
+            cancel_scan.set()
         self.compression.shutdown()
         self.single_manager.shutdown()
         self.manager.shutdown()
+        deadline = time.monotonic() + 3.0
+        for thread in list(self._aux_threads):
+            if thread.is_alive() and thread is not threading.current_thread():
+                thread.join(timeout=max(0.0, deadline - time.monotonic()))
+            if thread.is_alive():
+                logging.getLogger("hlsdl").warning(
+                    "thread auxiliar %s ainda ativa após o shutdown",
+                    thread.name,
+                )
+        self._aux_threads.clear()
 
-    @Slot(str)
-    def openDownloadPath(self, path: str) -> None:
-        """Abre o gerenciador de arquivos na pasta onde o arquivo foi salvo."""
-        folder = os.path.dirname(path)
-        if not os.path.isdir(folder):
-            return
+    def _open_directory(self, folder: str) -> bool:
+        """Abre uma pasta e informa erro acionável em vez de silenciar."""
+        if not folder or not os.path.isdir(folder):
+            self.notifyText.emit(self._tr("folder_missing"))
+            return False
         try:
             if os.name == "nt":
                 os.startfile(folder)  # type: ignore[attr-defined]
@@ -688,24 +737,22 @@ class Bridge(
                 subprocess.Popen(["open", folder])
             else:
                 subprocess.Popen(["xdg-open", folder])
-        except OSError:
-            pass
+        except OSError as exc:
+            self.notifyText.emit(self._tr("open_folder_failed", err=exc))
+            return False
+        return True
+
+    @Slot(str)
+    def openDownloadPath(self, path: str) -> None:
+        """Abre o gerenciador de arquivos na pasta onde o arquivo foi salvo."""
+        self._open_directory(os.path.dirname(path))
 
     @Slot()
     def openLogFolder(self) -> None:
         """Abre a pasta onde ficam logs e settings (portátil/dev incluídos)."""
         from .config import log_path
 
-        folder = os.path.dirname(log_path()) or user_config_dir()
-        try:
-            if os.name == "nt":
-                os.startfile(folder)  # type: ignore[attr-defined]
-            elif sys_platform_darwin():
-                subprocess.Popen(["open", folder])
-            else:
-                subprocess.Popen(["xdg-open", folder])
-        except OSError:
-            pass
+        self._open_directory(os.path.dirname(log_path()) or user_config_dir())
 
     # ---------------------------------------------------- dependências (slots)
 

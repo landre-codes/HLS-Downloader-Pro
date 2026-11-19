@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from hlsdl.i18n import tr, translator
+import re
+from pathlib import Path
+
+from hlsdl.i18n import BACKEND, LANGUAGES, tr, translator
 from hlsdl.status import ACTIVE, FINAL, Status
 
 
@@ -52,3 +55,86 @@ def test_all_languages_are_present_and_translated():
     assert BACKEND["ja"]["links_added"] != BACKEND["pt"]["links_added"]
     assert BACKEND["ru"]["dep_found"] != BACKEND["pt"]["dep_found"]
     assert BACKEND["zh"]["err_unexpected"] != BACKEND["pt"]["err_unexpected"]
+
+
+def test_backend_catalogs_have_full_key_parity():
+    base = set(BACKEND["pt"])
+    for lang in LANGUAGES:
+        missing = base - set(BACKEND[lang])
+        assert not missing, f"chaves ausentes em {lang}: {sorted(missing)[:10]}"
+        empty = [key for key in base if not str(BACKEND[lang].get(key, "")).strip()]
+        assert not empty, f"chaves vazias em {lang}: {empty[:10]}"
+
+
+def _js_object_end(text: str, start: int) -> int:
+    """Índice do ``}`` que fecha o objeto iniciado em ``start``.
+
+    Ignora chaves dentro de strings e comentários de linha, para que
+    placeholders como ``{a}`` não alterem o balanço.
+    """
+    depth = 0
+    in_string = False
+    escaped = False
+    i = start
+    while i < len(text):
+        char = text[i]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+        elif char == '"':
+            in_string = True
+        elif char == "/" and i + 1 < len(text) and text[i + 1] == "/":
+            newline = text.find("\n", i)
+            if newline < 0:
+                break
+            i = newline
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return i
+        i += 1
+    raise AssertionError("objeto JS não balanceado")
+
+
+def _ui_catalog_keys() -> dict[str, set[str]]:
+    path = Path(__file__).resolve().parents[1] / "hlsdl" / "ui" / "i18n.js"
+    text = path.read_text(encoding="utf-8")
+    result: dict[str, set[str]] = {}
+    for match in re.finditer(r"^var\s+\w+\s*=\s*\{", text, re.MULTILINE):
+        body_start = match.end() - 1
+        body_end = _js_object_end(text, body_start)
+        body = text[body_start:body_end]
+        for lang_match in re.finditer(r'"(\w+)"\s*:\s*\{', body):
+            block_start = body.find("{", lang_match.start())
+            block_end = _js_object_end(body, block_start)
+            block = body[block_start + 1:block_end]
+            keys = set(
+                re.findall(r"(?:^|[{,])\s*([A-Za-z_]\w*)\s*:", block)
+            )
+            result.setdefault(lang_match.group(1), set()).update(keys)
+    return result
+
+
+def test_ui_catalog_has_full_parity_and_covers_qml_keys():
+    catalogs = _ui_catalog_keys()
+    assert set(catalogs) == set(LANGUAGES)
+    base = catalogs["pt"]
+    assert len(base) > 300, f"catálogo PT inesperadamente pequeno: {len(base)}"
+    for lang in LANGUAGES:
+        missing = base - catalogs[lang]
+        assert not missing, f"chaves ausentes em ui/{lang}: {sorted(missing)[:10]}"
+        extra = catalogs[lang] - base
+        assert not extra, f"chaves sem fallback PT em ui/{lang}: {sorted(extra)[:10]}"
+
+    used: set[str] = set()
+    ui_dir = Path(__file__).resolve().parents[1] / "hlsdl" / "ui"
+    for qml in ui_dir.rglob("*.qml"):
+        used |= set(re.findall(r"\bstrings\.([A-Za-z_]\w*)", qml.read_text(encoding="utf-8")))
+    missing = used - base
+    assert not missing, f"chaves usadas no QML sem tradução: {sorted(missing)}"

@@ -6,15 +6,15 @@ Downloader de vídeos (HLS / m3u8) com interface **Qt Quick (QML) + Material Des
 
 - **Duas abas de download**: **Download Individual** (um link, com progresso dedicado) e **Lote** (fila com dezenas/centenas de links)
 - **Aba de Playlists**: carrega os itens de uma playlist (**YouTube** ou sites em geral), permite selecionar os desejados e enviá-los à fila
-- **Aba de Compressão local**: fila de arquivos/pastas, codecs **HEVC, H.264 e AV1**, contêineres **MP4/MKV/WebM/MOV/AVI**, aceleração por **Intel QSV, NVIDIA NVENC, AMD AMF, Kvazaar ou software** (`libx265`/`libx264`/`libsvtav1`), qualidade **RF 1–51 (AV1 até 63)**, presets de velocidade (**rápida → muito lenta**), **presets no estilo HandBrake** (Rápido, Equilibrado, Qualidade, Arquivo 10-bit e AV1), filtros de **desentrelaçamento e redução de ruído**, política de **HDR** (pular, preservar 10-bit ou tone mapping para SDR), modos de **áudio** (automático/cópia/AAC-Opus) e **legendas** (texto/todas/nenhuma, preservando PGS e fontes em MKV). Inclui paralelismo, **sugestões/estimativa de economia por formato**, validação da saída (duração, vídeo e áudio) e substituição atômica. O modo **Auto** prioriza a **GPU dedicada** (Arc/NVIDIA/AMD), filtra encoders pela GPU realmente presente e testa o escolhido, caindo para software se ele falhar; o dispositivo QSV pode ser escolhido na interface. Inclui **10-bit** e **ajuste fino do x265** (`aq-mode`/`psy`), além de **preservar metadados HDR** (primárias, transferência, espaço de cor e faixa) e mostrar o **encoder real** usado em cada arquivo (ex.: `QSV HEVC · Intel Arc B580`).
-- **Interface**: busca na fila com ícone de pesquisa, cabeçalhos de tabela maiores/destacados, **console de instalação estilo terminal** no log de dependências (com copiar saída), cursor de mão em ações e **tooltips com exemplos**. A escala da interface acompanha o tamanho da tela (até 128%) sem desalinhar as tabelas.
-- **Integridade de mídia**: identidade estável (ID do extractor ou hash de manifesto HLS), sidecar `<arquivo>.hlsdl.json` com resumo do `ffprobe`, SHA-256 e BLAKE3 opcional, **catálogo SQLite** (`catalog.sqlite3`), validação profunda de resolução/bit depth/HDR/áudio/legendas, **SSIM amostral** e recusa de saídas truncadas. Downloads inválidos são preservados como `*.invalid`.
+- **Aba de Compressão local**: fila de arquivos/pastas, codecs **HEVC, H.264 e AV1**, contêineres **MP4/MKV/WebM/MOV/AVI**, aceleração por **Intel QSV, NVIDIA NVENC, AMD AMF, Kvazaar ou software** (`libx265`/`libx264`/`libsvtav1`), qualidade **RF 1–51 (AV1 até 63)**, presets de velocidade (**rápida → muito lenta**), **presets prontos** (Rápido, Equilibrado, Qualidade, Arquivo 10-bit e AV1), filtros de **desentrelaçamento e redução de ruído**, política de **HDR** (pular, preservar 10-bit ou tone mapping para SDR), modos de **áudio** (automático/cópia/AAC-Opus) e **legendas** (texto/todas/nenhuma, preservando PGS e fontes em MKV). Inclui paralelismo, **sugestões/estimativa de economia por formato**, validação da saída (duração, vídeo e áudio) e substituição atômica. O modo **Auto** prioriza a **GPU dedicada** (Arc/NVIDIA/AMD), filtra encoders pela GPU realmente presente e testa o escolhido, caindo para software se ele falhar; o dispositivo QSV pode ser escolhido na interface. Inclui **10-bit** e **ajuste fino do x265** (`aq-mode`/`psy`), além de **preservar e verificar metadados HDR10** (primárias, transferência, espaço de cor, faixa, mastering display e content-light) e mostrar o **encoder real** usado em cada arquivo (ex.: `QSV HEVC · Intel Arc B580`).
+- **Interface**: busca nas filas de download e compressão (nome, caminho, encoder, status, saída e erro) com ícone de pesquisa, cabeçalhos de tabela maiores/destacados e **ordenação por clique** na fila de compressão (nome, status, progresso e economia), **console de instalação estilo terminal** no log de dependências (com copiar saída), cursor de mão em ações e **tooltips com exemplos**. A escala da interface acompanha o tamanho da tela (até 128%) sem desalinhar as tabelas.
+- **Integridade de mídia**: identidade estável (ID do extractor ou hash de manifesto HLS), **catálogo SQLite** (`catalog.sqlite3`), validação profunda de resolução/bit depth/HDR/áudio/legendas, **SSIM amostral** e recusa de saídas truncadas. Sidecars `<arquivo>.hlsdl.json` são **opcionais** (padrão desligado em Configurações → Integridade, com botão para remover os existentes); no Linux/macOS novos sidecars usam ponto inicial para ficarem ocultos. Downloads inválidos são preservados como `*.invalid`.
 - **Fila persistente + CLI**: a fila de downloads/compressão é salva em `queue.json` e restaurada ao abrir (itens concluídos são omitidos). O comando `hlsdl` oferece `probe`, `verify`, `similar`, `compress` e `download` para automação.
-- **HandBrake-like**: além de presets/filtros/tone mapping, inclui **decodificação por hardware** (`-hwaccel auto`), metadados HDR10 (`master-display`/`max-cll`) no x265 e validação de frames/áudio/legendas.
+- **Compressor avançado**: além de presets/filtros/tone mapping, inclui **decodificação por hardware** (`-hwaccel auto`), metadados HDR10 (`master-display`/`max-cll`) no x265 e validação de frames/áudio/legendas. Saídas HDR10 só são aceitas quando mastering display **e** content-light sobrevivem ao encode, em qualquer encoder anunciado.
 - **Preservação do original**: a compressão grava em `.part` único, usa journal de transação e backup por hard link/cópia. Em erro, hash divergente, perda de energia ou falha de áudio, o original é mantido/restaurado; “Apagar original” só ocorre após validação e deixa um backup recuperável.
-- **Qualidade mensurável**: a tabela e o log mostram bitrate, resolução e SSIM antes/depois. Reencodes sem filtros precisam de SSIM mínimo **0,90**; quedas extremas de bitrate com resolução/FPS iguais pedem confirmação antes de substituir o original (fechar o diálogo mantém o arquivo original).
+- **Qualidade mensurável**: a tabela e o log mostram bitrate, resolução e SSIM antes/depois. Bitrate é consequência do CRF/ICQ: uma queda grande com **SSIM ≥ 0,95** é eficiência do codec e não gera aviso; SSIM abaixo de **0,90** rejeita a saída. Quedas acima de 50% com SSIM entre 0,90 e 0,95 pedem confirmação antes de substituir o original. O campo opcional **Bitrate mínimo** (padrão **0/desativado**) fica disponível para quem quiser um piso VBR em QSV/NVENC/AMF.
 - **Busca de similares (VDF/Czkawka-inspired)**: assinatura multi-frame dHash + aHash + envelope RMS de áudio, com fallbacks por hash amostral, metadados, duração/resolução e nome. Disponível na aba Compressão → “Mídias similares”.
-- **Atualizações**: verifica a última release, baixa o instalador, valida o **SHA-256** e a **assinatura Ed25519** do manifesto antes de executar (Windows; no portátil abre a página da release)
+- **Atualizações**: verifica a última release, baixa o instalador e valida a **assinatura Ed25519** de um manifesto canônico que vincula **versão, tag, nome, tamanho e SHA-256 do asset**; manifestos antigos/replay e downgrades são rejeitados (Windows; no portátil abre a página da release)
 - **Modo de extração** (Individual e Lote): **Vídeo + áudio**, **Apenas vídeo** ou **Somente áudio**
 - **Qualidade de 144p a 4K** (2160p) e **escolha do arquivo** de saída: **mp4, mkv, webm, avi, mov** (ou **mp3, m4a, wav, flac, opus** no modo áudio)
 - **Compressão de vídeo**: mantenha o original (sem reencode) ou recomprima para **H.264** ou **H.265 (HEVC)**, com nível **Leve / Média / Forte**. O arquivo recomprimido ganha sufixo `_h264`/`_h265` e o original é preservado; se a compressão falhar, o original permanece intacto
@@ -24,7 +24,7 @@ Downloader de vídeos (HLS / m3u8) com interface **Qt Quick (QML) + Material Des
 - Fluxo de engenharia em camadas: `yt-dlp` → raspagem do HTML (`requests` + `BeautifulSoup`) → `ffmpeg` como fallback final
 - **Gerenciador de dependências**: detecta `yt-dlp`, `ffmpeg`, `requests`, `beautifulsoup4` e `PySide6` e permite **instalar/atualizar** direto na aba Configurações → Dependências (com confirmação), incluindo a escolha do **canal do yt-dlp** (Estável / Nightly / Master)
 - **Rede amigável ao WiFi**: limite de velocidade (`--limit-rate`) e conexões por download (`--concurrent-fragments`) configuráveis — evita derrubar o WiFi de roteadores domésticos em downloads pesados
-- **Extensões incomuns (`.php`, `.aspx`, ...)**: quando o yt-dlp recusa a URL por segurança (CVE-2024-38519), o app tenta UMA vez com `--compat-options allow-unsafe-ext` e extensão `.mp4` forçada; se o resultado não for vídeo, o download é descartado e o fluxo segue para a raspagem/ffmpeg
+- **Extensões incomuns (`.php`, `.aspx`, ...)**: quando o yt-dlp recusa a URL por segurança (CVE-2024-38519), o app **não** reativa `allow-unsafe-ext`; informa a recusa e mantém o fluxo seguro de raspagem/ffmpeg
 - Múltiplos downloads simultâneos, com **pausar a fila** (os downloads ativos continuam), **retomar** e **cancelar** (individual ou tudo)
 - **Anti-duplicado**: evita links duplicados na fila e não re-baixa arquivos já existentes no disco
 - **Edição inline** do link (duplo clique ou botão ✎), **copiar link**, **tentar novamente** e **abrir pasta**
@@ -46,9 +46,36 @@ Downloader de vídeos (HLS / m3u8) com interface **Qt Quick (QML) + Material Des
 - PySide6 (Qt 6)
 - yt-dlp
 - ffmpeg (fallback + miniaturas)
-- requests + beautifulsoup4 (opcionais, habilitam o fallback de raspagem)
+- requests + beautifulsoup4 (opcionais em runtime; incluídas nas dependências pip e no build empacotado para habilitar o fallback de raspagem)
 
 Todas podem ser instaladas pelo próprio app (Configurações → Dependências).
+
+### Política de rede e atualizações
+
+O modelo de ameaça completo, incluindo a fronteira de yt-dlp/FFmpeg e riscos
+residuais, está em [`THREAT_MODEL.md`](THREAT_MODEL.md).
+
+- O download aceita apenas URLs `http`/`https` com host válido; `file:`,
+  `ftp:`, `data:` e esquemas semelhantes são recusados antes de chegar ao
+  yt-dlp/ffmpeg.
+- O scraper segue redirecionamentos manualmente (máximo de 5), revalidando o
+  destino a cada salto. Uma página pública não pode redirecionar para
+  loopback/rede privada; servidores LAN continuam suportados quando a URL
+  inicial também é local.
+- O cabeçalho `Referer` só é enviado entre a mesma origem (esquema, host e
+  porta), sem query string, fragmento ou credenciais. Tokens da URL original
+  não vazam para CDNs de outra origem.
+- A resposta HTML é lida em streaming com limite de 4 MiB descompactados e
+  `Content-Type` validado, evitando consumo ilimitado de memória.
+- Atualizações usam `release-manifest-*.json` assinado (Ed25519) com versão,
+  tag e identidade do asset. O formato legado `SHA256SUMS-*.txt` só é aceito
+  quando o nome do instalador cita a versão da tag; qualquer divergência de
+  versão, tag, nome, tamanho ou hash bloqueia a instalação.
+- Em Linux/macOS o gerenciador de pacotes do sistema é o caminho preferido
+  para o FFmpeg. No macOS, o download estático do evermeet só ocorre com hash
+  fixado no projeto ou consentimento explícito
+  (`HLSDL_ALLOW_UNVERIFIED_FFMPEG=1`); tamanho isolado não é tratado como
+  autenticação.
 
 ## Instalação
 
@@ -294,7 +321,8 @@ Saída em `dist/`:
 
 O manifesto `SHA256SUMS-windows.txt` é assinado com Ed25519. O app embute a
 chave pública em `hlsdl/update_trust.py` e recusa atualizações sem assinatura
-válida.
+válida. O CI também assina `SHA256SUMS-linux.txt` e publica o `.sig` ao lado do
+pacote, para verificação manual.
 
 Gere a chave uma única vez e guarde o PEM fora do repositório:
 
@@ -303,10 +331,11 @@ python scripts/gen_update_key.py --out C:\caminho\seguro\update_signing_key.pem
 ```
 
 No GitHub, configure o segredo `UPDATE_SIGNING_KEY` com o conteúdo do PEM. O CI
-assina o manifesto automaticamente em releases; localmente:
+assina os manifestos automaticamente em releases; localmente:
 
 ```powershell
 python scripts/sign_release.py SHA256SUMS-windows.txt --key C:\caminho\seguro\update_signing_key.pem
+python scripts/sign_release.py SHA256SUMS-linux.txt --key C:\caminho\seguro\update_signing_key.pem
 ```
 
 O `constraints.txt` fixa as versões usadas no CI e nos builds de release.

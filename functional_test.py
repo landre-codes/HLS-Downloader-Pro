@@ -117,7 +117,7 @@ print("Sucessos:", successes)
 assert successes, f"esperava sucesso, eventos={events}"
 assert os.path.exists(successes[0][1]), "arquivo de saída não existe"
 assert any(e[1] == 100.0 for e in progs), "esperava chegar a 100%"
-assert "Baixando" in statuses, "esperava status Baixando"
+assert "downloading" in statuses, "esperava status downloading"
 print("Arquivo:", successes[0][1], f"({os.path.getsize(successes[0][1])} bytes)")
 print("OK\n")
 

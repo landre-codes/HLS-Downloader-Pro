@@ -9,6 +9,7 @@ import "../components"
     property var appRoot
     property var strings: ({})
     property alias singleUrl: singleUrl
+    readonly property bool showHero: width >= 1050 && height >= 650
 
     ColumnLayout {
                 anchors.fill: parent
@@ -27,7 +28,13 @@ import "../components"
                         anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
                         anchors.margins: 16
                         spacing: 12
-                        Label { text: strings.single_title; font.pixelSize: 15; font.weight: Font.DemiBold }
+                        PageHero {
+                            Layout.fillWidth: true
+                            compact: !page.showHero
+                            theme: appRoot.theme
+                            title: strings.single_title
+                            description: strings.hero_single_desc
+                        }
 
                         AppHintField {
                             id: singleUrl
@@ -103,12 +110,23 @@ import "../components"
                             AppButton {
                                 text: strings.btn_download_now; highlighted: true
                                 icon.source: appRoot.iconPath("play")
-                                icon.width: 16; icon.height: 16
+                                icon.width: 18; icon.height: 18
                                 display: AbstractButton.TextBesideIcon
-                                ToolTip.text: strings.single_hint
-                                ToolTip.visible: hovered
-                                ToolTip.delay: 500
+                                tipText: strings.single_hint
                                 onClicked: appRoot.startSingle()
+                            }
+                            AppButton {
+                                text: strings.ctx_cancel
+                                variant: "secondary"
+                                icon.source: appRoot.iconPath("stop")
+                                icon.width: 18; icon.height: 18
+                                display: AbstractButton.TextBesideIcon
+                                visible: bridge.lastItem.url !== undefined
+                                         && bridge.lastItem.url !== ""
+                                         && (appRoot.isActive(bridge.lastItem.status)
+                                             || bridge.lastItem.status === "waiting")
+                                tipText: strings.tip_cancel
+                                onClicked: bridge.cancelSingle()
                             }
                             Item { Layout.fillWidth: true }
                         }

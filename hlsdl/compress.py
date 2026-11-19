@@ -22,6 +22,7 @@ from dataclasses import asdict, dataclass, replace
 from enum import Enum
 
 from PySide6.QtCore import (
+    Property,
     QAbstractListModel,
     QModelIndex,
     QObject,
@@ -49,6 +50,7 @@ from .jobs import JobThreadRegistry
 from .media import (
     HDR_TRANSFERS,
     hdr_metadata,
+    hdr_metadata_matches,
     media_summary,
     parse_fraction,
     sampled_ssim,
@@ -190,11 +192,25 @@ class CompressStatus(str, Enum):
     CANCELLED = "cancelled"
     SKIPPED = "skipped"
 
+
     @property
     def is_final(self) -> bool:
         return self in {CompressStatus.DONE, CompressStatus.ERROR,
                         CompressStatus.CANCELLED, CompressStatus.SKIPPED}
 
+
+# Ordem de fluxo usada pela coluna Status. Sem isso, a ordenação alfabética
+# colocaria "cancelled" antes de "done" e "waiting" no fim.
+_COMPRESS_STATUS_RANK = {
+    "analyzing": 0,
+    "encoding": 1,
+    "verifying": 2,
+    "waiting": 3,
+    "done": 4,
+    "error": 5,
+    "skipped": 6,
+    "cancelled": 7,
+}
 
 FINAL = {CompressStatus.DONE, CompressStatus.ERROR,
          CompressStatus.CANCELLED, CompressStatus.SKIPPED}
@@ -208,6 +224,9 @@ class CompressionSettings:
     codec: str = "hevc"         # hevc | h264 | av1
     container: str = "mp4"      # mp4 | mkv | webm | mov | avi
     quality: int = 24           # 1..51
+    # Alvo VBR aproximado (% do original), não um piso garantido. O AV1 QSV
+    # ignora este campo porque o runtime não aceita ICQ+VBR na mesma sessão.
+    min_bitrate_percent: int = 0
     speed: str = "balanced"     # fast | balanced | slow | slower
     parallel: int = 1
     min_size_mb: int = 0
@@ -420,6 +439,17 @@ def quality_max_for_codec(codec: str) -> int:
     return QUALITY_MAX.get(codec, 51)
 
 
+def quality_max_for_encoder(codec: str, encoder: str = "") -> int:
+    """Limite real do encoder, não apenas do codec.
+
+    O QSV AV1 (ICQ) documenta 1–51; o AV1 por software chega a 63. Limitar só
+    pelo codec permitiria enviar 52–63 a um encoder que não os aceita.
+    """
+    if codec == "av1" and encoder.endswith("_qsv"):
+        return 51
+    return quality_max_for_codec(codec)
+
+
 def is_hdr_video(video: dict | None) -> bool:
     """True para HDR10/HLG (a transferência é o indicador mais confiável)."""
     transfer = str((video or {}).get("color_transfer") or "").lower()
@@ -461,7 +491,7 @@ def build_filters(settings: CompressionSettings, video: dict | None) -> str:
     if denoise:
         filters.append(denoise)
     if settings.hdr_tonemap and is_hdr_video(video):
-        # zscale é usado pelo HandBrake/ffmpeg para tone mapping de HDR.
+        # zscale é usado pelo ffmpeg para tone mapping de HDR.
         filters.append(
             "zscale=t=linear:npl=100,"
             "tonemap=hable:desat=0,"
@@ -638,33 +668,52 @@ def resolve_qsv_device(preferred: int, devices: list[dict]) -> int:
 # ---------------------------------------------------------------------------
 def video_args(encoder: str, codec: str, quality: int, speed: str,
                ten_bit: bool = False, x265_tuning: bool = False,
-               hdr_params: list[str] | None = None) -> list[str]:
-    q = max(1, min(quality_max_for_codec(codec), int(quality)))
+               hdr_params: list[str] | None = None,
+               target_bitrate: int = 0) -> list[str]:
+    q = max(1, min(quality_max_for_encoder(codec, encoder), int(quality)))
     speed = speed if speed in SPEEDS else "balanced"
     tag = ["-tag:v", "hvc1"] if codec == "hevc" else []
     preset_x26x = {"fast": "fast", "balanced": "medium",
                    "slow": "slow", "slower": "slower"}[speed]
     software_pix = ["-pix_fmt", "yuv420p10le"] if ten_bit else []
     hardware_pix = ["-pix_fmt", "p010le"] if ten_bit else []
+
+    def bitrate_floor() -> list[str]:
+        # O av1_qsv (ICQ) não aceita a combinação global_quality + VBR no
+        # runtime atual; o alvo é ignorado pelo backend e desabilitado na UI.
+        if target_bitrate <= 0 or encoder == "av1_qsv":
+            return []
+        return [
+            "-b:v", str(target_bitrate),
+            "-maxrate", str(int(target_bitrate * 1.25)),
+            "-bufsize", str(target_bitrate * 2),
+        ]
+
     if encoder == "libkvazaar":
         return ["-c:v", encoder, "-preset", preset_x26x,
                 "-crf", str(q)] + software_pix + tag
     if encoder.endswith("_qsv"):
         preset = {"fast": "fast", "balanced": "medium",
                   "slow": "slow", "slower": "slower"}[speed]
-        return ["-c:v", encoder, "-preset", preset,
-                "-global_quality", str(q)] + hardware_pix + tag
+        return (["-c:v", encoder, "-preset", preset,
+                 "-global_quality", str(q)] + bitrate_floor() + hardware_pix + tag)
     if encoder.endswith("_nvenc"):
         preset = {"fast": "p3", "balanced": "p5",
                   "slow": "p6", "slower": "p7"}[speed]
-        return ["-c:v", encoder, "-gpu", "0", "-preset", preset, "-tune", "hq",
-                "-rc", "vbr", "-cq", str(q), "-b:v", "0"] + hardware_pix + tag
+        args = ["-c:v", encoder, "-gpu", "0", "-preset", preset, "-tune", "hq",
+                "-rc", "vbr", "-cq", str(q)]
+        args += bitrate_floor() or ["-b:v", "0"]
+        return args + hardware_pix + tag
     if encoder.endswith("_amf"):
         preset = {"fast": "speed", "balanced": "balanced",
                   "slow": "quality", "slower": "quality"}[speed]
-        args = ["-c:v", encoder, "-quality", preset, "-rc", "cqp",
-                "-qp_i", str(q), "-qp_p", str(q)]
-        if encoder != "hevc_amf":
+        if target_bitrate > 0:
+            args = ["-c:v", encoder, "-quality", preset,
+                    "-rc", "vbr_peak"] + bitrate_floor()
+        else:
+            args = ["-c:v", encoder, "-quality", preset, "-rc", "cqp",
+                    "-qp_i", str(q), "-qp_p", str(q)]
+        if target_bitrate <= 0 and encoder != "hevc_amf":
             # O encoder HEVC da AMF não expõe qp_b no ffmpeg.
             args += ["-qp_b", str(q)]
         return args + hardware_pix + tag
@@ -802,6 +851,41 @@ def subtitle_args(settings: CompressionSettings, subs: list,
     return ["-sn"]
 
 
+def source_bitrate_bps(probe: dict, path: str = "") -> int:
+    """Bitrate total de origem (container, trilhas ou tamanho/duração)."""
+    summary = media_summary(probe)
+    try:
+        value = int(summary.get("bit_rate") or 0)
+    except (TypeError, ValueError):
+        value = 0
+    if value > 0:
+        return value
+    streams = (probe or {}).get("streams") or []
+    total = 0
+    for stream in streams:
+        try:
+            total += int(stream.get("bit_rate") or 0)
+        except (TypeError, ValueError):
+            continue
+    if total > 0:
+        return total
+    if path:
+        try:
+            size = os.path.getsize(path)
+        except OSError:
+            size = 0
+        duration = analyze(probe)[3]
+        if not duration:
+            videos, _audios, _subs, _duration = analyze(probe)
+            try:
+                duration = float(videos[0].get("duration") or 0) if videos else 0.0
+            except (TypeError, ValueError):
+                duration = 0.0
+        if size > 0 and duration > 0:
+            return int(size * 8 / duration)
+    return 0
+
+
 def build_args(src: str, tmp: str, settings: CompressionSettings,
                encoder: str, probe: dict, qsv_device: int = 0,
                *, progress_pipe: bool = True,
@@ -852,11 +936,25 @@ def build_args(src: str, tmp: str, settings: CompressionSettings,
         x265_hdr_params(hdr_metadata(probe))
         if preserve_hdr and encoder == "libx265" else None
     )
+    target_bitrate = 0
+    if (settings.min_bitrate_percent > 0 and encoder != "av1_qsv"
+            and encoder.endswith(("_qsv", "_nvenc", "_amf"))):
+        source_bps = source_bitrate_bps(probe, src)
+        if source_bps > 0:
+            percent = max(0, min(90, int(settings.min_bitrate_percent)))
+            target_bitrate = max(1, int(source_bps * percent / 100))
+            log.info(
+                "bitrate alvo: fonte=%d bps alvo=%d bps (%d%%)",
+                source_bps,
+                target_bitrate,
+                percent,
+            )
     cmd += video_args(
         encoder, settings.codec, settings.quality, settings.speed,
         ten_bit=settings.ten_bit or preserve_hdr,
         x265_tuning=settings.x265_tuning,
         hdr_params=hdr_params,
+        target_bitrate=target_bitrate,
     )
     cmd += ["-map_chapters", "0", "-map_metadata", "0",
             "-max_muxing_queue_size", "4096"]
@@ -965,7 +1063,8 @@ def _bitrate_bps(summary: dict, size: int, duration: float) -> int:
 def build_quality_report(source_probe: dict, output_probe: dict | None,
                          settings: CompressionSettings, size_before: int,
                          size_after: int, duration: float,
-                         ssim: float | None) -> dict:
+                         ssim: float | None,
+                         bitrate_floor: bool = False) -> dict:
     """Resumo de qualidade exibido na UI e usado para avisos."""
     src_videos, _src_audios, _src_subs, src_duration = analyze(source_probe or {})
     out_videos, _out_audios, _out_subs, out_duration = analyze(output_probe or {})
@@ -999,9 +1098,17 @@ def build_quality_report(source_probe: dict, output_probe: dict | None,
         or (settings.deinterlace == "auto" and is_interlaced_video(source_video))
     )
     warning = ""
+    # Com piso de bitrate em encoder de hardware, a saída pode chegar perto
+    # de 50% do original sem ser uma queda "extrema" (margem para VBR).
+    warn_ratio = 0.45 if bitrate_floor else 0.50
+    # SSIM alto significa que a queda de bitrate é apenas eficiência do codec:
+    # CRF/ICQ controlam qualidade, não bitrate. Só alertamos quando a métrica
+    # visual também está no limite.
+    visually_safe = ssim is not None and ssim >= 0.95
     if (bitrate_before > 0 and bitrate_after > 0
-            and bitrate_after < bitrate_before * 0.35
-            and same_resolution and same_fps and not intentional_pixels):
+            and bitrate_after < bitrate_before * warn_ratio
+            and same_resolution and same_fps and not intentional_pixels
+            and not visually_safe):
         warning = "bitrate_drop"
     return {
         "bitrate_before": bitrate_before,
@@ -1067,16 +1174,22 @@ def validate_output_quality(source_probe: dict, output_probe: dict | None,
         if (source_transfer in HDR_TRANSFERS and source_primaries
                 and output_primaries and output_primaries != source_primaries):
             return "color_primaries"
+        source_space = str(src_video.get("color_space") or "").lower()
+        output_space = str(out_video.get("color_space") or "").lower()
+        if (source_transfer in HDR_TRANSFERS and source_space
+                and output_space and output_space != source_space):
+            return "color_space"
 
     preserve_hdr = bool(
         is_hdr_video(src_video) and not settings.hdr_tonemap
         and settings.codec != "h264"
     )
-    if preserve_hdr and encoder == "libx265":
-        source_hdr = hdr_metadata(source_probe)
-        output_hdr = hdr_metadata(output_probe)
-        if source_hdr.get("mastering") and not output_hdr.get("mastering"):
-            return "hdr_metadata"
+    if preserve_hdr:
+        matches, reason = hdr_metadata_matches(
+            hdr_metadata(source_probe), hdr_metadata(output_probe)
+        )
+        if not matches:
+            return f"hdr_metadata:{reason}"
 
     if len(out_audios) != len(src_audios):
         return "audio_count"
@@ -1150,13 +1263,83 @@ class CompressionModel(QAbstractListModel):
     HEIGHT_BEFORE = int(Qt.ItemDataRole.UserRole) + 21
     WIDTH_AFTER = int(Qt.ItemDataRole.UserRole) + 22
     HEIGHT_AFTER = int(Qt.ItemDataRole.UserRole) + 23
+    SOURCE_INDEX = int(Qt.ItemDataRole.UserRole) + 24
+
+    sortChanged = Signal()
 
     def __init__(self, items: list[dict] | None = None, parent: QObject | None = None):
         super().__init__(parent)
         self._items = items if items is not None else []
+        # ``_items`` é a ordem de AGENDAMENTO (compartilhada com o manager).
+        # ``_display`` é apenas a ordem exibida na tabela; ordenar o cabeçalho
+        # nunca reordena a fila real de trabalho.
+        self._display: list[int] = list(range(len(self._items)))
+        self._display_pos: dict[int, int] = {
+            source: row for row, source in enumerate(self._display)
+        }
+        self._sort_key = ""
+        self._sort_ascending = True
 
     def items(self) -> list[dict]:
+        """Itens na ordem de agendamento (não na ordem exibida)."""
         return self._items
+
+    def _rebuild_display(self) -> None:
+        if self._sort_key:
+            self._display = sorted(
+                range(len(self._items)),
+                key=lambda source: self._sort_value(
+                    self._items[source], self._sort_key
+                ),
+                reverse=not self._sort_ascending,
+            )
+        else:
+            self._display = list(range(len(self._items)))
+        self._display_pos = {
+            source: row for row, source in enumerate(self._display)
+        }
+
+    @Property(str, notify=sortChanged)
+    def sortKey(self) -> str:
+        return self._sort_key
+
+    @Property(bool, notify=sortChanged)
+    def sortAscending(self) -> bool:
+        return self._sort_ascending
+
+    @Slot(str)
+    def sortBy(self, key: str) -> None:
+        """Ordena somente a apresentação; a fila de trabalho não muda."""
+        allowed = ("name", "status", "progress", "saving", "bitrate", "size")
+        if key not in allowed:
+            return
+        if key == self._sort_key:
+            self._sort_ascending = not self._sort_ascending
+        else:
+            self._sort_key = key
+            # Métricas numéricas começam do maior para o menor.
+            self._sort_ascending = key not in ("progress", "saving", "bitrate", "size")
+        self.beginResetModel()
+        self._rebuild_display()
+        self.endResetModel()
+        self.sortChanged.emit()
+
+    def _sort_value(self, item: dict, key: str):
+        if key == "name":
+            return str(item.get("name") or item.get("input") or "").casefold()
+        if key == "status":
+            value = item.get("status")
+            name = str(getattr(value, "value", value or ""))
+            return _COMPRESS_STATUS_RANK.get(name, 99)
+        if key == "progress":
+            return float(item.get("progress") or 0.0)
+        if key == "saving":
+            return float(item.get("saving") or 0.0)
+        if key == "bitrate":
+            return int(item.get("bitrate_after") or 0)
+        if key == "size":
+            return int(item.get("size_after") or 0)
+        return ""
 
     def roleNames(self) -> dict:
         return {
@@ -1175,15 +1358,19 @@ class CompressionModel(QAbstractListModel):
             self.HEIGHT_BEFORE: b"heightBefore",
             self.WIDTH_AFTER: b"widthAfter",
             self.HEIGHT_AFTER: b"heightAfter",
+            self.SOURCE_INDEX: b"sourceIndex",
         }
 
     def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:
-        return 0 if parent.isValid() else len(self._items)
+        return 0 if parent.isValid() else len(self._display)
 
     def data(self, index: QModelIndex, role: int = Qt.ItemDataRole.DisplayRole):
-        if not index.isValid() or not (0 <= index.row() < len(self._items)):
+        if not index.isValid() or not (0 <= index.row() < len(self._display)):
             return None
-        item = self._items[index.row()]
+        source = self._display[index.row()]
+        item = self._items[source]
+        if role == self.SOURCE_INDEX:
+            return source
         if role == self.NAME:
             return item.get("name", "")
         if role == self.PATH:
@@ -1234,28 +1421,49 @@ class CompressionModel(QAbstractListModel):
         return None
 
     def add(self, item: dict) -> None:
-        row = len(self._items)
-        self.beginInsertRows(QModelIndex(), row, row)
+        source = len(self._items)
         self._items.append(item)
+        if self._sort_key:
+            candidate = self._display + [source]
+            candidate.sort(
+                key=lambda value: self._sort_value(
+                    self._items[value], self._sort_key
+                ),
+                reverse=not self._sort_ascending,
+            )
+            row = candidate.index(source)
+        else:
+            row = len(self._display)
+        self.beginInsertRows(QModelIndex(), row, row)
+        self._display.insert(row, source)
+        for position in range(row, len(self._display)):
+            self._display_pos[self._display[position]] = position
         self.endInsertRows()
 
     def touch(self, row: int) -> None:
-        if 0 <= row < len(self._items):
-            idx = self.index(row, 0)
+        """Notifica uma mudança pelo índice de AGENDAMENTO (source)."""
+        display_row = self._display_pos.get(row)
+        if display_row is not None:
+            idx = self.index(display_row, 0)
             self.dataChanged.emit(idx, idx)
 
     def index_of(self, item: dict) -> int:
+        """Índice de agendamento (source), usado pelo manager."""
         try:
             return self._items.index(item)
         except ValueError:
             return -1
 
     def remove_rows(self, rows: list[int]) -> None:
-        for row in sorted(set(rows), reverse=True):
-            if 0 <= row < len(self._items):
-                self.beginRemoveRows(QModelIndex(), row, row)
-                self._items.pop(row)
-                self.endRemoveRows()
+        """Remove índices de agendamento; a exibição é reconstruída."""
+        valid = sorted({r for r in rows if 0 <= r < len(self._items)}, reverse=True)
+        if not valid:
+            return
+        self.beginResetModel()
+        for row in valid:
+            self._items.pop(row)
+        self._rebuild_display()
+        self.endResetModel()
 
 
 # ---------------------------------------------------------------------------
@@ -1266,9 +1474,9 @@ class CompressionWorker(QObject):
     progressChanged = Signal(float, str)
     # Compatibility signal: kept for scripts/tests that used to perform the
     # final ``os.replace`` themselves.  ``tmp`` is the installed final path.
-    succeeded = Signal(str, str, int, int)
+    succeeded = Signal(str, str, object, object)
     # New transactional signal: final, backup, before, after, sha256, validation
-    completed = Signal(str, str, int, int, str, str)
+    completed = Signal(str, str, object, object, str, str)
     qualityReport = Signal(object)
     # Pedido de confirmação: o manager mostra o diálogo e chama
     # ``respond_quality``. A thread do encode fica bloqueada nesse intervalo.
@@ -1491,6 +1699,8 @@ class CompressionWorker(QObject):
             quality = build_quality_report(
                 probe, out_probe, self.settings, size_before, size_after,
                 duration, ssim_score,
+                bitrate_floor=bool(self.settings.min_bitrate_percent > 0)
+                and self.encoder.endswith(("_qsv", "_nvenc", "_amf")),
             )
             log.info(
                 "qualidade: %.2f -> %.2f Mb/s | %dx%d -> %dx%d | SSIM %.3f | aviso=%s",
@@ -1607,6 +1817,119 @@ class CompressionWorker(QObject):
 
 
 # ---------------------------------------------------------------------------
+# Varredura de pastas
+# ---------------------------------------------------------------------------
+def _is_generated_media(name: str) -> bool:
+    lower = name.lower()
+    return (
+        ".hlsdl-backup-" in lower
+        or ".part." in lower
+        or lower.endswith(".invalid")
+        or lower.endswith(".hlsdl.json")
+    )
+
+
+def canonical_media_path(value: str) -> str:
+    """Identidade canônica para deduplicação entre arquivos/pastas."""
+    try:
+        return os.path.normcase(os.path.realpath(value))
+    except OSError:
+        return os.path.normcase(os.path.abspath(value))
+
+
+SCAN_MAX_FILES = 100_000
+
+
+def scan_media_paths(paths: list[str], recursive: bool = True,
+                     cancel: threading.Event | None = None,
+                     max_files: int = SCAN_MAX_FILES) -> dict:
+    """Enumera mídias sem tocar no modelo/QML.
+
+    Pode rodar em thread auxiliar: não altera o ``CompressionModel``. Devolve
+    contagens para o resumo exibido ao usuário e um flag de cancelamento. O
+    walk não segue symlinks de diretório (evita loops) e aceita ``cancel``
+    para interromper entre entradas.
+    """
+    files: list[str] = []
+    scanned = ignored = errors = 0
+    cancelled = False
+    truncated = False
+    limit = max(1, int(max_files)) if max_files and max_files > 0 else 0
+
+    def stopped() -> bool:
+        return cancel is not None and cancel.is_set()
+
+    def on_walk_error(_error: OSError) -> None:
+        nonlocal errors
+        errors += 1
+
+    for raw in paths:
+        if stopped():
+            cancelled = True
+            break
+        path = os.path.abspath(os.path.expanduser(str(raw)))
+        if os.path.isdir(path) and recursive:
+            try:
+                for root, _dirs, names in os.walk(path, onerror=on_walk_error):
+                    if stopped():
+                        cancelled = True
+                        break
+                    for index, name in enumerate(names):
+                        if index % 256 == 0 and stopped():
+                            cancelled = True
+                            break
+                        if limit and len(files) >= limit:
+                            truncated = True
+                            break
+                        scanned += 1
+                        if (os.path.splitext(name)[1].lower() in VIDEO_EXTS
+                                and not _is_generated_media(name)):
+                            files.append(os.path.join(root, name))
+                        else:
+                            ignored += 1
+                    if cancelled or truncated:
+                        break
+            except OSError:
+                # Unidade removida/rede caindo no meio do walk não deve
+                # derrubar a GUI; o resumo informa o erro.
+                errors += 1
+            if cancelled or truncated:
+                break
+        elif (os.path.isfile(path)
+              and os.path.splitext(path)[1].lower() in VIDEO_EXTS
+              and not _is_generated_media(os.path.basename(path))):
+            if limit and len(files) >= limit:
+                truncated = True
+                break
+            scanned += 1
+            files.append(path)
+        elif os.path.isfile(path):
+            scanned += 1
+            ignored += 1
+        else:
+            errors += 1
+
+    unique: list[str] = []
+    seen: set[str] = set()
+    for path in files:
+        identity = canonical_media_path(path)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        unique.append(path)
+
+    return {
+        "files": [] if cancelled or truncated else unique,
+        "scanned": scanned,
+        "ignored": ignored,
+        "duplicates": len(files) - len(unique),
+        "errors": errors,
+        "cancelled": cancelled,
+        "truncated": truncated,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Gerenciador
 # ---------------------------------------------------------------------------
 class CompressionManager(QObject):
@@ -1637,6 +1960,8 @@ class CompressionManager(QObject):
         self._qsv_device = 0
         self._qsv_detection_running = False
         self._qsv_detection_done = False
+        self._qsv_thread: threading.Thread | None = None
+        self._closing = False
         self._active = False
         self._paused = False
         self._running = 0
@@ -1649,27 +1974,39 @@ class CompressionManager(QObject):
         self._last_error = ""
         self._t = translator("pt")
         self._emit_stats()
-        if not defer_detection and any(
-            name.endswith("_qsv") for name in self.available
-        ):
+        if (not defer_detection
+                and os.environ.get("HLSDL_DISABLE_QSV_PROBE") != "1"
+                and any(name.endswith("_qsv") for name in self.available)):
             # Evita a lista de GPU vazia no primeiro uso, sem bloquear o
-            # startup da janela.
-            threading.Thread(target=self._detect_qsv_devices, daemon=True).start()
+            # startup da janela. Em testes/ambientes sem driver, o probe pode
+            # ser desativado para não deixar threads nativas no teardown.
+            self._start_qsv_detection()
+
+    def _start_qsv_detection(self) -> None:
+        if self._closing or self._qsv_detection_running:
+            return
+        self._qsv_thread = threading.Thread(
+            target=self._detect_qsv_devices,
+            name="hlsdl-qsv-detect",
+            daemon=True,
+        )
+        self._qsv_thread.start()
 
     def _detect_qsv_devices(self) -> None:
-        if self._qsv_detection_running:
+        if self._closing or self._qsv_detection_running:
             return
         self._qsv_detection_running = True
         try:
             devices = detect_qsv_devices()
-            if devices:
+            if devices and not self._closing:
                 self.qsv_devices = devices
         except Exception:
             log.exception("falha ao detectar dispositivos QSV")
         finally:
             self._qsv_detection_running = False
             self._qsv_detection_done = True
-            self.qsvDevicesChanged.emit()
+            if not self._closing:
+                self.qsvDevicesChanged.emit()
 
     def set_translator(self, fn) -> None:
         self._t = fn
@@ -1705,6 +2042,9 @@ class CompressionManager(QObject):
             settings.codec = "hevc"
         settings.quality = max(
             1, min(quality_max_for_codec(settings.codec), int(settings.quality))
+        )
+        settings.min_bitrate_percent = max(
+            0, min(90, int(settings.min_bitrate_percent or 0))
         )
         settings.parallel = max(1, min(8, int(settings.parallel)))
         settings.speed = settings.speed if settings.speed in SPEEDS else "balanced"
@@ -1747,49 +2087,20 @@ class CompressionManager(QObject):
             self.available = detect_encoders()
         finally:
             self._encoders_ready = True
-        if any(name.endswith("_qsv") for name in self.available):
+        if (any(name.endswith("_qsv") for name in self.available)
+                and os.environ.get("HLSDL_DISABLE_QSV_PROBE") != "1"):
             self._qsv_detection_done = False
             reset_qsv_device_cache()
-            threading.Thread(target=self._detect_qsv_devices, daemon=True).start()
+            self._start_qsv_detection()
         return self.available
 
     # --------------------------------------------------------------- adding
-    def add_paths(self, paths: list[str], recursive: bool = True) -> int:
-        files: list[str] = []
-
-        def is_generated(name: str) -> bool:
-            lower = name.lower()
-            return (
-                ".hlsdl-backup-" in lower
-                or ".part." in lower
-                or lower.endswith(".invalid")
-                or lower.endswith(".hlsdl.json")
-            )
-
-        for path in paths:
-            path = os.path.abspath(os.path.expanduser(path))
-            if os.path.isdir(path) and recursive:
-                for root, _dirs, names in os.walk(path):
-                    for name in names:
-                        if (os.path.splitext(name)[1].lower() in VIDEO_EXTS
-                                and not is_generated(name)):
-                            files.append(os.path.join(root, name))
-            elif (os.path.isfile(path)
-                  and os.path.splitext(path)[1].lower() in VIDEO_EXTS
-                  and not is_generated(os.path.basename(path))):
-                files.append(path)
-        # Windows is case-insensitive and the same file can be reached through
-        # different paths/symlinks; compare canonical case-folded paths.
-        def key(value: str) -> str:
-            try:
-                return os.path.normcase(os.path.realpath(value))
-            except OSError:
-                return os.path.normcase(os.path.abspath(value))
-
-        existing = {key(item["input"]) for item in self.items}
+    def add_scanned(self, files: list[str]) -> int:
+        """Adiciona arquivos já enumerados; chamado na thread da GUI."""
+        existing = {canonical_media_path(item["input"]) for item in self.items}
         added = 0
-        for path in sorted(dict.fromkeys(files), key=key):
-            identity = key(path)
+        for path in sorted(dict.fromkeys(files), key=canonical_media_path):
+            identity = canonical_media_path(path)
             if identity in existing:
                 continue
             existing.add(identity)
@@ -1802,6 +2113,10 @@ class CompressionManager(QObject):
             self._emit_stats()
             self.itemsChanged.emit()
         return added
+
+    def add_paths(self, paths: list[str], recursive: bool = True) -> int:
+        """API síncrona mantida para testes/CLI; a UI usa a varredura async."""
+        return self.add_scanned(scan_media_paths(paths, recursive)["files"])
 
     # -------------------------------------------------------------- control
     @Slot()
@@ -1817,12 +2132,11 @@ class CompressionManager(QObject):
             return False
         self._encoder = resolve_encoder(self.settings, self.available)
         if self._encoder.endswith("_qsv"):
-            if not self.qsv_devices and not self._qsv_detection_done:
+            if (not self.qsv_devices and not self._qsv_detection_done
+                    and os.environ.get("HLSDL_DISABLE_QSV_PROBE") != "1"):
                 # Detection can take up to 20 s per device; never block the
                 # GUI.  The caller will show "detecting" and the user retries.
-                threading.Thread(
-                    target=self._detect_qsv_devices, daemon=True
-                ).start()
+                self._start_qsv_detection()
                 self._last_error = "detecting_gpu"
                 return False
             self._qsv_device = resolve_qsv_device(
@@ -1834,9 +2148,9 @@ class CompressionManager(QObject):
         if not self._encoder:
             self._last_error = "no_encoder"
             return False
-        log.info("compressão: encoder=%s codec=%s container=%s qsv_device=%s",
+        log.info("compressão: encoder=%s codec=%s container=%s qsv_device=%s alvo=%d%%",
                  self._encoder, self.settings.codec, self.settings.container,
-                 self._qsv_device)
+                 self._qsv_device, self.settings.min_bitrate_percent)
         threshold = self.settings.min_size_mb * 1024 * 1024
         if threshold:
             for item in self.items:
@@ -1959,6 +2273,11 @@ class CompressionManager(QObject):
 
     def shutdown(self, timeout: float = 6.0) -> None:
         """Cancela tudo e aguarda as threads (mesma proteção de queue.py)."""
+        self._closing = True
+        qsv_thread = self._qsv_thread
+        if qsv_thread is not None and qsv_thread.is_alive() and qsv_thread is not threading.current_thread():
+            qsv_thread.join(timeout=max(0.0, min(timeout, 3.0)))
+        self._qsv_thread = None
         self._threads.shutdown(
             timeout=timeout,
             label="thread de compressão",
@@ -1968,14 +2287,18 @@ class CompressionManager(QObject):
         self._running = len(self._threads)
 
     # ------------------------------------------------------------- scheduler
+    def _next_waiting(self) -> dict | None:
+        """Próximo item na ordem real de agendamento, nunca na ordem da tabela."""
+        return next(
+            (i for i in self.items if i["status"] == CompressStatus.WAITING),
+            None,
+        )
+
     def _pump(self) -> None:
         if not self._active or self._paused:
             return
         while self._running < self.settings.parallel:
-            item = next(
-                (i for i in self.items if i["status"] == CompressStatus.WAITING),
-                None,
-            )
+            item = self._next_waiting()
             if item is None:
                 break
             self._launch(item)

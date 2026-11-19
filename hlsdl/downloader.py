@@ -64,6 +64,12 @@ from .integrity import (
 )
 from .media import fetch_manifest_text, identity_with_manifest
 from .naming import resolve_existing_file, shorten_name, url_digest
+from .netpolicy import (
+    UrlPolicyError,
+    referer_for,
+    sanitize_referer,
+    validate_http_url,
+)
 from .services.procutils import (
     extract_thumbnail,
     probe_duration,
@@ -157,6 +163,15 @@ class DownloadWorker(QObject):
             self.statusChanged.emit(Status.ANALYZING.value)
             self.progressChanged.emit(0.0, "—", "—")
             log.info("INICIO url=%s outdir=%s", self.url, self.outdir)
+            try:
+                validate_http_url(self.url)
+            except UrlPolicyError as exc:
+                self.failed.emit(
+                    self.url,
+                    self._t("err_invalid_url", reason=exc.reason),
+                )
+                self.finished.emit()
+                return
 
             if not self._cancel:
                 identity = self._source_identity()
@@ -194,6 +209,12 @@ class DownloadWorker(QObject):
             self.progressChanged.emit(0.0, "—", "—")
             candidate = HtmlMediaScraper(USER_AGENT).find(self.url)
             log.info("scraper: candidate=%r", candidate)
+            if candidate:
+                try:
+                    validate_http_url(candidate)
+                except UrlPolicyError as exc:
+                    log.warning("scraper: candidato rejeitado (%s)", exc.reason)
+                    candidate = None
             if self._cancel:
                 self.cancelled.emit(self.url)
                 self.finished.emit()
@@ -205,7 +226,8 @@ class DownloadWorker(QObject):
                 return
 
             # ---- Tentativa secundária: yt-dlp no link bruto ----
-            ok2, result2 = self._run_ytdlp(candidate, referer=self.url)
+            referer = referer_for(candidate, self.url)
+            ok2, result2 = self._run_ytdlp(candidate, referer=referer)
             log.info("yt-dlp no link raspado: ok=%s result=%r", ok2, result2)
             if ok2:
                 self._succeed(result2)
@@ -384,6 +406,10 @@ class DownloadWorker(QObject):
 
     def _run_ytdlp(self, target: str, referer: str | None = None) -> tuple[bool, str]:
         """Executa yt-dlp em subprocesso e repassa o progresso pela GUI."""
+        try:
+            validate_http_url(target)
+        except UrlPolicyError as exc:
+            return False, self._t("err_invalid_url", reason=exc.reason)
         base_argv = self._ytdlp_argv()
         if not base_argv:
             return False, self._t("err_ytdlp_missing")
@@ -424,40 +450,23 @@ class DownloadWorker(QObject):
         if self.limit_rate:
             cmd += ["--limit-rate", self.limit_rate]
         if referer:
-            cmd += ["--add-header", f"Referer:{referer}"]
+            # Cinto e suspensórios: mesmo que um chamador futuro passe a URL
+            # original, query/fragmento/credenciais nunca chegam ao yt-dlp.
+            referer = sanitize_referer(referer)
+            if referer:
+                cmd += ["--add-header", f"Referer:{referer}"]
         cookie_args = self._build_cookies_args()
         if cookie_args:
             log.info("cookies ativos: %s", " ".join(cookie_args))
             cmd += cookie_args
         cmd.append(target)
 
-        ok, msg = self._run_process(cmd)
-        lower = msg.lower()
-        if ok or not ("unusual" in lower or "unsafe" in lower or "skipped for" in lower):
-            return ok, msg
-
-        # Bloqueio de segurança do yt-dlp (CVE-2024-38519): URLs com extensão
-        # incomum (.php, .aspx, ...) são recusadas mesmo com vídeo legítimo.
-        # Retenta UMA vez com allow-unsafe-ext e extensão .mp4 forçada.
-        log.warning("extensão incomum detectada (%r) — retry allow-unsafe-ext", msg[:200])
-        retry_cmd = cmd.copy()
-        retry_cmd += ["--compat-options", "allow-unsafe-ext"]
-        try:
-            i = retry_cmd.index("-o")
-            forced_ext = "." + self.container.lstrip(".")
-            retry_cmd[i + 1] = os.path.join(self.outdir, f"{name_base}{forced_ext}")
-        except ValueError:
-            pass
-        ok2, msg2 = self._run_process(retry_cmd)
-        if ok2 and isinstance(msg2, str) and os.path.isfile(msg2):
-            if self._looks_like_non_video(msg2):
-                log.warning("retry baixou conteúdo não-vídeo — descartando: %s", msg2)
-                try:
-                    os.remove(msg2)
-                except OSError:
-                    pass
-                return False, msg
-        return ok2, msg2
+        # Nunca reativar --compat-options allow-unsafe-ext: o yt-dlp desativa
+        # essa proteção por um motivo (CVE-2024-38519) e a validação posterior
+        # não desfaz eventual processamento perigoso do extrator. URLs com
+        # extensão incomum devem ser tratadas por um fluxo direto de mídia,
+        # não por um retry inseguro.
+        return self._run_process(cmd)
 
     def _build_cookies_args(self) -> list[str]:
         """Converte a configuração de cookies em argumentos do yt-dlp.
@@ -567,6 +576,10 @@ class DownloadWorker(QObject):
 
     def _run_ffmpeg(self, media_url: str) -> tuple[bool, str]:
         """Fallback final via ffmpeg, respeitando modo/contêiner/referer."""
+        try:
+            validate_http_url(media_url)
+        except UrlPolicyError as exc:
+            return False, self._t("err_invalid_url", reason=exc.reason)
         ffmpeg = which("ffmpeg")
         if not ffmpeg:
             return False, self._t("err_ffmpeg_missing")
@@ -594,8 +607,9 @@ class DownloadWorker(QObject):
 
         duration = probe_duration(media_url)
         http_args = ["-user_agent", USER_AGENT]
-        if self.url.startswith(("http://", "https://")):
-            http_args += ["-referer", self.url]
+        referer = referer_for(media_url, self.url)
+        if referer:
+            http_args += ["-referer", referer]
         cookie_header = self._ffmpeg_cookie_header(media_url)
         if cookie_header:
             http_args += ["-cookies", cookie_header]
@@ -785,19 +799,49 @@ class DownloadWorker(QObject):
             pass
 
     def _looks_like_non_video(self, path: str) -> bool:
-        """True se o arquivo baixado for HTML ou playlist HLS crua."""
+        """Valida conteúdo baixado antes de publicá-lo como mídia.
+
+        Além de HTML/playlist, exige um contêiner conhecido ou um probe com
+        vídeo/áudio real. Mantido como defesa em profundidade; não existe mais
+        retry com ``allow-unsafe-ext``.
+        """
         try:
             with open(path, "rb") as fh:
-                head = fh.read(4096).lower()
+                head = fh.read(4096)
         except OSError:
+            return True
+        lower = head.lower()
+        if (
+            b"<html" in lower
+            or b"<!doctype" in lower
+            or b"<head" in lower
+            or b"<body" in lower
+            or lower.lstrip().startswith(b"#extm3u")
+        ):
+            return True
+        probe = probe_media(path)
+        if probe:
+            videos, audios, _subs, _duration = analyze(probe)
+            if not videos and not audios:
+                return True
             return False
-        return (
-            b"<html" in head
-            or b"<!doctype" in head
-            or b"<head" in head
-            or b"<body" in head
-            or head.lstrip().startswith(b"#extm3u")
-        )
+        return not self._looks_like_known_container(head)
+
+    @staticmethod
+    def _looks_like_known_container(head: bytes) -> bool:
+        if len(head) >= 12 and head[4:8] == b"ftyp":
+            return True
+        if head.startswith(b"\x1aE\xdf\xa3"):  # Matroska/WebM
+            return True
+        if head.startswith(b"RIFF") and head[8:12] in (b"AVI ", b"WAVE"):
+            return True
+        if head.startswith(b"OggS") or head.startswith(b"fLaC"):
+            return True
+        if head.startswith(b"ID3") or (len(head) >= 2 and head[0] == 0xFF and head[1] & 0xE0 == 0xE0):
+            return True
+        if head[:1] == b"\x47":  # MPEG-TS
+            return True
+        return False
 
     def _cleanup_temp_files(self, out_path: str) -> None:
         """Remove arquivos temporários (.part / .ytdl) de downloads cancelados."""

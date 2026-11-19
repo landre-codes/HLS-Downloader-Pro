@@ -38,8 +38,37 @@ log = logging.getLogger("hlsdl")
 SIDECAR_SUFFIX = ".hlsdl.json"
 JOURNAL_SUFFIX = ".hlsdl-job.json"
 CHUNK = 1024 * 1024
+# Sidecars são opcionais: o catálogo SQLite continua sendo a fonte central.
+_SIDECARS_ENABLED = True
 _RESERVED: set[str] = set()
 _RESERVE_LOCK = None  # created lazily to keep import-time side effects tiny
+
+
+def set_sidecars_enabled(enabled: bool) -> None:
+    global _SIDECARS_ENABLED
+    _SIDECARS_ENABLED = bool(enabled)
+
+
+def sidecars_enabled() -> bool:
+    return _SIDECARS_ENABLED
+
+
+def cleanup_sidecars(directory: str) -> int:
+    """Remove todos os ``*.hlsdl.json`` abaixo de ``directory``."""
+    removed = 0
+    if not directory or not os.path.isdir(directory):
+        return 0
+    for root, _dirs, files in os.walk(directory):
+        for name in files:
+            if not name.endswith(SIDECAR_SUFFIX):
+                continue
+            path = os.path.join(root, name)
+            try:
+                os.remove(path)
+                removed += 1
+            except OSError:
+                log.warning("falha ao remover sidecar: %s", path)
+    return removed
 
 
 def _lock():
@@ -203,7 +232,21 @@ def disk_space_ok(folder: str, required_bytes: int) -> tuple[bool, int]:
 # ---------------------------------------------------------------------------
 # Completion records
 # ---------------------------------------------------------------------------
-def sidecar_path(media_path: str) -> str:
+def sidecar_path(media_path: str, *, posix: bool | None = None) -> str:
+    """Caminho do sidecar; em POSIX usa ponto inicial para ficar oculto.
+
+    O ponto não é usado no Windows (não teria efeito e quebraria a convenção
+    existente). Sidecars antigos continuam legíveis via
+    :func:`legacy_sidecar_path`.
+    """
+    hidden = (os.name != "nt") if posix is None else posix
+    if not hidden:
+        return media_path + SIDECAR_SUFFIX
+    folder, name = os.path.split(media_path)
+    return os.path.join(folder, "." + name + SIDECAR_SUFFIX)
+
+
+def legacy_sidecar_path(media_path: str) -> str:
     return media_path + SIDECAR_SUFFIX
 
 
@@ -263,6 +306,8 @@ class CompletionRecord:
 
 
 def write_completion(media_path: str, record: CompletionRecord) -> str:
+    if not sidecars_enabled():
+        return ""
     record.media_path = os.path.abspath(media_path)
     path = sidecar_path(media_path)
     write_json_atomic(path, record.to_dict())
@@ -270,8 +315,11 @@ def write_completion(media_path: str, record: CompletionRecord) -> str:
 
 
 def read_completion(media_path: str) -> CompletionRecord | None:
-    data = read_json(sidecar_path(media_path))
-    return CompletionRecord.from_dict(data, media_path) if data else None
+    for path in (sidecar_path(media_path), legacy_sidecar_path(media_path)):
+        data = read_json(path)
+        if data:
+            return CompletionRecord.from_dict(data, media_path)
+    return None
 
 
 def verify_completion(media_path: str, full_hash: bool = True,
@@ -327,16 +375,25 @@ def find_completion_by_source(directory: str, source_key: str,
     """
     if not source_key or not directory or not os.path.isdir(directory):
         return ""
-    pattern = os.path.join(directory, "*" + SIDECAR_SUFFIX)
-    for sidecar in glob.glob(pattern):
-        data = read_json(sidecar)
-        if not data or str(data.get("source_key") or "") != source_key:
-            continue
-        if kind and str((data.get("extra") or {}).get("kind") or "") != kind:
-            continue
-        media = sidecar[: -len(SIDECAR_SUFFIX)]
-        if os.path.isfile(media):
-            return media
+    patterns = [
+        os.path.join(directory, "*" + SIDECAR_SUFFIX),
+        os.path.join(directory, ".*" + SIDECAR_SUFFIX),
+    ]
+    for pattern in patterns:
+        for sidecar in glob.glob(pattern):
+            data = read_json(sidecar)
+            if not data or str(data.get("source_key") or "") != source_key:
+                continue
+            if kind and str((data.get("extra") or {}).get("kind") or "") != kind:
+                continue
+            name = os.path.basename(sidecar)
+            media_name = name[1:] if name.startswith(".") else name
+            media = os.path.join(
+                os.path.dirname(sidecar),
+                media_name[: -len(SIDECAR_SUFFIX)],
+            )
+            if os.path.isfile(media):
+                return media
     return ""
 
 
@@ -700,6 +757,20 @@ def recover_journals(directory: str,
     return results
 
 
+def _same_path(first: str, second: str) -> bool:
+    """Compara identidade de caminho (canônico e, se existir, no SO)."""
+    if not first or not second:
+        return False
+    left = os.path.normcase(os.path.abspath(first))
+    right = os.path.normcase(os.path.abspath(second))
+    if left == right:
+        return True
+    try:
+        return os.path.samefile(first, second)
+    except OSError:
+        return False
+
+
 def install_output(temp: str, final: str, source: str, *,
                    replace_original: bool, expected_hash: str,
                    journal: JobJournal,
@@ -710,6 +781,14 @@ def install_output(temp: str, final: str, source: str, *,
     Returns the backup path (empty when the original was not replaced).
     Raises on any verification failure, after restoring the original.
     """
+    # Rejeita colisões ANTES de criar backup ou tocar em qualquer arquivo.
+    # ``final == source`` faria o fluxo remover a saída recém-validada.
+    if _same_path(final, source):
+        raise RuntimeError("source_equals_final")
+    if _same_path(temp, final):
+        raise RuntimeError("temp_equals_final")
+    if _same_path(temp, source):
+        raise RuntimeError("temp_equals_source")
     backup = ""
     guard = journal.source_guard()
     ok, reason = guard.unchanged()

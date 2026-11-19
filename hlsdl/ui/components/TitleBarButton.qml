@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
+import "../motion.js" as Motion
 
 Button {
     id: control
@@ -10,25 +11,40 @@ Button {
     property bool danger: false
     property string kind: "maximize"
 
-    readonly property color fgColor: danger && hovered && theme
+    readonly property color fgColor: danger && (hovered || down) && theme
                                        ? theme.onAccent
                                        : (theme ? theme.text : "#ffffff")
-    readonly property color surfaceColor: hovered
-                                          ? (danger && theme ? theme.dangerFill
-                                                             : (theme ? theme.hover : "#30363d"))
-                                          : (theme ? theme.titleBg : "#20252b")
+    readonly property color surfaceColor: down
+                                          ? (danger && theme
+                                             ? Qt.darker(theme.dangerFill, 1.28)
+                                             : (theme ? Qt.darker(theme.hover, 1.25) : "#252b31"))
+                                          : (hovered
+                                             ? (danger && theme ? theme.dangerFill
+                                                                : (theme ? theme.hover : "#30363d"))
+                                             : "transparent")
 
     implicitWidth: 46
     implicitHeight: 30
     padding: 0
-    focusPolicy: Qt.NoFocus
+    // Controles de janela não devem reter foco após clique do mouse; Tab
+    // continua funcionando e o anel de foco só aparece via teclado.
+    focusPolicy: Qt.TabFocus
     hoverEnabled: true
     Accessible.role: Accessible.Button
     Accessible.name: tip
+    scale: down ? 0.90 : 1.0
+    Behavior on scale { NumberAnimation { duration: Motion.press; easing.type: Easing.OutQuad } }
 
-    ToolTip.text: tip
-    ToolTip.visible: hovered
-    ToolTip.delay: 450
+    AppToolTip {
+        target: control
+        title: control.tip
+        available: control.tip.length > 0
+        delay: 500
+        // Bolha compacta: os três controles ficam a 46 px um do outro; um
+        // tooltip largo cobria a área dos botões vizinhos.
+        minWidth: 96
+        maxWidth: 150
+    }
 
     HoverHandler {
         cursorShape: Qt.PointingHandCursor
@@ -36,7 +52,10 @@ Button {
 
     background: Rectangle {
         radius: 6
-        color: control.hovered ? control.surfaceColor : "transparent"
+        color: control.surfaceColor
+        border.width: control.visualFocus ? 1 : 0
+        border.color: theme ? theme.accentText : "#90caf9"
+        Behavior on color { ColorAnimation { duration: Motion.fast; easing.type: Easing.OutQuad } }
     }
 
     contentItem: Item {

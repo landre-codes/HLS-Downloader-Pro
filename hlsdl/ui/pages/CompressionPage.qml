@@ -3,13 +3,107 @@ import QtQuick.Controls
 import QtQuick.Controls.Material
 import QtQuick.Layouts
 import "../components"
+import "../tablefilter.js" as TableFilter
 
         Item {
     id: page
+    objectName: "compressionPage"
     property var appRoot
     property var strings: ({})
+    property alias filterField: compFilter
     property int compSection: 0
     property string compFilterText: ""
+    property bool compSettingsCollapsed: false
+    readonly property bool showHero: width >= 1050 && height >= 650
+
+    // Larguras compartilhadas por cabeçalho e delegate. Sem isso, o cabeçalho
+    // e as linhas divergem quando a janela encolhe (o antigo "Arquivo" saía
+    // do lugar e os demais títulos desalinhavam).
+    readonly property int compColStatus: 112
+    readonly property int compColProgress: 148
+    readonly property int compColResult: 214
+    readonly property int compColActions: 140
+    readonly property int compColGap: 10
+
+    readonly property var compFilterAliases: ({
+        "status": "status",
+        "progresso": "progress",
+        "progress": "progress",
+        "nome": "name",
+        "arquivo": "name",
+        "name": "name",
+        "url": "name",
+        "erro": "error",
+        "error": "error",
+        "tamanho": "size",
+        "size": "size",
+        "economia": "saving",
+        "saving": "saving"
+    })
+    readonly property var compFilterTokens: TableFilter.tokenize(compFilterText,
+                                                                compFilterAliases)
+
+    function compRowFields(row) {
+        return {
+            "name": [row.name || "", row.path || "", row.encoder || "",
+                     row.output || ""],
+            "status": [appRoot.statusText(row.status)],
+            "progress": [String(Math.round(Number(row.progress) || 0)) + "%",
+                         String(row.progress || "")],
+            "size": [String(row.sizeBefore || ""), String(row.sizeAfter || ""),
+                     appRoot.formatBytes(row.sizeBefore || 0),
+                     appRoot.formatBytes(row.sizeAfter || 0)],
+            "saving": [String(row.saving || "") + "%",
+                       String(row.bitrateAfter || ""),
+                       String(row.ssim || "")],
+            "error": [row.error || "", row.qualityWarning || ""]
+        }
+    }
+
+    function compRowMatches(row) {
+        return TableFilter.matches(compRowFields(row), compFilterTokens)
+    }
+
+    function toggleSettings() {
+        compSettingsCollapsed = !compSettingsCollapsed
+    }
+
+    // Diagnóstico de layout: posições X das células da linha (usado pelos
+    // testes para garantir que o cabeçalho e o delegate compartilham colunas).
+    function rowCellXsAt(row) {
+        var item = compList.itemAtIndex(row)
+        if (!item || item.children.length === 0)
+            return []
+        var layout = item.children[0]
+        var xs = []
+        for (var i = 0; i < layout.children.length; i++)
+            xs.push(layout.children[i].x)
+        return xs
+    }
+
+    function compDetailTip(row) {
+        var lines = []
+        if (row.error && row.error.length > 0)
+            lines.push(row.error)
+        if (row.bitrateBefore > 0 || row.bitrateAfter > 0)
+            lines.push("Bitrate: " + appRoot.formatBitrate(row.bitrateBefore)
+                       + " → " + appRoot.formatBitrate(row.bitrateAfter))
+        if (row.widthBefore > 0 || row.widthAfter > 0)
+            lines.push(row.widthBefore + "x" + row.heightBefore
+                       + " → " + row.widthAfter + "x" + row.heightAfter)
+        if (row.ssim > 0)
+            lines.push("SSIM: " + Number(row.ssim).toFixed(3))
+        if (row.qualityWarning && row.qualityWarning.length > 0)
+            lines.push(strings.compress_quality_bitrate_warning)
+        if (row.saving > 0)
+            lines.push(row.saving + "% " + strings.compress_saving)
+        if (row.backup && row.backup !== "")
+            lines.push(strings.compress_backup_kept + ": " + row.backup)
+        if (row.sha256 && row.sha256 !== "")
+            lines.push(strings.compress_hash + ": " + row.sha256)
+        return lines.join("\n")
+    }
+
     readonly property real compContentHeight: compStack.children[compStack.currentIndex]
                                                  ? compStack.children[compStack.currentIndex].implicitHeight : 0
 
@@ -20,16 +114,20 @@ import "../components"
 
                 Rectangle {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: Math.max(
-                        280,
-                        Math.min(
-                            appRoot.height - 440,
-                            32 + compHeader.implicitHeight + 12
-                            + compPresetRow.implicitHeight + 12
-                            + compTabsRow.implicitHeight + 12
-                            + page.compContentHeight
+                    // Em janelas baixas o painel de ajustes cede espaço para a
+                    // fila; o conteúdo continua acessível pela rolagem interna.
+                    Layout.preferredHeight: page.compSettingsCollapsed
+                        ? compHero.implicitHeight + 32
+                        : Math.max(
+                            appRoot.height < 700 ? 240 : 300,
+                            Math.min(
+                                appRoot.height - 440,
+                                32 + compHero.implicitHeight + 12
+                                + compPresetRow.implicitHeight + 12
+                                + compTabsRow.implicitHeight + 12
+                                + page.compContentHeight
+                            )
                         )
-                    )
                     radius: 12
                     color: appRoot.theme.cardBg
                     border.color: appRoot.theme.cardBorder
@@ -40,18 +138,16 @@ import "../components"
                         anchors.margins: 16
                         spacing: 12
 
-                        RowLayout {
-                            id: compHeader
+                        PageHero {
+                            id: compHero
                             Layout.fillWidth: true
-                            spacing: 8
-                            Label {
-                                text: strings.compress_title
-                                font.pixelSize: 15
-                                font.weight: Font.DemiBold
-                            }
-                            Item { Layout.fillWidth: true }
+                            compact: !page.showHero
+                            theme: appRoot.theme
+                            title: strings.compress_title
+                            description: strings.hero_compress_desc
                             AppButton {
                                 text: strings.compress_add_files
+                                variant: "secondary"
                                 icon.source: appRoot.iconPath("file")
                                 icon.width: 16; icon.height: 16
                                 display: AbstractButton.TextBesideIcon
@@ -59,15 +155,37 @@ import "../components"
                             }
                             AppButton {
                                 text: strings.compress_add_folder
+                                variant: "secondary"
                                 icon.source: appRoot.iconPath("open")
                                 icon.width: 16; icon.height: 16
                                 display: AbstractButton.TextBesideIcon
+                                enabled: !bridge.compressionScanBusy
                                 onClicked: bridge.addCompressionFolder()
+                            }
+                            AppButton {
+                                objectName: "compSettingsToggle"
+                                text: page.compSettingsCollapsed
+                                      ? "▾ " + strings.compress_settings_show
+                                      : "▴ " + strings.compress_settings_hide
+                                variant: "tertiary"
+                                size: "compact"
+                                Accessible.name: page.compSettingsCollapsed
+                                                 ? strings.compress_settings_show
+                                                 : strings.compress_settings_hide
+                                tipTitle: page.compSettingsCollapsed
+                                          ? strings.compress_settings_show
+                                          : strings.compress_settings_hide
+                                tipText: page.compSettingsCollapsed
+                                         ? strings.compress_settings_show_tip
+                                         : strings.compress_settings_hide_tip
+                                onClicked: page.toggleSettings()
                             }
                         }
 
                         RowLayout {
                             id: compPresetRow
+                            objectName: "compPresetRow"
+                            visible: !page.compSettingsCollapsed
                             Layout.fillWidth: true
                             spacing: 12
                             Label {
@@ -94,9 +212,7 @@ import "../components"
                                             return i
                                     return 0
                                 }
-                                ToolTip.text: strings.compress_preset_tip
-                                ToolTip.visible: hovered
-                                ToolTip.delay: 500
+                                tipText: strings.compress_preset_tip
                                 onActivated: {
                                     if (currentValue !== "custom")
                                         bridge.applyCompressionPreset(currentValue)
@@ -113,6 +229,7 @@ import "../components"
 
                         TabBar {
                             id: compTabsRow
+                            visible: !page.compSettingsCollapsed
                             Layout.fillWidth: true
                             contentHeight: 40
                             currentIndex: page.compSection
@@ -145,6 +262,7 @@ import "../components"
 
                         StackLayout {
                             id: compStack
+                            visible: !page.compSettingsCollapsed
                             currentIndex: page.compSection
                             Layout.fillWidth: true
                             Layout.fillHeight: true
@@ -153,7 +271,7 @@ import "../components"
                                 id: generalScroll
                                 clip: true
                                 ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-                                ScrollBar.vertical.policy: ScrollBar.AsNeeded
+                                ScrollBar.vertical.policy: ScrollBar.AlwaysOn
                                 contentWidth: availableWidth
 
                                 ColumnLayout {
@@ -182,9 +300,7 @@ import "../components"
                                                             return i
                                                     return 0
                                                 }
-                                                ToolTip.text: strings.compress_codec_tip
-                                                ToolTip.visible: hovered
-                                                ToolTip.delay: 500
+                                                tipText: strings.compress_codec_tip
                                                 onActivated: bridge.setCompressionCodec(currentValue)
                                             }
                                         }
@@ -198,9 +314,7 @@ import "../components"
                                                 Layout.fillWidth: true
                                                 model: bridge.compressionContainers
                                                 currentIndex: Math.max(0, model.indexOf(bridge.compressionContainer))
-                                                ToolTip.text: strings.compress_container_tip
-                                                ToolTip.visible: hovered
-                                                ToolTip.delay: 500
+                                                tipText: strings.compress_container_tip
                                                 onActivated: bridge.setCompressionContainer(currentText)
                                             }
                                         }
@@ -211,14 +325,13 @@ import "../components"
                                             Label { text: strings.compress_quality_rf; font.pixelSize: 11; color: appRoot.theme.textSecondary }
                                             RowLayout {
                                                 spacing: 10
-                                                SpinBox {
+                                                AppSpinBox {
                                                     id: compQuality
                                                     Layout.preferredWidth: 130
                                                     from: 1; to: bridge.compressionQualityMax
                                                     value: bridge.compressionQuality
                                                     editable: true
-                                                    ToolTip.text: strings.compress_quality_rf_tip
-                                                    ToolTip.visible: hovered; ToolTip.delay: 500
+                                                    tipText: strings.compress_quality_rf_tip
                                                     onValueChanged: if (value !== bridge.compressionQuality) bridge.setCompressionQuality(value)
                                                 }
                                                 AppTipLabel {
@@ -227,6 +340,41 @@ import "../components"
                                                     tip: strings.compress_estimate_tip
                                                     font.pixelSize: 11
                                                     color: appRoot.theme.textSecondary
+                                                }
+                                            }
+                                        }
+
+                                        ColumnLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 4
+                                            Label { text: strings.compress_min_bitrate; font.pixelSize: 11; color: appRoot.theme.textSecondary }
+                                            RowLayout {
+                                                spacing: 10
+                                                AppSpinBox {
+                                                    Layout.preferredWidth: 130
+                                                    from: 0; to: 90; stepSize: 5
+                                                    value: bridge.compressionBitrateTargetSupported
+                                                           ? bridge.compressionMinBitrate : 0
+                                                    editable: true
+                                                    enabled: bridge.compressionBitrateTargetSupported
+                                                    tipText: bridge.compressionBitrateTargetSupported
+                                                             ? strings.compress_min_bitrate_tip
+                                                             : strings.compress_min_bitrate_av1_qsv
+                                                    onValueChanged: if (value !== bridge.compressionMinBitrate) bridge.setCompressionMinBitrate(value)
+                                                }
+                                                AppTipLabel {
+                                                    Layout.fillWidth: true
+                                                    text: !bridge.compressionBitrateTargetSupported
+                                                          ? strings.compress_min_bitrate_av1_qsv
+                                                          : (bridge.compressionMinBitrate === 0
+                                                             ? strings.compress_min_bitrate_off
+                                                             : bridge.compressionMinBitrate + "%")
+                                                    tip: bridge.compressionBitrateTargetSupported
+                                                         ? strings.compress_min_bitrate_tip
+                                                         : strings.compress_min_bitrate_av1_qsv
+                                                    font.pixelSize: 11
+                                                    color: appRoot.theme.textSecondary
+                                                    wrapMode: Text.Wrap
                                                 }
                                             }
                                         }
@@ -252,9 +400,7 @@ import "../components"
                                                             return i
                                                     return 1
                                                 }
-                                                ToolTip.text: strings.compress_speed_tip
-                                                ToolTip.visible: hovered
-                                                ToolTip.delay: 500
+                                                tipText: strings.compress_speed_tip
                                                 onActivated: bridge.setCompressionSpeed(currentValue)
                                             }
                                         }
@@ -275,9 +421,7 @@ import "../components"
                                                             return i
                                                     return 0
                                                 }
-                                                ToolTip.text: strings.compress_encoder_tip
-                                                ToolTip.visible: hovered
-                                                ToolTip.delay: 500
+                                                tipText: strings.compress_encoder_tip
                                                 onActivated: bridge.setCompressionEncoder(currentValue)
                                             }
                                         }
@@ -302,9 +446,7 @@ import "../components"
                                                                 return i
                                                         return 0
                                                     }
-                                                    ToolTip.text: strings.compress_gpu_tip
-                                                    ToolTip.visible: hovered
-                                                    ToolTip.delay: 500
+                                                    tipText: strings.compress_gpu_tip
                                                     onActivated: bridge.setCompressionQsvDevice(currentValue)
                                                 }
                                                 AppToolButton {
@@ -312,9 +454,7 @@ import "../components"
                                                     icon.source: appRoot.iconPath("retry")
                                                     icon.width: 16
                                                     icon.height: 16
-                                                    ToolTip.text: strings.compress_gpu_tip
-                                                    ToolTip.visible: hovered
-                                                    ToolTip.delay: 500
+                                                    tipText: strings.compress_gpu_tip
                                                     Accessible.name: strings.compress_gpu
                                                     onClicked: bridge.refreshCompressionEncoders()
                                                 }
@@ -326,15 +466,13 @@ import "../components"
                                             Layout.fillWidth: true
                                             spacing: 4
                                             Label { text: strings.compress_parallel; font.pixelSize: 11; color: appRoot.theme.textSecondary }
-                                            SpinBox {
+                                            AppSpinBox {
                                                 id: compParallel
                                                 Layout.preferredWidth: 130
                                                 from: 1; to: 8
                                                 value: bridge.compressionParallel
                                                 editable: true
-                                                ToolTip.text: strings.compress_parallel_tip
-                                                ToolTip.visible: hovered
-                                                ToolTip.delay: 500
+                                                tipText: strings.compress_parallel_tip
                                                 onValueChanged: if (value !== bridge.compressionParallel) bridge.setCompressionParallel(value)
                                             }
                                         }
@@ -342,16 +480,14 @@ import "../components"
                                             Layout.fillWidth: true
                                             spacing: 4
                                             Label { text: strings.compress_min_size; font.pixelSize: 11; color: appRoot.theme.textSecondary }
-                                            SpinBox {
+                                            AppSpinBox {
                                                 id: compMinSize
                                                 Layout.preferredWidth: 130
                                                 from: 0; to: 100000
                                                 stepSize: 100
                                                 value: bridge.compressionMinSizeMB
                                                 editable: true
-                                                ToolTip.text: strings.compress_min_size_tip
-                                                ToolTip.visible: hovered
-                                                ToolTip.delay: 500
+                                                tipText: strings.compress_min_size_tip
                                                 onValueChanged: if (value !== bridge.compressionMinSizeMB) bridge.setCompressionMinSizeMB(value)
                                             }
                                         }
@@ -363,7 +499,7 @@ import "../components"
                                 id: videoScroll
                                 clip: true
                                 ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-                                ScrollBar.vertical.policy: ScrollBar.AsNeeded
+                                ScrollBar.vertical.policy: ScrollBar.AlwaysOn
                                 contentWidth: availableWidth
 
                                 ColumnLayout {
@@ -395,9 +531,7 @@ import "../components"
                                                             return i
                                                     return 0
                                                 }
-                                                ToolTip.text: strings.compress_deinterlace_tip
-                                                ToolTip.visible: hovered
-                                                ToolTip.delay: 500
+                                                tipText: strings.compress_deinterlace_tip
                                                 onActivated: bridge.setCompressionDeinterlace(currentValue)
                                             }
                                         }
@@ -422,9 +556,7 @@ import "../components"
                                                             return i
                                                     return 0
                                                 }
-                                                ToolTip.text: strings.compress_denoise_tip
-                                                ToolTip.visible: hovered
-                                                ToolTip.delay: 500
+                                                tipText: strings.compress_denoise_tip
                                                 onActivated: bridge.setCompressionDenoise(currentValue)
                                             }
                                         }
@@ -445,9 +577,7 @@ import "../components"
                                                 currentIndex: bridge.compressionSkipHdr
                                                               ? 0
                                                               : (bridge.compressionHdrTonemap ? 2 : 1)
-                                                ToolTip.text: strings.compress_hdr_tip
-                                                ToolTip.visible: hovered
-                                                ToolTip.delay: 500
+                                                tipText: strings.compress_hdr_tip
                                                 onActivated: {
                                                     if (currentValue === "skip") {
                                                         bridge.setCompressionSkipHdr(true)
@@ -491,16 +621,14 @@ import "../components"
                                             Layout.fillWidth: true
                                             spacing: 4
                                             Label { text: strings.compress_fps; font.pixelSize: 11; color: appRoot.theme.textSecondary }
-                                            SpinBox {
+                                            AppSpinBox {
                                                 Layout.preferredWidth: 130
                                                 from: 0; to: 240
                                                 value: bridge.compressionFps
                                                 editable: true
                                                 onValueChanged: if (value !== bridge.compressionFps)
                                                                     bridge.setCompressionFps(value)
-                                                ToolTip.text: strings.compress_fps_tip
-                                                ToolTip.visible: hovered
-                                                ToolTip.delay: 500
+                                                tipText: strings.compress_fps_tip
                                             }
                                         }
 
@@ -510,7 +638,7 @@ import "../components"
                                             Label { text: strings.compress_scale; font.pixelSize: 11; color: appRoot.theme.textSecondary }
                                             RowLayout {
                                                 spacing: 8
-                                                SpinBox {
+                                                AppSpinBox {
                                                     id: scaleWidth
                                                     Layout.preferredWidth: 120
                                                     from: 0; to: 7680; stepSize: 2
@@ -518,12 +646,10 @@ import "../components"
                                                     editable: true
                                                     onValueChanged: if (value !== bridge.compressionScaleWidth)
                                                                         bridge.setCompressionScaleWidth(value)
-                                                    ToolTip.text: strings.compress_scale_tip
-                                                    ToolTip.visible: hovered
-                                                    ToolTip.delay: 500
+                                                    tipText: strings.compress_scale_tip
                                                 }
                                                 Label { text: "×"; color: appRoot.theme.textSecondary }
-                                                SpinBox {
+                                                AppSpinBox {
                                                     id: scaleHeight
                                                     Layout.preferredWidth: 120
                                                     from: 0; to: 4320; stepSize: 2
@@ -545,9 +671,7 @@ import "../components"
                                                 hint: "w:h:x:y"
                                                 text: bridge.compressionCrop
                                                 onEditingFinished: bridge.setCompressionCrop(text)
-                                                ToolTip.text: strings.compress_crop_tip
-                                                ToolTip.visible: hovered
-                                                ToolTip.delay: 500
+                                                tipText: strings.compress_crop_tip
                                             }
                                         }
                                     }
@@ -561,9 +685,7 @@ import "../components"
                                                      && (bridge.compressionEffectiveEncoder === "libx265"
                                                          || bridge.compressionEffectiveEncoder === "libkvazaar")
                                             checked: bridge.compressionTenBit
-                                            ToolTip.text: strings.compress_ten_bit_tip
-                                            ToolTip.visible: hovered
-                                            ToolTip.delay: 500
+                                            tipText: strings.compress_ten_bit_tip
                                             onToggled: bridge.setCompressionTenBit(checked)
                                         }
                                         AppCheckBox {
@@ -571,17 +693,13 @@ import "../components"
                                             visible: bridge.compressionCodec === "hevc"
                                                      && bridge.compressionEffectiveEncoder === "libx265"
                                             checked: bridge.compressionX265Tuning
-                                            ToolTip.text: strings.compress_x265_tuning_tip
-                                            ToolTip.visible: hovered
-                                            ToolTip.delay: 500
+                                            tipText: strings.compress_x265_tuning_tip
                                             onToggled: bridge.setCompressionX265Tuning(checked)
                                         }
                                         AppCheckBox {
                                             text: strings.compress_hw_decode
                                             checked: bridge.compressionHwDecode
-                                            ToolTip.text: strings.compress_hw_decode_tip
-                                            ToolTip.visible: hovered
-                                            ToolTip.delay: 500
+                                            tipText: strings.compress_hw_decode_tip
                                             onToggled: bridge.setCompressionHwDecode(checked)
                                         }
                                     }
@@ -592,7 +710,7 @@ import "../components"
                                 id: tracksScroll
                                 clip: true
                                 ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-                                ScrollBar.vertical.policy: ScrollBar.AsNeeded
+                                ScrollBar.vertical.policy: ScrollBar.AlwaysOn
                                 contentWidth: availableWidth
 
                                 ColumnLayout {
@@ -624,9 +742,7 @@ import "../components"
                                                             return i
                                                     return 0
                                                 }
-                                                ToolTip.text: strings.compress_audio_tip
-                                                ToolTip.visible: hovered
-                                                ToolTip.delay: 500
+                                                tipText: strings.compress_audio_tip
                                                 onActivated: bridge.setCompressionAudioMode(currentValue)
                                             }
                                             Label {
@@ -657,9 +773,7 @@ import "../components"
                                                             return i
                                                     return 0
                                                 }
-                                                ToolTip.text: strings.compress_subtitle_tip
-                                                ToolTip.visible: hovered
-                                                ToolTip.delay: 500
+                                                tipText: strings.compress_subtitle_tip
                                                 onActivated: bridge.setCompressionSubtitleMode(currentValue)
                                             }
                                             Label {
@@ -678,7 +792,7 @@ import "../components"
                                 id: advancedScroll
                                 clip: true
                                 ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-                                ScrollBar.vertical.policy: ScrollBar.AsNeeded
+                                ScrollBar.vertical.policy: ScrollBar.AlwaysOn
                                 contentWidth: availableWidth
 
                                 ColumnLayout {
@@ -691,18 +805,14 @@ import "../components"
                                         AppCheckBox {
                                             text: strings.compress_only_smaller
                                             checked: bridge.compressionOnlyIfSmaller
-                                            ToolTip.text: strings.compress_only_smaller_tip
-                                            ToolTip.visible: hovered
-                                            ToolTip.delay: 500
+                                            tipText: strings.compress_only_smaller_tip
                                             onToggled: bridge.setCompressionOnlyIfSmaller(checked)
                                         }
                                         AppCheckBox {
                                             id: replaceOriginalCheck
                                             text: strings.compress_replace_original
                                             checked: bridge.compressionReplaceOriginal
-                                            ToolTip.text: strings.compress_replace_original_tip
-                                            ToolTip.visible: hovered
-                                            ToolTip.delay: 500
+                                            tipText: strings.compress_replace_original_tip
                                             onClicked: {
                                                 if (checked)
                                                     confirmReplace.open()
@@ -713,9 +823,7 @@ import "../components"
                                         AppCheckBox {
                                             text: strings.compress_reencode_hevc
                                             checked: bridge.compressionReencodeHevc
-                                            ToolTip.text: strings.compress_reencode_hevc_tip
-                                            ToolTip.visible: hovered
-                                            ToolTip.delay: 500
+                                            tipText: strings.compress_reencode_hevc_tip
                                             onToggled: bridge.setCompressionReencodeHevc(checked)
                                         }
                                     }
@@ -725,9 +833,7 @@ import "../components"
                                         spacing: 10
                                         AppButton {
                                             text: strings.compress_suggestions
-                                            ToolTip.text: strings.compress_suggestions_tip
-                                            ToolTip.visible: hovered
-                                            ToolTip.delay: 500
+                                            tipText: strings.compress_suggestions_tip
                                             onClicked: appRoot.openCompressionSuggestions()
                                         }
                                         AppButton {
@@ -735,9 +841,7 @@ import "../components"
                                             icon.source: appRoot.iconPath("search")
                                             icon.width: 16; icon.height: 16
                                             display: AbstractButton.TextBesideIcon
-                                            ToolTip.text: strings.similar_subtitle
-                                            ToolTip.visible: hovered
-                                            ToolTip.delay: 500
+                                            tipText: strings.similar_subtitle
                                             onClicked: appRoot.openSimilarityDialog()
                                         }
                                         Item { Layout.fillWidth: true }
@@ -758,7 +862,7 @@ import "../components"
                 Rectangle {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    Layout.minimumHeight: 210
+                    Layout.minimumHeight: 100
                     radius: 12
                     color: appRoot.theme.cardBg
                     border.color: appRoot.theme.cardBorder
@@ -771,17 +875,24 @@ import "../components"
                             Layout.fillWidth: true
                             spacing: 8
                             Label { text: strings.compress_queue; font.pixelSize: 15; font.weight: Font.DemiBold }
+                            Label {
+                                visible: bridge.compressionScanBusy
+                                text: strings.compress_scanning
+                                font.pixelSize: 11
+                                color: appRoot.theme.busyText
+                            }
                             Item { Layout.fillWidth: true }
                             AppHintField {
                                 id: compFilter
-                                Layout.preferredWidth: 280
+                                objectName: "compFilter"
+                                Layout.preferredWidth: 310
                                 Layout.preferredHeight: 38
-                                hint: strings.filter_placeholder
+                                hint: strings.compress_filter_placeholder
                                 leadingIcon: appRoot.iconPath("search")
                                 selectByMouse: true
-                                ToolTip.text: strings.filter_tip
-                                ToolTip.visible: hovered
-                                ToolTip.delay: 500
+                                tipTitle: strings.compress_filter_title
+                                tipText: strings.compress_filter_tip
+                                tipShortcut: "Ctrl+F"
                                 onTextChanged: {
                                     if (text.length === 0) {
                                         compFilterDebounce.stop()
@@ -790,11 +901,12 @@ import "../components"
                                         compFilterDebounce.restart()
                                     }
                                 }
+                                Keys.onEscapePressed: clear()
                             }
                             Timer {
                                 id: compFilterDebounce
-                                interval: 220
-                                onTriggered: page.compFilterText = compFilter.text.toLowerCase()
+                                interval: 180
+                                onTriggered: page.compFilterText = compFilter.text
                             }
                             AppToolButton {
                                 display: AbstractButton.IconOnly
@@ -803,10 +915,10 @@ import "../components"
                                 icon.height: 14
                                 opacity: compFilter.text.length > 0 ? 1 : 0
                                 enabled: compFilter.text.length > 0
-                                Accessible.name: strings.btn_clear
-                                ToolTip.text: strings.btn_clear
-                                ToolTip.visible: hovered
-                                ToolTip.delay: 500
+                                Accessible.name: strings.filter_clear
+                                tipTitle: strings.filter_clear
+                                tipText: strings.filter_clear_tip
+                                tipShortcut: "Esc"
                                 onClicked: compFilter.clear()
                             }
                         }
@@ -821,18 +933,119 @@ import "../components"
                                 anchors.fill: parent
                                 anchors.leftMargin: 8
                                 anchors.rightMargin: 8
-                                spacing: 10
-                                Item { Layout.fillWidth: true; Layout.minimumWidth: 160 }
-                                Label { text: strings.h_status; Layout.preferredWidth: 110; font.pixelSize: 13; font.bold: true; color: appRoot.theme.tableHeaderText }
-                                Label { text: strings.h_progress; Layout.preferredWidth: 150; font.pixelSize: 13; font.bold: true; color: appRoot.theme.tableHeaderText; horizontalAlignment: Text.AlignHCenter }
-                                Label { text: strings.compress_col_result; Layout.preferredWidth: 220; font.pixelSize: 13; font.bold: true; color: appRoot.theme.tableHeaderText }
-                                Item { Layout.preferredWidth: 108 }
+                                spacing: page.compColGap
+
+                                TableSortHeader {
+                                    objectName: "compHeaderName"
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    Layout.minimumWidth: 160
+                                    label: strings.compress_col_file
+                                    sortKey: "name"
+                                    activeKey: compressionModel.sortKey
+                                    ascending: compressionModel.sortAscending
+                                    textColor: appRoot.theme.tableHeaderText
+                                    mutedColor: appRoot.theme.textMuted
+                                    hoverColor: appRoot.theme.hover
+                                    accentColor: appRoot.theme.accentText
+                                    tipTitle: strings.compress_col_file
+                                    tipText: strings.sort_tip
+                                    tipFooter: strings.sort_name_tip
+                                    sortStateText: compressionModel.sortAscending
+                                                   ? strings.sort_ascending
+                                                   : strings.sort_descending
+                                    onActivated: compressionModel.sortBy("name")
+                                }
+                                TableSortHeader {
+                                    objectName: "compHeaderStatus"
+                                    Layout.preferredWidth: page.compColStatus
+                                    Layout.minimumWidth: page.compColStatus
+                                    Layout.maximumWidth: page.compColStatus
+                                    Layout.fillHeight: true
+                                    label: strings.h_status
+                                    sortKey: "status"
+                                    activeKey: compressionModel.sortKey
+                                    ascending: compressionModel.sortAscending
+                                    horizontalAlignment: Text.AlignHCenter
+                                    textColor: appRoot.theme.tableHeaderText
+                                    mutedColor: appRoot.theme.textMuted
+                                    hoverColor: appRoot.theme.hover
+                                    accentColor: appRoot.theme.accentText
+                                    tipTitle: strings.h_status
+                                    tipText: strings.sort_tip
+                                    tipFooter: strings.sort_status_tip
+                                    sortStateText: compressionModel.sortAscending
+                                                   ? strings.sort_ascending
+                                                   : strings.sort_descending
+                                    onActivated: compressionModel.sortBy("status")
+                                }
+                                TableSortHeader {
+                                    objectName: "compHeaderProgress"
+                                    Layout.preferredWidth: page.compColProgress
+                                    Layout.minimumWidth: page.compColProgress
+                                    Layout.maximumWidth: page.compColProgress
+                                    Layout.fillHeight: true
+                                    label: strings.h_progress
+                                    sortKey: "progress"
+                                    activeKey: compressionModel.sortKey
+                                    ascending: compressionModel.sortAscending
+                                    horizontalAlignment: Text.AlignHCenter
+                                    textColor: appRoot.theme.tableHeaderText
+                                    mutedColor: appRoot.theme.textMuted
+                                    hoverColor: appRoot.theme.hover
+                                    accentColor: appRoot.theme.accentText
+                                    tipTitle: strings.h_progress
+                                    tipText: strings.sort_tip
+                                    tipFooter: strings.sort_progress_tip
+                                    sortStateText: compressionModel.sortAscending
+                                                   ? strings.sort_ascending
+                                                   : strings.sort_descending
+                                    onActivated: compressionModel.sortBy("progress")
+                                }
+                                TableSortHeader {
+                                    objectName: "compHeaderResult"
+                                    Layout.preferredWidth: page.compColResult
+                                    Layout.minimumWidth: page.compColResult
+                                    Layout.maximumWidth: page.compColResult
+                                    Layout.fillHeight: true
+                                    label: strings.compress_col_result
+                                    sortKey: "size"
+                                    activeKey: compressionModel.sortKey
+                                    ascending: compressionModel.sortAscending
+                                    textColor: appRoot.theme.tableHeaderText
+                                    mutedColor: appRoot.theme.textMuted
+                                    hoverColor: appRoot.theme.hover
+                                    accentColor: appRoot.theme.accentText
+                                    tipTitle: strings.compress_col_result
+                                    tipText: strings.sort_tip
+                                    tipFooter: strings.sort_result_tip
+                                    sortStateText: compressionModel.sortAscending
+                                                   ? strings.sort_ascending
+                                                   : strings.sort_descending
+                                    onActivated: compressionModel.sortBy("size")
+                                }
+                                Item {
+                                    Layout.preferredWidth: page.compColActions
+                                    Layout.minimumWidth: page.compColActions
+                                    Layout.maximumWidth: page.compColActions
+                                    Layout.fillHeight: true
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: strings.h_actions
+                                        color: appRoot.theme.tableHeaderText
+                                        font.pixelSize: 13
+                                        font.bold: true
+                                        horizontalAlignment: Text.AlignHCenter
+                                        verticalAlignment: Text.AlignVCenter
+                                    }
+                                }
                             }
                         }
                         Rectangle { Layout.fillWidth: true; height: 1; color: appRoot.theme.cardBorder }
 
                         ListView {
                             id: compList
+                            objectName: "compressionList"
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             clip: true
@@ -845,32 +1058,57 @@ import "../components"
                                 anchors.fill: parent
                                 visible: compList.count === 0
                                 color: "transparent"
-                                Label {
+                                Column {
                                     anchors.centerIn: parent
-                                    text: strings.compress_empty
-                                    font.pixelSize: 13
-                                    color: appRoot.theme.textSecondary
+                                    spacing: 6
+                                    Image {
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        visible: compList.height >= 140
+                                        source: appRoot.iconPath("file")
+                                        sourceSize.width: 28
+                                        sourceSize.height: 28
+                                        opacity: 0.45
+                                    }
+                                    Label {
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        text: strings.compress_empty
+                                        font.pixelSize: 13
+                                        color: appRoot.theme.textSecondary
+                                    }
+                                    Label {
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        visible: compList.height >= 90
+                                        text: strings.compress_empty_hint
+                                        font.pixelSize: 11
+                                        color: appRoot.theme.textMuted
+                                    }
                                 }
                             }
 
-                            Label {
+                            Column {
                                 anchors.centerIn: parent
+                                spacing: 4
                                 visible: compList.count > 0
                                          && page.compFilterText.length > 0
                                          && compList.contentHeight <= 0
-                                text: strings.filter_no_results
-                                font.pixelSize: 13
-                                color: appRoot.theme.textSecondary
+                                Label {
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    text: strings.filter_no_results
+                                    font.pixelSize: 13
+                                    color: appRoot.theme.textSecondary
+                                }
+                                Label {
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    text: strings.filter_no_results_hint
+                                    font.pixelSize: 11
+                                    color: appRoot.theme.textMuted
+                                }
                             }
 
                             delegate: Item {
                                 id: compRow
                                 width: compList.width
-                                property string filterText: page.compFilterText
-                                property bool matches: filterText.length === 0
-                                    || String(model.name).toLowerCase().indexOf(filterText) !== -1
-                                    || String(model.path).toLowerCase().indexOf(filterText) !== -1
-                                    || String(model.encoder).toLowerCase().indexOf(filterText) !== -1
+                                property bool matches: page.compRowMatches(model)
                                 height: matches ? 58 : 0
                                 visible: matches
                                 property string st: model.status
@@ -878,8 +1116,9 @@ import "../components"
                                     anchors.fill: parent
                                     anchors.leftMargin: 8
                                     anchors.rightMargin: 8
-                                    spacing: 10
+                                    spacing: page.compColGap
                                     ColumnLayout {
+                                        objectName: "compCellName"
                                         Layout.fillWidth: true
                                         Layout.minimumWidth: 160
                                         spacing: 0
@@ -900,7 +1139,10 @@ import "../components"
                                         }
                                     }
                                     Item {
-                                        Layout.preferredWidth: 110
+                                        objectName: "compCellStatus"
+                                        Layout.preferredWidth: page.compColStatus
+                                        Layout.minimumWidth: page.compColStatus
+                                        Layout.maximumWidth: page.compColStatus
                                         Rectangle {
                                             width: 104; height: 24; radius: 12
                                             anchors.centerIn: parent
@@ -919,10 +1161,13 @@ import "../components"
                                         }
                                     }
                                     Column {
-                                        Layout.preferredWidth: 150
+                                        objectName: "compCellProgress"
+                                        Layout.preferredWidth: page.compColProgress
+                                        Layout.minimumWidth: page.compColProgress
+                                        Layout.maximumWidth: page.compColProgress
                                         spacing: 2
                                         ProgressBar {
-                                            width: 150; height: 6
+                                            width: parent.width; height: 6
                                             from: 0; to: 100
                                             value: model.progress
                                             indeterminate: compRow.st === "analyzing"
@@ -935,7 +1180,10 @@ import "../components"
                                         }
                                     }
                                     Column {
-                                        Layout.preferredWidth: 220
+                                        objectName: "compCellResult"
+                                        Layout.preferredWidth: page.compColResult
+                                        Layout.minimumWidth: page.compColResult
+                                        Layout.maximumWidth: page.compColResult
                                         spacing: 2
                                         Label {
                                             width: parent.width
@@ -945,6 +1193,7 @@ import "../components"
                                             elide: Text.ElideRight
                                         }
                                         Label {
+                                            id: compDetail
                                             width: parent.width
                                             text: {
                                                 if (model.error.length > 0)
@@ -956,7 +1205,7 @@ import "../components"
                                                     parts.push("SSIM " + Number(model.ssim).toFixed(3))
                                                 if (model.bitrateAfter > 0)
                                                     parts.push(appRoot.formatBitrate(model.bitrateAfter))
-                                                return parts.length > 0 ? parts.join(" ? ") : model.speed
+                                                return parts.length > 0 ? parts.join(" · ") : model.speed
                                             }
                                             font.pixelSize: 10
                                             color: compRow.st === "error"
@@ -965,92 +1214,69 @@ import "../components"
                                                       ? appRoot.theme.warningText
                                                       : appRoot.theme.textSecondary)
                                             elide: Text.ElideRight
-                                            HoverHandler { id: compErrHover }
-                                            ToolTip.text: {
-                                                var lines = []
-                                                if (model.error.length > 0)
-                                                    lines.push(model.error)
-                                                if (model.bitrateBefore > 0 || model.bitrateAfter > 0)
-                                                    lines.push("Bitrate: " + appRoot.formatBitrate(model.bitrateBefore)
-                                                               + " -> " + appRoot.formatBitrate(model.bitrateAfter))
-                                                if (model.widthBefore > 0 || model.widthAfter > 0)
-                                                    lines.push(model.widthBefore + "x" + model.heightBefore
-                                                               + " -> " + model.widthAfter + "x" + model.heightAfter)
-                                                if (model.ssim > 0)
-                                                    lines.push("SSIM: " + Number(model.ssim).toFixed(3))
-                                                if (model.qualityWarning.length > 0)
-                                                    lines.push(strings.compress_quality_bitrate_warning)
-                                                if (model.saving > 0)
-                                                    lines.push(model.saving + "% " + strings.compress_saving)
-                                                if (model.backup !== "")
-                                                    lines.push(strings.compress_backup_kept + ": " + model.backup)
-                                                if (model.sha256 !== "")
-                                                    lines.push(strings.compress_hash + ": " + model.sha256)
-                                                return lines.join("\n")
+                                            AppToolTip {
+                                                target: compDetail
+                                                title: model.name
+                                                text: page.compDetailTip(model)
+                                                available: text.length > 0
+                                                delay: 400
                                             }
-                                            ToolTip.visible: compErrHover.hovered
-                                                             && (model.error.length > 0
-                                                                 || model.bitrateBefore > 0
-                                                                 || model.bitrateAfter > 0
-                                                                 || model.ssim > 0
-                                                                 || model.qualityWarning.length > 0
-                                                                 || model.backup !== ""
-                                                                 || model.sha256 !== "")
-                                            ToolTip.delay: 400
                                         }
                                     }
-                                    Row {
-                                        Layout.preferredWidth: 108
-                                        spacing: 4
-                                        AppToolButton {
-                                            width: 32; height: 28
-                                            display: AbstractButton.IconOnly
-                                            icon.source: appRoot.iconPath("cancel")
-                                            icon.width: 16; icon.height: 16
-                                            visible: compRow.st === "waiting" || compRow.st === "analyzing" || compRow.st === "encoding"
-                                            Accessible.name: strings.tip_cancel
-                                            ToolTip.text: strings.tip_cancel
-                                            ToolTip.visible: hovered
-                                            ToolTip.delay: 500
-                                            onClicked: bridge.cancelCompressionItem(index)
-                                        }
-                                        AppToolButton {
-                                            width: 32; height: 28
-                                            display: AbstractButton.IconOnly
-                                            icon.source: appRoot.iconPath("retry")
-                                            icon.width: 16; icon.height: 16
-                                            visible: compRow.st === "error" || compRow.st === "skipped"
-                                                     || compRow.st === "cancelled"
-                                            Accessible.name: strings.compress_retry
-                                            ToolTip.text: strings.compress_retry
-                                            ToolTip.visible: hovered
-                                            ToolTip.delay: 500
-                                            onClicked: bridge.retryCompressionItem(index)
-                                        }
-                                        AppToolButton {
-                                            width: 32; height: 28
-                                            display: AbstractButton.IconOnly
-                                            icon.source: appRoot.iconPath("open")
-                                            icon.width: 16; icon.height: 16
-                                            visible: compRow.st === "done" && model.output !== ""
-                                            Accessible.name: strings.tip_open
-                                            ToolTip.text: strings.tip_open
-                                            ToolTip.visible: hovered
-                                            ToolTip.delay: 500
-                                            onClicked: bridge.openCompressionOutput(model.output)
-                                        }
-                                        AppToolButton {
-                                            width: 32; height: 28
-                                            display: AbstractButton.IconOnly
-                                            icon.source: appRoot.iconPath("trash")
-                                            icon.width: 16; icon.height: 16
-                                            visible: compRow.st === "done" || compRow.st === "error"
-                                                     || compRow.st === "cancelled" || compRow.st === "skipped"
-                                            Accessible.name: strings.ctx_remove
-                                            ToolTip.text: strings.ctx_remove
-                                            ToolTip.visible: hovered
-                                            ToolTip.delay: 500
-                                            onClicked: bridge.removeCompressionItem(index)
+                                    Item {
+                                        objectName: "compCellActions"
+                                        Layout.preferredWidth: page.compColActions
+                                        Layout.minimumWidth: page.compColActions
+                                        Layout.maximumWidth: page.compColActions
+                                        Row {
+                                            anchors.centerIn: parent
+                                            spacing: 4
+                                            AppToolButton {
+                                                width: 32; height: 28
+                                                display: AbstractButton.IconOnly
+                                                icon.source: appRoot.iconPath("cancel")
+                                                icon.width: 16; icon.height: 16
+                                                visible: compRow.st === "waiting" || compRow.st === "analyzing" || compRow.st === "encoding"
+                                                Accessible.name: strings.tip_cancel
+                                                tipTitle: strings.tip_cancel
+                                                tipText: strings.compress_cancel_tip
+                                                onClicked: bridge.cancelCompressionItem(model.sourceIndex)
+                                            }
+                                            AppToolButton {
+                                                width: 32; height: 28
+                                                display: AbstractButton.IconOnly
+                                                icon.source: appRoot.iconPath("retry")
+                                                icon.width: 16; icon.height: 16
+                                                visible: compRow.st === "error" || compRow.st === "skipped"
+                                                         || compRow.st === "cancelled"
+                                                Accessible.name: strings.compress_retry
+                                                tipTitle: strings.compress_retry
+                                                tipText: strings.compress_retry_tip
+                                                onClicked: bridge.retryCompressionItem(model.sourceIndex)
+                                            }
+                                            AppToolButton {
+                                                width: 32; height: 28
+                                                display: AbstractButton.IconOnly
+                                                icon.source: appRoot.iconPath("open")
+                                                icon.width: 16; icon.height: 16
+                                                visible: compRow.st === "done" && model.output !== ""
+                                                Accessible.name: strings.tip_open
+                                                tipTitle: strings.tip_open
+                                                tipText: model.output
+                                                onClicked: bridge.openCompressionOutput(model.output)
+                                            }
+                                            AppToolButton {
+                                                width: 32; height: 28
+                                                display: AbstractButton.IconOnly
+                                                icon.source: appRoot.iconPath("trash")
+                                                icon.width: 16; icon.height: 16
+                                                visible: compRow.st === "done" || compRow.st === "error"
+                                                         || compRow.st === "cancelled" || compRow.st === "skipped"
+                                                Accessible.name: strings.ctx_remove
+                                                tipTitle: strings.ctx_remove
+                                                tipText: strings.compress_remove_tip
+                                                onClicked: bridge.removeCompressionItem(model.sourceIndex)
+                                            }
                                         }
                                     }
                                 }
@@ -1076,7 +1302,20 @@ import "../components"
                               + appRoot.compSkip + " " + strings.compress_stat_skipped
                         font.pixelSize: 12
                         color: appRoot.theme.textSecondary
+                        wrapMode: Text.Wrap
+                        maximumLineCount: 2
                         elide: Text.ElideRight
+                    }
+                    AppButton {
+                        text: strings.compress_scan_cancel
+                        variant: "secondary"
+                        icon.source: appRoot.iconPath("stop")
+                        icon.width: 16; icon.height: 16
+                        display: AbstractButton.TextBesideIcon
+                        visible: bridge.compressionScanBusy
+                        tipTitle: strings.compress_scan_cancel
+                        tipText: strings.compress_scan_cancel_tip
+                        onClicked: bridge.cancelCompressionScan()
                     }
                     AppButton {
                         text: bridge.compressionDetecting ? strings.compress_detecting_ui : strings.btn_start
@@ -1085,7 +1324,9 @@ import "../components"
                         icon.width: 16; icon.height: 16
                         display: AbstractButton.TextBesideIcon
                         visible: !bridge.compressionActive
-                        enabled: !bridge.compressionDetecting
+                        enabled: !bridge.compressionDetecting && appRoot.compWait > 0
+                        tipTitle: strings.btn_start
+                        tipText: strings.compress_start_tip
                         onClicked: bridge.startCompression()
                     }
                     AppButton {
@@ -1094,6 +1335,8 @@ import "../components"
                         icon.width: 16; icon.height: 16
                         display: AbstractButton.TextBesideIcon
                         visible: bridge.compressionActive && !bridge.compressionPaused
+                        tipTitle: strings.btn_pause
+                        tipText: strings.btn_pause_tip
                         onClicked: bridge.pauseCompression()
                     }
                     AppButton {
@@ -1103,20 +1346,30 @@ import "../components"
                         display: AbstractButton.TextBesideIcon
                         visible: bridge.compressionActive && bridge.compressionPaused
                         highlighted: true
+                        tipTitle: strings.btn_resume
+                        tipText: strings.btn_resume_tip
                         onClicked: bridge.resumeCompression()
                     }
                     AppButton {
                         text: strings.btn_cancel_all
+                        variant: "secondary"
                         icon.source: appRoot.iconPath("stop")
                         icon.width: 16; icon.height: 16
                         display: AbstractButton.TextBesideIcon
+                        enabled: appRoot.compWork + appRoot.compWait > 0
+                        tipTitle: strings.btn_cancel_all
+                        tipText: strings.btn_cancel_all_tip
                         onClicked: bridge.cancelCompression()
                     }
                     AppButton {
                         text: strings.btn_clear_finished
+                        variant: "secondary"
                         icon.source: appRoot.iconPath("trash")
                         icon.width: 16; icon.height: 16
                         display: AbstractButton.TextBesideIcon
+                        enabled: appRoot.compDone + appRoot.compErr + appRoot.compSkip > 0
+                        tipTitle: strings.btn_clear_finished
+                        tipText: strings.compress_clear_finished_tip
                         onClicked: bridge.clearCompressionFinished()
                     }
                 }

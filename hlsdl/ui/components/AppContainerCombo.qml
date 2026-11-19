@@ -3,7 +3,7 @@ import QtQuick.Controls
 import QtQuick.Controls.Material
 import QtQuick.Layouts
 
-ComboBox {
+AppComboBox {
     property var items: bridge.formatMode === "audio_only"
         ? ["mp3", "m4a", "wav", "flac", "opus"]
         : ["mp4", "mkv", "webm", "avi", "mov"]

@@ -9,6 +9,7 @@ import pytest
 from hlsdl.media import (
     MediaSignature,
     ahash_from_gray,
+    build_signature,
     compare_signatures,
     dhash_from_gray,
     group_similar,
@@ -153,6 +154,46 @@ def test_hdr_metadata_and_x265_params():
     assert "master-display=G(13250,34500)B(7500,3000)R(34000,16000)" in joined
     assert "L(10000000,50)" in joined
     assert "max-cll=1000,400" in joined
+
+
+def test_hdr_metadata_from_first_frame_side_data():
+    probe = {
+        "streams": [{
+            "codec_type": "video", "codec_name": "hevc",
+            "color_transfer": "smpte2084", "color_primaries": "bt2020",
+        }],
+        "frames": [{
+            "side_data_list": [
+                {
+                    "side_data_type": "Mastering display metadata",
+                    "red_x": "34000/50000", "red_y": "16000/50000",
+                    "green_x": "13250/50000", "green_y": "34500/50000",
+                    "blue_x": "7500/50000", "blue_y": "3000/50000",
+                    "white_point_x": "15635/50000", "white_point_y": "16450/50000",
+                    "min_luminance": "50/10000", "max_luminance": "10000000/10000",
+                },
+                {
+                    "side_data_type": "Content light level metadata",
+                    "max_content": 1000, "max_average": 400,
+                },
+            ],
+        }],
+        "format": {"duration": "3"},
+    }
+    metadata = hdr_metadata(probe)
+    assert metadata["mastering"]["max_luminance"] == "10000000/10000"
+    assert metadata["content_light"]["max_average"] == 400
+
+
+def test_cancel_short_circuits_signature_and_grouping(tmp_path):
+    media = tmp_path / "x.mp4"
+    media.write_bytes(b"x")
+    signature = build_signature(str(media), cancel=lambda: True)
+    assert signature.error == "cancelled"
+    assert group_similar(
+        [MediaSignature(path="a"), MediaSignature(path="b")],
+        cancel=lambda: True,
+    ) == []
 
 
 def test_sampled_ssim_detects_a_faithful_reencode(tmp_path):

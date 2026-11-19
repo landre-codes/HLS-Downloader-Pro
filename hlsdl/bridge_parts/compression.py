@@ -1,4 +1,4 @@
-﻿# ruff: noqa: F401, F403, F405
+# ruff: noqa: F401, F403, F405
 
 from __future__ import annotations
 
@@ -22,7 +22,9 @@ from ..compress import (
     available_vendors,
     estimate_saving,
     quality_max_for_codec,
+    quality_max_for_encoder,
     resolve_encoder,
+    scan_media_paths,
 )
 from ..compress import (
     CODECS as COMPRESSION_CODECS,
@@ -109,23 +111,56 @@ class CompressionMixin(BridgeSignals):
 
     @Property(int, notify=compressionConfigChanged)
     def compressionQuality(self) -> int:
-        return self._comp_settings.quality
+        return min(
+            self._comp_settings.quality,
+            quality_max_for_encoder(
+                self._comp_settings.codec, self.compressionEffectiveEncoder
+            ),
+        )
 
-    @Property(int, notify=compressionConfigChanged)
+    @Property(int, notify=compressionEffectiveEncoderChanged)
     def compressionQualityMax(self) -> int:
-        """Limite de RF do codec atual (AV1 vai atÃ© 63)."""
-        return quality_max_for_codec(self._comp_settings.codec)
+        """Limite real do codec + encoder efetivo (AV1 QSV ICQ: 1–51)."""
+        return quality_max_for_encoder(
+            self._comp_settings.codec, self.compressionEffectiveEncoder
+        )
 
     @Slot(int)
     def setCompressionQuality(self, value: int) -> None:
         value = self._clamp(
-            int(value), 1, quality_max_for_codec(self._comp_settings.codec)
+            int(value), 1,
+            quality_max_for_encoder(
+                self._comp_settings.codec, self.compressionEffectiveEncoder
+            ),
         )
         if value == self._comp_settings.quality:
             return
         self._mark_comp_custom()
         self._comp_settings.quality = value
         self._save("compress/quality", value)
+        self.compression.apply_settings(self._comp_settings)
+        self.compressionConfigChanged.emit()
+
+    @Property(int, notify=compressionConfigChanged)
+    def compressionMinBitrate(self) -> int:
+        return self._comp_settings.min_bitrate_percent
+
+    @Property(bool, notify=compressionEffectiveEncoderChanged)
+    def compressionBitrateTargetSupported(self) -> bool:
+        """AV1 QSV ICQ não aceita o alvo VBR no runtime atual."""
+        return self.compressionEffectiveEncoder != "av1_qsv"
+
+    @Slot(int)
+    def setCompressionMinBitrate(self, value: int) -> None:
+        value = self._clamp(int(value), 0, 90)
+        if value > 0 and not self.compressionBitrateTargetSupported:
+            self.notifyText.emit(self._tr("compress_min_bitrate_av1_qsv"))
+            return
+        if value == self._comp_settings.min_bitrate_percent:
+            return
+        self._mark_comp_custom()
+        self._comp_settings.min_bitrate_percent = value
+        self._save("compress/min_bitrate_percent", value)
         self.compression.apply_settings(self._comp_settings)
         self.compressionConfigChanged.emit()
 
@@ -194,31 +229,31 @@ class CompressionMixin(BridgeSignals):
 
     @Slot(str)
     def applyCompressionPreset(self, key: str) -> None:
-        """Aplica um preset no estilo HandBrake aos ajustes atuais."""
+        """Aplica um preset pronto aos ajustes atuais."""
         presets = {
             "fast_h264": {
                 "encoder": "auto", "codec": "h264", "container": "mp4",
-                "quality": 23, "speed": "fast", "ten_bit": False,
+                "quality": 21, "speed": "fast", "ten_bit": False,
                 "x265_tuning": False,
             },
             "balanced_hevc": {
                 "encoder": "auto", "codec": "hevc", "container": "mp4",
-                "quality": 24, "speed": "balanced", "ten_bit": False,
+                "quality": 22, "speed": "balanced", "ten_bit": False,
                 "x265_tuning": False,
             },
             "quality_hevc": {
                 "encoder": "auto", "codec": "hevc", "container": "mp4",
-                "quality": 20, "speed": "slow", "ten_bit": False,
+                "quality": 18, "speed": "slow", "ten_bit": False,
                 "x265_tuning": True,
             },
             "archive_hevc": {
                 "encoder": "software", "codec": "hevc", "container": "mkv",
-                "quality": 18, "speed": "slower", "ten_bit": True,
+                "quality": 16, "speed": "slower", "ten_bit": True,
                 "x265_tuning": True,
             },
             "av1_balanced": {
                 "encoder": "software", "codec": "av1", "container": "mkv",
-                "quality": 30, "speed": "slow", "ten_bit": False,
+                "quality": 27, "speed": "slow", "ten_bit": False,
                 "x265_tuning": False,
             },
         }
@@ -234,6 +269,7 @@ class CompressionMixin(BridgeSignals):
             "denoise": "off",
             "audio_mode": "auto",
             "subtitle_mode": "auto",
+            "min_bitrate_percent": 0,
             "crop": "",
             "scale_width": 0,
             "scale_height": 0,
@@ -249,8 +285,8 @@ class CompressionMixin(BridgeSignals):
             "encoder", "codec", "container", "quality", "speed",
             "ten_bit", "x265_tuning", "preset", "hdr_tonemap",
             "skip_hdr", "deinterlace", "denoise", "audio_mode",
-            "subtitle_mode", "crop", "scale_width", "scale_height",
-            "rotate", "fps",
+            "subtitle_mode", "min_bitrate_percent", "crop",
+            "scale_width", "scale_height", "rotate", "fps",
         ):
             self._save(f"compress/{attr}", getattr(self._comp_settings, attr))
         self.compression.apply_settings(self._comp_settings)
@@ -542,11 +578,11 @@ class CompressionMixin(BridgeSignals):
                 if not error:
                     continue
                 name = item.get("name") or item.get("input") or ""
-                details.append(f"â€¢ {name}: {error}")
+                details.append(f"• {name}: {error}")
             if details:
                 message += "\n\n" + "\n".join(details[:3])
                 if len(details) > 3:
-                    message += f"\nâ€¦ (+{len(details) - 3})"
+                    message += f"\n… (+{len(details) - 3})"
             show_message(
                 None,
                 QMessageBox.Icon.Warning,
@@ -567,6 +603,73 @@ class CompressionMixin(BridgeSignals):
             added = self.compression.add_paths(paths, recursive=False)
             if added:
                 self.notifyText.emit(self._tr("compress_files_added", n=added))
+            else:
+                self.notifyText.emit(self._tr("compress_folder_empty"))
+
+    @Property(bool, notify=compressionScanChanged)
+    def compressionScanBusy(self) -> bool:
+        return bool(getattr(self, "_comp_scan_busy", False))
+
+    @Slot()
+    def cancelCompressionScan(self) -> None:
+        cancel = getattr(self, "_comp_scan_cancel", None)
+        if cancel is not None and not cancel.is_set():
+            cancel.set()
+            self.notifyText.emit(self._tr("compress_scan_cancelling"))
+
+    def _startCompressionScan(self, paths: list[str], recursive: bool) -> None:
+        paths = [str(path) for path in paths if str(path)]
+        if not paths:
+            return
+        if getattr(self, "_comp_scan_busy", False):
+            self.notifyText.emit(self._tr("compress_scan_busy"))
+            return
+
+        self._comp_scan_busy = True
+        cancel = threading.Event()
+        self._comp_scan_cancel = cancel
+        self.compressionScanChanged.emit()
+
+        def work() -> None:
+            try:
+                result = scan_media_paths(paths, recursive, cancel)
+            except Exception:
+                result = {
+                    "files": [], "scanned": 0, "ignored": 0,
+                    "duplicates": 0, "errors": 1, "cancelled": False,
+                    "truncated": False,
+                }
+            if not getattr(self, "_shutting_down", False):
+                self.compressionScanFinished.emit(result)
+
+        self._start_aux(work, "compression-scan")
+
+    @Slot(object)
+    def _finishCompressionScan(self, result: dict) -> None:
+        self._comp_scan_busy = False
+        self._comp_scan_cancel = None
+        self.compressionScanChanged.emit()
+        if getattr(self, "_shutting_down", False):
+            return
+        if result.get("cancelled"):
+            self.notifyText.emit(self._tr("compress_scan_cancelled"))
+            return
+        if result.get("truncated"):
+            self.notifyText.emit(self._tr("compress_scan_truncated"))
+            return
+
+        files = [str(path) for path in result.get("files", [])]
+        added = self.compression.add_scanned(files)
+        duplicates = int(result.get("duplicates", 0)) + max(0, len(files) - added)
+        ignored = int(result.get("ignored", 0))
+        errors = int(result.get("errors", 0))
+        if added or duplicates or ignored or errors:
+            self.notifyText.emit(self._tr(
+                "compress_scan_summary",
+                a=added, i=ignored, d=duplicates, e=errors,
+            ))
+        else:
+            self.notifyText.emit(self._tr("compress_folder_empty"))
 
     @Slot()
     def addCompressionFolder(self) -> None:
@@ -574,15 +677,11 @@ class CompressionMixin(BridgeSignals):
             None, self._tr("compress_add_folder"), ""
         )
         if path:
-            added = self.compression.add_paths([path], recursive=True)
-            if added:
-                self.notifyText.emit(self._tr("compress_files_added", n=added))
+            self._startCompressionScan([path], True)
 
     @Slot(list)
     def addCompressionPaths(self, paths: list) -> None:
-        added = self.compression.add_paths([str(p) for p in paths], recursive=True)
-        if added:
-            self.notifyText.emit(self._tr("compress_files_added", n=added))
+        self._startCompressionScan([str(p) for p in paths], True)
 
     @Slot()
     def startCompression(self) -> None:

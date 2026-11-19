@@ -8,6 +8,7 @@ import "../components"
     id: page
     property var appRoot
     property var strings: ({})
+    readonly property bool showHero: width >= 1050 && height >= 650
 
     ColumnLayout {
                 anchors.fill: parent
@@ -27,7 +28,13 @@ import "../components"
                         anchors.margins: 16
                         spacing: 10
 
-                        Label { text: strings.playlist_title; font.pixelSize: 15; font.weight: Font.DemiBold }
+                        PageHero {
+                            Layout.fillWidth: true
+                            compact: !page.showHero
+                            theme: appRoot.theme
+                            title: strings.playlist_title
+                            description: strings.hero_playlist_desc
+                        }
 
                         RowLayout {
                             Layout.fillWidth: true
@@ -37,7 +44,9 @@ import "../components"
                                 Layout.fillWidth: true
                                 hint: strings.playlist_url_placeholder
                                 selectByMouse: true
-                                onAccepted: appRoot.loadPlaylist()
+                                onAccepted: appRoot.loadPlaylist(
+                                                playlistUrl.text,
+                                                playlistLimit.value)
                             }
                             AppButton {
                                 text: bridge.playlistLoading
@@ -53,7 +62,9 @@ import "../components"
                                 highlighted: true
                                 onClicked: bridge.playlistLoading
                                            ? bridge.cancelPlaylist()
-                                           : appRoot.loadPlaylist()
+                                           : appRoot.loadPlaylist(
+                                                 playlistUrl.text,
+                                                 playlistLimit.value)
                             }
                         }
 
@@ -61,12 +72,12 @@ import "../components"
                             Layout.fillWidth: true
                             spacing: 8
                             Label { text: strings.playlist_limit; font.pixelSize: 13; color: appRoot.theme.textSecondary; Layout.alignment: Qt.AlignVCenter }
-                            SpinBox {
+                            AppSpinBox {
                                 id: playlistLimit
                                 from: 0; to: 5000; stepSize: 50
                                 value: 200
                                 editable: true
-                                ToolTip.text: strings.playlist_no_limit; ToolTip.visible: hovered; ToolTip.delay: 500
+                                tipText: strings.playlist_no_limit
                             }
                             Item { Layout.fillWidth: true }
                         }
@@ -151,9 +162,7 @@ import "../components"
                                 opacity: playlistFilter.text.length > 0 ? 1 : 0
                                 enabled: playlistFilter.text.length > 0
                                 Accessible.name: strings.btn_clear
-                                ToolTip.text: strings.btn_clear
-                                ToolTip.visible: hovered
-                                ToolTip.delay: 500
+                                tipText: strings.btn_clear
                                 onClicked: playlistFilter.clear()
                             }
                         }
@@ -251,6 +260,7 @@ import "../components"
                             spacing: 8
                             AppButton {
                                 text: strings.btn_add_selected
+                                variant: "secondary"
                                 icon.source: appRoot.iconPath("add")
                                 icon.width: 16; icon.height: 16
                                 display: AbstractButton.TextBesideIcon

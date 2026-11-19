@@ -130,7 +130,7 @@ def test_compress_runs_ffmpeg_h264(monkeypatch, tmp_path):
     def fake_run(cmd, duration=None, is_ffmpeg=False):
         captured["cmd"] = list(cmd)
         with open(cmd[-1], "wb") as fh:
-            fh.write(b"compressed")
+            fh.write(b"compressed" * 8)
         return True, cmd[-1]
 
     monkeypatch.setattr(w, "_run_process", fake_run)
@@ -140,7 +140,7 @@ def test_compress_runs_ffmpeg_h264(monkeypatch, tmp_path):
     assert src.exists()  # original preservado (sem perda de dados)
     cmd = captured["cmd"]
     assert "libx264" in cmd
-    assert "-crf" in cmd and "28" in cmd
+    assert "-crf" in cmd and "24" in cmd
     # Todas as trilhas relevantes devem ser mapeadas, não só a padrão.
     assert "-map" in cmd and "0:a?" in cmd and "0:s:0" in cmd
 

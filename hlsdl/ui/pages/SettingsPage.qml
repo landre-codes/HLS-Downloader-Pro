@@ -9,19 +9,29 @@ import "../components"
     property var appRoot
     property var strings: ({})
     property alias settingsScroll: settingsScroll
+    readonly property bool showHero: width >= 1050 && height >= 650
 
     ScrollView {
                 id: settingsScroll
+                objectName: "settingsScroll"
                 anchors.fill: parent
                 anchors.margins: 16
                 clip: true
                 contentWidth: availableWidth
                 ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-                ScrollBar.vertical.policy: ScrollBar.AsNeeded
+                ScrollBar.vertical.policy: ScrollBar.AlwaysOn
 
                 ColumnLayout {
                     width: settingsScroll.availableWidth
                     spacing: 12
+
+                    PageHero {
+                        Layout.fillWidth: true
+                        compact: !page.showHero
+                        theme: appRoot.theme
+                        title: strings.tab_settings
+                        description: strings.hero_settings_desc
+                    }
 
                     // -------------------------------------------- Aparência
                     Rectangle {
@@ -49,9 +59,7 @@ import "../components"
                                     icon.width: 20
                                     icon.height: 20
                                     Accessible.name: strings.cfg_dark
-                                    ToolTip.text: strings.cfg_dark_tip
-                                    ToolTip.visible: hovered
-                                    ToolTip.delay: 500
+                                    tipText: strings.cfg_dark_tip
                                     onClicked: bridge.setDark(!appRoot.dark)
                                 }
                             }
@@ -95,12 +103,12 @@ import "../components"
                                 Layout.fillWidth: true
                                 spacing: 12
                                 Label { text: strings.cfg_concurrency; Layout.fillWidth: true; font.pixelSize: 13; wrapMode: Text.WordWrap }
-                                SpinBox {
+                                AppSpinBox {
                                     id: concurrencySpin
                                     from: 1; to: 8
                                     value: bridge.concurrency
                                     editable: true
-                                    ToolTip.text: strings.cfg_concurrency_tip; ToolTip.visible: hovered; ToolTip.delay: 500
+                                    tipText: strings.cfg_concurrency_tip
                                     onValueChanged: if (value !== bridge.concurrency) bridge.setConcurrency(value)
                                 }
                             }
@@ -124,28 +132,60 @@ import "../components"
                                     valueRole: "value"
                                     currentIndex: bridge.namingMode === "title" ? 1 : 0
                                     Layout.preferredWidth: 220
-                                    ToolTip.text: strings.naming_tip
-                                    ToolTip.visible: hovered
-                                    ToolTip.delay: 500
+                                    tipText: strings.naming_tip
                                     onActivated: bridge.setNamingMode(currentValue)
                                 }
                             }
+                            FolderPickerField {
+                                Layout.fillWidth: true
+                                theme: appRoot.theme
+                                label: strings.folder_output_label
+                                path: bridge.outputFolder
+                                changeText: strings.folder_change
+                                openText: strings.folder_open
+                                copyText: strings.folder_copy
+                                folderIcon: appRoot.iconPath("open")
+                                copyIcon: appRoot.iconPath("copy")
+                                onChangeRequested: bridge.chooseOutputFolder()
+                                onOpenRequested: bridge.openOutputFolder()
+                                onCopyRequested: bridge.copyLink(bridge.outputFolder)
+                            }
+                        }
+                    }
+
+                    // -------------------------------------------- Integridade
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: integrityCol.implicitHeight + 32
+                        radius: 12
+                        color: appRoot.theme.cardBg
+                        border.color: appRoot.theme.cardBorder
+                        border.width: 1
+                        ColumnLayout {
+                            id: integrityCol
+                            anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
+                            anchors.margins: 16
+                            spacing: 12
+                            Label { text: strings.cfg_sidecars; font.pixelSize: 15; font.weight: Font.DemiBold }
                             RowLayout {
                                 Layout.fillWidth: true
                                 spacing: 12
-                                AppButton {
-                                    text: strings.cfg_outdir
-                                    ToolTip.text: strings.cfg_outdir_tip; ToolTip.visible: hovered; ToolTip.delay: 500
-                                    onClicked: bridge.chooseOutputFolder()
-                                }
                                 Label {
-                                    id: outputFolderLabel
-                                    text: bridge.outputFolder
-                                    color: appRoot.theme.textSecondary
-                                    font.pixelSize: 12
-                                    elide: Text.ElideMiddle
+                                    text: strings.cfg_sidecars_tip
                                     Layout.fillWidth: true
+                                    font.pixelSize: 12
+                                    color: appRoot.theme.textSecondary
+                                    wrapMode: Text.WordWrap
                                 }
+                                AppSwitch {
+                                    checked: bridge.sidecarsEnabled
+                                    Accessible.name: strings.cfg_sidecars
+                                    onToggled: bridge.setSidecarsEnabled(checked)
+                                }
+                            }
+                            AppButton {
+                                text: strings.cfg_sidecars_cleanup
+                                onClicked: bridge.cleanupSidecars()
                             }
                         }
                     }
@@ -164,20 +204,26 @@ import "../components"
                             anchors.margins: 16
                             spacing: 12
                             Label {
+                                id: networkLabel
                                 text: strings.cfg_network; font.pixelSize: 15; font.weight: Font.DemiBold
-                                ToolTip.text: strings.cfg_network_tip; ToolTip.visible: networkHover.hovered; ToolTip.delay: 500
                                 HoverHandler { id: networkHover }
+                                AppToolTip {
+                                    target: networkLabel
+                                    title: strings.cfg_network
+                                    text: strings.cfg_network_tip
+                                    available: strings.cfg_network_tip.length > 0
+                                }
                             }
                             RowLayout {
                                 Layout.fillWidth: true
                                 spacing: 12
                                 Label { text: strings.cfg_limit_rate; Layout.fillWidth: true; font.pixelSize: 13; wrapMode: Text.WordWrap }
-                                SpinBox {
+                                AppSpinBox {
                                     id: limitRateSpin
                                     from: 0; to: 100; stepSize: 1
                                     value: bridge.limitRateMB
                                     editable: true
-                                    ToolTip.text: strings.cfg_limit_rate_tip; ToolTip.visible: hovered; ToolTip.delay: 500
+                                    tipText: strings.cfg_limit_rate_tip
                                     onValueChanged: if (value !== bridge.limitRateMB) bridge.setLimitRateMB(value)
                                 }
                             }
@@ -185,12 +231,12 @@ import "../components"
                                 Layout.fillWidth: true
                                 spacing: 12
                                 Label { text: strings.cfg_fragments; Layout.fillWidth: true; font.pixelSize: 13; wrapMode: Text.WordWrap }
-                                SpinBox {
+                                AppSpinBox {
                                     id: fragmentsSpin
                                     from: 1; to: 8
                                     value: bridge.fragments
                                     editable: true
-                                    ToolTip.text: strings.cfg_fragments_tip; ToolTip.visible: hovered; ToolTip.delay: 500
+                                    tipText: strings.cfg_fragments_tip
                                     onValueChanged: if (value !== bridge.fragments) bridge.setFragments(value)
                                 }
                             }
@@ -217,7 +263,7 @@ import "../components"
                                 Label { text: strings.cfg_cookies_use; font.pixelSize: 13; Layout.fillWidth: true; wrapMode: Text.WordWrap }
                                 AppSwitch {
                                     checked: bridge.cookiesEnabled
-                                    ToolTip.text: strings.cfg_cookies_use_tip; ToolTip.visible: hovered; ToolTip.delay: 500
+                                    tipText: strings.cfg_cookies_use_tip
                                     onToggled: bridge.setCookiesEnabled(checked)
                                 }
                             }
@@ -232,7 +278,7 @@ import "../components"
                                     onActivated: bridge.setCookiesBrowserIndex(currentIndex)
                                     enabled: bridge.cookiesEnabled
                                     Layout.preferredWidth: 200
-                                    ToolTip.text: strings.cfg_browser_tip; ToolTip.visible: hovered; ToolTip.delay: 500
+                                    tipText: strings.cfg_browser_tip
                                 }
                             }
                             RowLayout {
@@ -251,12 +297,15 @@ import "../components"
                                     hint: strings.cfg_cookies_placeholder
                                     selectByMouse: true
                                     Layout.fillWidth: true
-                                    ToolTip.text: strings.cfg_cookies_file_tip; ToolTip.visible: hovered; ToolTip.delay: 500
+                                    tipText: strings.cfg_cookies_file_tip
                                 }
                                 AppButton {
                                     text: strings.btn_choose
-                                    enabled: bridge.cookiesEnabled
-                                    ToolTip.text: strings.btn_choose_tip; ToolTip.visible: hovered; ToolTip.delay: 500
+                                    variant: "secondary"
+                                    icon.source: appRoot.iconPath("file")
+                                    icon.width: 18; icon.height: 18
+                                    display: AbstractButton.TextBesideIcon
+                                    tipText: strings.btn_choose_tip
                                     onClicked: bridge.chooseCookiesFile()
                                 }
                             }
@@ -301,11 +350,19 @@ import "../components"
                                 }
                                 AppButton {
                                     text: strings.dep_update_all
+                                    variant: "secondary"
+                                    icon.source: appRoot.iconPath("download")
+                                    icon.width: 18; icon.height: 18
+                                    display: AbstractButton.TextBesideIcon
                                     enabled: !bridge.depsBusy
                                     onClicked: appRoot.askUpdateAllDependencies()
                                 }
                                 AppButton {
                                     text: strings.dep_recheck
+                                    variant: "secondary"
+                                    icon.source: appRoot.iconPath("search")
+                                    icon.width: 18; icon.height: 18
+                                    display: AbstractButton.TextBesideIcon
                                     enabled: !bridge.depsBusy
                                     onClicked: bridge.refreshDependencies()
                                 }
@@ -382,7 +439,12 @@ import "../components"
                                     AppButton {
                                         visible: modelData.installable
                                         enabled: !bridge.depsBusy
+                                        variant: "secondary"
+                                        size: "compact"
                                         text: modelData.found ? strings.dep_update : strings.dep_install
+                                        icon.source: appRoot.iconPath(modelData.found ? "retry" : "download")
+                                        icon.width: 16; icon.height: 16
+                                        display: AbstractButton.TextBesideIcon
                                         onClicked: appRoot.askInstallDependency(
                                             modelData.key, modelData.name, modelData.found
                                         )
@@ -425,8 +487,9 @@ import "../components"
                                 }
                                 AppButton {
                                     text: strings.update_check
+                                    variant: "secondary"
                                     icon.source: appRoot.iconPath("retry")
-                                    icon.width: 16; icon.height: 16
+                                    icon.width: 18; icon.height: 18
                                     display: AbstractButton.TextBesideIcon
                                     enabled: !bridge.updateBusy
                                     onClicked: bridge.checkForUpdates()
@@ -434,11 +497,11 @@ import "../components"
                                 AppButton {
                                     text: strings.update_download
                                     icon.source: appRoot.iconPath("download")
-                                    icon.width: 16; icon.height: 16
                                     display: AbstractButton.TextBesideIcon
                                     visible: bridge.updateAvailable
                                     enabled: !bridge.updateBusy
                                     highlighted: true
+                                    icon.width: 18; icon.height: 18
                                     onClicked: {
                                         if (bridge.queueActive || bridge.compressionActive)
                                             appRoot.openConfirmUpdate()

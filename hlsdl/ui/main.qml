@@ -4,6 +4,7 @@ import QtQuick.Controls.Material
 import QtQuick.Layouts
 import QtQml.Models
 import "i18n.js" as I18n
+import "motion.js" as Motion
 import "dialogs"
 import "pages"
 import "components"
@@ -68,6 +69,9 @@ ApplicationWindow {
         readonly property color terminalPrompt: "#27c93f"
         readonly property color terminalSelection: "#264f78"
         readonly property color toastBg: dark ? "#2b3138" : "#32363c"
+        readonly property color heroFrom: dark ? "#1b2c3a" : "#eaf4ff"
+        readonly property color heroTo: dark ? "#1d2329" : "#ffffff"
+        readonly property color heroBorder: dark ? "#2d4557" : "#cfe0f2"
         readonly property color badgeDone: "#2e7d32"
         readonly property color badgeError: "#b71c1c"
         readonly property color badgeDownloading: "#00695c"
@@ -102,6 +106,19 @@ ApplicationWindow {
     property int normalW: 0
     property int normalH: 0
     property bool allowClose: false
+    property bool wasMinimized: false
+    property bool minimizeAnimating: false
+
+    function minimizeAnimated() {
+        if (root.visibility === Window.Minimized || root.minimizeAnimating)
+            return
+        if (root.contentItem === null) {
+            root.showMinimized()
+            return
+        }
+        root.minimizeAnimating = true
+        minimizeAnimation.start()
+    }
 
     function rememberNormalGeometry() {
         if (root.visibility !== Window.Maximized) {
@@ -260,14 +277,17 @@ ApplicationWindow {
             playlistModel.setProperty(i, "selected", flag)
         refreshSelCount()
     }
-    function loadPlaylist() {
-        var u = playlistUrl.text.trim()
+    function loadPlaylist(url, limit) {
+        var u = String(url || "").trim()
         if (u.length === 0)
             return
+        var parsedLimit = Number(limit)
+        if (!isFinite(parsedLimit) || parsedLimit < 0)
+            parsedLimit = 0
         playlistModel.clear()
         root.playlistSelCount = 0
         root.playlistVisibleCount = 0
-        bridge.loadPlaylist(u, playlistLimit.value)
+        bridge.loadPlaylist(u, Math.floor(parsedLimit))
     }
     function selectedPlaylistText() {
         var out = []
@@ -371,7 +391,9 @@ ApplicationWindow {
     Material.accent: root.theme.accentText
     Material.primary: root.theme.accentFill
     Material.foreground: root.theme.text
-    Material.background: root.theme.windowBg
+    // Não usar Material.background aqui: ele também pinta o fundo de botões
+    // highlighted, deixando texto branco sobre cinza claro no tema claro.
+    background: Rectangle { color: root.theme.windowBg }
 
     property int statWaiting: 0
     property int statDownloading: 0
@@ -391,6 +413,12 @@ ApplicationWindow {
             confirmClose.open()
             return
         }
+        minimizeAnimation.stop()
+        restoreAnimation.stop()
+        if (root.contentItem !== null) {
+            root.contentItem.opacity = 1
+            root.contentItem.scale = 1
+        }
         root.saveWindowGeometry()
     }
 
@@ -399,6 +427,18 @@ ApplicationWindow {
             var geo = root.screen.availableGeometry
             if (geo)
                 root.setGeometry(geo.x, geo.y, geo.width, geo.height)
+        }
+        if (root.visibility === Window.Minimized) {
+            root.wasMinimized = true
+            return
+        }
+        if (root.wasMinimized) {
+            root.wasMinimized = false
+            if (root.contentItem !== null) {
+                root.contentItem.opacity = 0
+                root.contentItem.scale = 0.985
+                restoreAnimation.start()
+            }
         }
     }
 
@@ -412,6 +452,44 @@ ApplicationWindow {
         return item !== null && (item instanceof TextInput || item instanceof TextEdit
                                  || item instanceof SpinBox)
     }
+    SequentialAnimation {
+        id: minimizeAnimation
+        NumberAnimation {
+            target: root.contentItem
+            property: "opacity"
+            to: 0
+            duration: Motion.minimize
+            easing.type: Easing.InCubic
+        }
+        NumberAnimation {
+            target: root.contentItem
+            property: "scale"
+            to: 0.985
+            duration: Motion.minimize
+            easing.type: Easing.InCubic
+        }
+        ScriptAction { script: root.showMinimized() }
+        onFinished: root.minimizeAnimating = false
+    }
+
+    ParallelAnimation {
+        id: restoreAnimation
+        NumberAnimation {
+            target: root.contentItem
+            property: "opacity"
+            to: 1
+            duration: Motion.restore
+            easing.type: Easing.OutCubic
+        }
+        NumberAnimation {
+            target: root.contentItem
+            property: "scale"
+            to: 1
+            duration: Motion.restore
+            easing.type: Easing.OutCubic
+        }
+    }
+
     Shortcut { sequence: "Ctrl+V"; enabled: !root.typing; onActivated: bridge.pasteFromClipboard() }
     Shortcut {
         sequence: "Ctrl+Return"
@@ -429,11 +507,27 @@ ApplicationWindow {
                 inputArea.clear()
         }
     }
+    Shortcut {
+        sequence: "Ctrl+F"
+        enabled: true
+        onActivated: {
+            if (tabBar.currentIndex === 1)
+                batchPage.filterField.forceActiveFocus()
+            else if (tabBar.currentIndex === 3)
+                compressionPage.filterField.forceActiveFocus()
+        }
+    }
     Shortcut { sequence: "F5"; onActivated: bridge.startQueue() }
     Shortcut {
         sequence: "Delete"
         enabled: !root.typing && tabBar.currentIndex === 1 && root.queueFilterText.length === 0
-        onActivated: if (listView.currentIndex >= 0) bridge.removeItem(listView.currentIndex)
+        onActivated: {
+            if (listView.currentIndex >= 0) {
+                var source = batchPage.batchSourceIndex(listView.currentIndex)
+                if (source >= 0)
+                    bridge.removeItem(source)
+            }
+        }
     }
 
     DropArea {
@@ -503,7 +597,23 @@ ApplicationWindow {
         anchors.right: parent.right
         height: 44
         color: root.theme.titleBg
+        gradient: Gradient {
+            GradientStop { position: 0.0; color: root.theme.titleBg }
+            GradientStop {
+                position: 1.0
+                color: root.theme.dark ? Qt.lighter(root.theme.titleBg, 1.06)
+                                       : Qt.darker(root.theme.titleBg, 1.02)
+            }
+        }
         z: 60
+
+        Rectangle {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            height: 1
+            color: root.theme.divider
+        }
 
         MouseArea {
             id: dragArea
@@ -544,27 +654,59 @@ ApplicationWindow {
             anchors.rightMargin: 6
             spacing: 8
 
-            Rectangle { width: 10; height: 30; radius: 5; color: Material.accent }
+            Rectangle {
+                width: 7
+                height: 28
+                radius: 3.5
+                color: root.theme.accentFill
+                Layout.alignment: Qt.AlignVCenter
+            }
             Label {
                 text: "HLS Downloader Pro"
-                font.pixelSize: 13
+                font.pixelSize: 14
                 font.weight: Font.DemiBold
                 color: root.theme.text
+                Layout.alignment: Qt.AlignVCenter
             }
             Label {
-                text: strings.titlebar_sub + "  ·  v" + bridge.appVersion
+                text: strings.titlebar_sub
                 font.pixelSize: 11
                 color: root.theme.textMuted
-                Layout.topMargin: 6
+                Layout.alignment: Qt.AlignVCenter
+                Layout.topMargin: 1
+                elide: Text.ElideRight
+                Layout.maximumWidth: 260
+            }
+            Rectangle {
+                Layout.alignment: Qt.AlignVCenter
+                implicitWidth: versionLabel.implicitWidth + 14
+                implicitHeight: 20
+                radius: 10
+                color: root.theme.dark ? "#202b34" : "#dde5ee"
+                border.width: 1
+                border.color: root.theme.dark ? "#334553" : "#c9d4df"
+                Label {
+                    id: versionLabel
+                    anchors.centerIn: parent
+                    text: "v" + bridge.appVersion
+                    font.pixelSize: 10
+                    color: root.theme.textMuted
+                }
             }
             Item { Layout.fillWidth: true }
-            Rectangle { width: 1; height: 18; color: root.theme.divider }
+            Rectangle {
+                width: 1
+                height: 18
+                color: root.theme.divider
+                Layout.alignment: Qt.AlignVCenter
+                Layout.rightMargin: 2
+            }
 
             TitleBarButton {
                 theme: root.theme
                 kind: "minimize"
                 tip: strings.win_minimize
-                onClicked: root.showMinimized()
+                onClicked: root.minimizeAnimated()
             }
             TitleBarButton {
                 id: maxBtn
@@ -588,6 +730,7 @@ ApplicationWindow {
     // ================================================== ABAS
     TabBar {
         id: tabBar
+        objectName: "mainTabBar"
         anchors.top: titleBar.bottom
         anchors.left: parent.left
         anchors.right: parent.right
@@ -595,23 +738,28 @@ ApplicationWindow {
         background: Rectangle { color: root.theme.tabBg }
         AppTabButton {
             text: strings.tab_single; font.pixelSize: 13; implicitWidth: 170
-            ToolTip.text: strings.tab_single_tip; ToolTip.visible: hovered; ToolTip.delay: 500
+            tipTitle: strings.tab_single
+            tipText: strings.tab_single_tip
         }
         AppTabButton {
             text: strings.tab_downloads; font.pixelSize: 13; implicitWidth: 130
-            ToolTip.text: strings.tab_downloads_tip; ToolTip.visible: hovered; ToolTip.delay: 500
+            tipTitle: strings.tab_downloads
+            tipText: strings.tab_downloads_tip
         }
         AppTabButton {
             text: strings.tab_playlist; font.pixelSize: 13; implicitWidth: 130
-            ToolTip.text: strings.tab_playlist_tip; ToolTip.visible: hovered; ToolTip.delay: 500
+            tipTitle: strings.tab_playlist
+            tipText: strings.tab_playlist_tip
         }
         AppTabButton {
             text: strings.tab_compress; font.pixelSize: 13; implicitWidth: 130
-            ToolTip.text: strings.tab_compress_tip; ToolTip.visible: hovered; ToolTip.delay: 500
+            tipTitle: strings.tab_compress
+            tipText: strings.tab_compress_tip
         }
         AppTabButton {
             text: strings.tab_settings; font.pixelSize: 13; implicitWidth: 150
-            ToolTip.text: strings.tab_settings_tip; ToolTip.visible: hovered; ToolTip.delay: 500
+            tipTitle: strings.tab_settings
+            tipText: strings.tab_settings_tip
         }
     }
 
@@ -676,25 +824,45 @@ ApplicationWindow {
     // -------------------------------------------------------------------- Toast
     Rectangle {
         id: toast
+        objectName: "toast"
         visible: false
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 28
-        width: Math.min(root.width - 40, toastText.implicitWidth + 36)
-        height: 42
-        radius: 21
+        width: Math.min(root.width - 40, Math.min(620, toastMetrics.width + 36))
+        height: Math.max(42, toastText.implicitHeight + 20)
+        radius: 12
         color: root.theme.toastBg
         z: 100
+        Accessible.role: Accessible.StaticText
+        Accessible.name: toastText.text
+        TextMetrics {
+            id: toastMetrics
+            font: toastText.font
+            text: toastText.text
+        }
         Label {
             id: toastText
             anchors.centerIn: parent
             color: root.theme.onAccent
             font.pixelSize: 13
+            wrapMode: Text.Wrap
+            maximumLineCount: 3
             elide: Text.ElideRight
             width: parent.width - 24
             horizontalAlignment: Text.AlignHCenter
         }
-        Timer { id: toastTimer; interval: 2600; onTriggered: toast.visible = false }
+        MouseArea {
+            anchors.fill: parent
+            onClicked: toast.visible = false
+        }
+        Timer {
+            id: toastTimer
+            // Mensagens longas/críticas ficam mais tempo; curtas continuam
+            // efêmeras. O usuário também pode fechar clicando.
+            interval: Math.max(2600, Math.min(8000, 1800 + toastText.text.length * 45))
+            onTriggered: toast.visible = false
+        }
     }
 
     // --------------------------------------------------------- di?logos
@@ -706,6 +874,7 @@ ApplicationWindow {
 
     ErrorDialog {
         id: errorDialog
+        objectName: "errorDialog"
         appRoot: root
         strings: root.strings
         message: root.errorText

@@ -1,0 +1,103 @@
+{
+  "screenshots": [
+    {
+      "file": "1160x800-light-compression-rows.png",
+      "theme": "light",
+      "tab": 3,
+      "width": 1160,
+      "height": 800
+    },
+    {
+      "file": "1160x800-light-compression-filter.png",
+      "theme": "light",
+      "tab": 3,
+      "width": 1160,
+      "height": 800,
+      "filter": "status:erro"
+    },
+    {
+      "file": "1160x800-light-compression-sorted.png",
+      "theme": "light",
+      "tab": 3,
+      "width": 1160,
+      "height": 800,
+      "sort": "name asc"
+    },
+    {
+      "file": "1160x800-light-tooltip-sort.png",
+      "theme": "light",
+      "tab": 3,
+      "width": 1160,
+      "height": 800,
+      "tooltip": "sort name"
+    },
+    {
+      "file": "1160x800-dark-compression-rows.png",
+      "theme": "dark",
+      "tab": 3,
+      "width": 1160,
+      "height": 800
+    },
+    {
+      "file": "940x620-light-compression-rows.png",
+      "theme": "light",
+      "tab": 3,
+      "width": 940,
+      "height": 620
+    },
+    {
+      "file": "940x620-light-compression-collapsed.png",
+      "theme": "light",
+      "tab": 3,
+      "width": 940,
+      "height": 620,
+      "settings": "collapsed"
+    },
+    {
+      "file": "1160x800-light-batch-rows.png",
+      "theme": "light",
+      "tab": 1,
+      "width": 1160,
+      "height": 800
+    },
+    {
+      "file": "1160x800-light-batch-filter.png",
+      "theme": "light",
+      "tab": 1,
+      "width": 1160,
+      "height": 800,
+      "filter": "status:erro"
+    },
+    {
+      "file": "1160x800-light-batch-sorted.png",
+      "theme": "light",
+      "tab": 1,
+      "width": 1160,
+      "height": 800,
+      "sort": "name asc"
+    },
+    {
+      "file": "1160x800-light-tooltip-shortcut.png",
+      "theme": "light",
+      "tab": 1,
+      "width": 1160,
+      "height": 800,
+      "tooltip": "paste shortcut"
+    },
+    {
+      "file": "1160x800-dark-batch-rows.png",
+      "theme": "dark",
+      "tab": 1,
+      "width": 1160,
+      "height": 800
+    },
+    {
+      "file": "940x620-light-batch-rows.png",
+      "theme": "light",
+      "tab": 1,
+      "width": 940,
+      "height": 620
+    }
+  ],
+  "failures": []
+}

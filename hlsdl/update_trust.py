@@ -40,11 +40,12 @@ def verify_update_manifest(
         return False, "cryptography_missing"
 
     try:
-        raw_signature = base64.b64decode(
-            signature_b64.encode("ascii") if isinstance(signature_b64, str)
-            else signature_b64,
-            validate=True,
+        signature_bytes = (
+            signature_b64.strip().encode("ascii")
+            if isinstance(signature_b64, str)
+            else signature_b64.strip()
         )
+        raw_signature = base64.b64decode(signature_bytes, validate=True)
         public_key = Ed25519PublicKey.from_public_bytes(
             base64.b64decode(key_b64, validate=True)
         )

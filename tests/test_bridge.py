@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from PySide6.QtWidgets import QApplication
+
 from hlsdl.bridge import Bridge
+from hlsdl.i18n import tr
 from hlsdl.model import DownloadModel
 from hlsdl.queue import QueueManager
 
@@ -97,3 +100,37 @@ def test_batch_ignores_url_active_in_single_queue(qapp, tmp_path, fake_deps):
     b.single_manager.items[0]["status"] = Status.DOWNLOADING
     assert b.addLinks("https://a.com/1\nhttps://b.com/2") == 1
     assert [item["url"] for item in b.manager.items] == ["https://b.com/2"]
+
+
+def test_copy_link_uses_the_imported_clipboard(qapp, tmp_path, fake_deps):
+    b = _bridge(tmp_path, fake_deps)
+    b.setLanguage("pt")
+    QApplication.clipboard().clear()
+    b.copyLink("https://example.com/path")
+    assert QApplication.clipboard().text() == "https://example.com/path"
+
+
+def test_copy_link_reports_unavailable_clipboard(
+    qapp, tmp_path, fake_deps, monkeypatch
+):
+    b = _bridge(tmp_path, fake_deps)
+    b.setLanguage("pt")
+    messages: list[str] = []
+    b.notifyText.connect(messages.append)
+    monkeypatch.setattr(
+        "hlsdl.bridge_parts.downloads.QApplication.clipboard",
+        staticmethod(lambda: (_ for _ in ()).throw(RuntimeError("sem clipboard"))),
+    )
+    b.copyLink("https://example.com/path")
+    assert messages and messages[-1] == tr("pt", "clipboard_unavailable")
+
+
+def test_sidecars_setting_roundtrip(qapp, tmp_path, fake_deps):
+    b = _bridge(tmp_path, fake_deps)
+    assert b.sidecarsEnabled is False
+    b.setSidecarsEnabled(True)
+    assert b.sidecarsEnabled is True
+    b2 = _bridge(tmp_path, fake_deps)
+    assert b2.sidecarsEnabled is True
+    b2.setSidecarsEnabled(False)
+    assert b2.sidecarsEnabled is False

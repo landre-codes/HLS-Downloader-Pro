@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import threading
 
 import pytest
 
@@ -24,11 +25,14 @@ from hlsdl.compress import (
     estimate_saving,
     filter_hardware_encoders,
     is_integrated_gpu,
+    make_item,
     output_path,
     pick_encoder,
+    quality_max_for_encoder,
     reset_qsv_device_cache,
     resolve_encoder,
     resolve_qsv_device,
+    scan_media_paths,
     skip_reason,
     validate_visual_quality_report,
     video_args,
@@ -82,7 +86,7 @@ def test_quality_report_flags_extreme_bitrate_drop():
         "format": {"duration": "10", "bit_rate": "450000"},
     }
     report = build_quality_report(
-        source, output, CompressionSettings(), 18_750_000, 562_500, 10.0, 0.95
+        source, output, CompressionSettings(), 18_750_000, 562_500, 10.0, 0.93
     )
     assert report["bitrate_before"] == 15_000_000
     assert report["bitrate_after"] == 450_000
@@ -90,6 +94,78 @@ def test_quality_report_flags_extreme_bitrate_drop():
     assert report["size_before"] == 18_750_000
     assert report["size_after"] == 562_500
     assert report["saving"] == 97.0
+
+
+def test_quality_report_flags_half_bitrate_drop():
+    source = {
+        "streams": [{
+            "codec_type": "video", "codec_name": "h264",
+            "width": 1920, "height": 1080, "avg_frame_rate": "30/1",
+        }],
+        "format": {"duration": "10", "bit_rate": "15000000"},
+    }
+    output = {
+        "streams": [{
+            "codec_type": "video", "codec_name": "hevc",
+            "width": 1920, "height": 1080, "avg_frame_rate": "30/1",
+        }],
+        "format": {"duration": "10", "bit_rate": "7000000"},
+    }
+    report = build_quality_report(
+        source, output, CompressionSettings(), 18_750_000, 8_750_000, 10.0, 0.93
+    )
+    assert report["quality_warning"] == "bitrate_drop"
+
+
+def test_quality_report_allows_hardware_floor_margin():
+    source = {
+        "streams": [{
+            "codec_type": "video", "codec_name": "h264",
+            "width": 1920, "height": 1080, "avg_frame_rate": "30/1",
+        }],
+        "format": {"duration": "10", "bit_rate": "10000000"},
+    }
+    output = {
+        "streams": [{
+            "codec_type": "video", "codec_name": "hevc",
+            "width": 1920, "height": 1080, "avg_frame_rate": "30/1",
+        }],
+        "format": {"duration": "10", "bit_rate": "4800000"},
+    }
+    report = build_quality_report(
+        source, output, CompressionSettings(), 12_500_000, 6_000_000, 10.0,
+        0.96, bitrate_floor=True,
+    )
+    assert report["quality_warning"] == ""
+
+    output["format"]["bit_rate"] = "4000000"
+    report = build_quality_report(
+        source, output, CompressionSettings(), 12_500_000, 5_000_000, 10.0,
+        0.93, bitrate_floor=True,
+    )
+    assert report["quality_warning"] == "bitrate_drop"
+
+
+def test_quality_report_ignores_drop_when_ssim_high():
+    source = {
+        "streams": [{
+            "codec_type": "video", "codec_name": "h264",
+            "width": 1920, "height": 1080, "avg_frame_rate": "30/1",
+        }],
+        "format": {"duration": "10", "bit_rate": "15000000"},
+    }
+    output = {
+        "streams": [{
+            "codec_type": "video", "codec_name": "hevc",
+            "width": 1920, "height": 1080, "avg_frame_rate": "30/1",
+        }],
+        "format": {"duration": "10", "bit_rate": "1600000"},
+    }
+    report = build_quality_report(
+        source, output, CompressionSettings(), 18_750_000, 2_000_000, 10.0, 0.99
+    )
+    assert report["quality_warning"] == ""
+    assert report["saving"] > 89
 
 
 def test_quality_report_does_not_warn_when_scaled():
@@ -219,6 +295,43 @@ def test_build_args_includes_qsv_device():
                      "hevc_qsv", probe, qsv_device=1)
     assert "-qsv_device" in cmd
     assert cmd[cmd.index("-qsv_device") + 1] == "1"
+
+
+def test_build_args_adds_hardware_bitrate_floor():
+    probe = {
+        "streams": [{"codec_type": "video", "codec_name": "h264"}],
+        "format": {"duration": "1", "bit_rate": "10000000"},
+    }
+    settings = CompressionSettings(min_bitrate_percent=50)
+    cmd = build_args("in.mp4", "out.mp4", settings, "hevc_qsv", probe)
+    assert cmd[cmd.index("-b:v") + 1] == "5000000"
+    assert cmd[cmd.index("-maxrate") + 1] == "6250000"
+    assert cmd[cmd.index("-bufsize") + 1] == "10000000"
+
+
+def test_build_args_floor_falls_back_to_size_duration(tmp_path):
+    src = tmp_path / "in.mp4"
+    src.write_bytes(b"x" * 1_250_000)
+    probe = {
+        "streams": [{
+            "codec_type": "video", "codec_name": "h264",
+            "duration": "10",
+        }],
+        "format": {"duration": "10"},
+    }
+    settings = CompressionSettings(min_bitrate_percent=50)
+    cmd = build_args(str(src), "out.mp4", settings, "hevc_qsv", probe)
+    assert cmd[cmd.index("-b:v") + 1] == "500000"
+
+
+def test_build_args_does_not_apply_floor_to_software():
+    probe = {
+        "streams": [{"codec_type": "video", "codec_name": "h264"}],
+        "format": {"duration": "1", "bit_rate": "10000000"},
+    }
+    settings = CompressionSettings(min_bitrate_percent=50)
+    cmd = build_args("in.mp4", "out.mp4", settings, "libx265", probe)
+    assert "-b:v" not in cmd
 
 
 def test_build_args_omits_invalid_color_metadata():
@@ -449,7 +562,7 @@ def test_manager_queue_real_encode(qapp, tmp_path):
     or not {"libx264", "libx265"} <= detect_encoders(),
     reason="ffmpeg/ffprobe/libx264/libx265 indisponíveis",
 )
-def test_worker_rejects_extreme_quality_drop_and_keeps_original(qapp, tmp_path):
+def test_worker_accepts_high_ssim_even_with_bitrate_drop(qapp, tmp_path):
     ffmpeg = which("ffmpeg")
     src = tmp_path / "in.mp4"
     subprocess.run(
@@ -479,8 +592,211 @@ def test_worker_rejects_extreme_quality_drop_and_keeps_original(qapp, tmp_path):
     worker.completed.connect(lambda *args: completed.append(args))
     worker.run()
 
-    assert prompts, "a queda extrema deveria pedir confirmação"
-    assert prompts[0]["quality_warning"] == "bitrate_drop"
-    assert skipped and not completed
+    # SSIM alto: a queda de bitrate é eficiência do codec e não é tratada
+    # como perda de qualidade.
+    assert not prompts
+    assert completed and not skipped
     assert src.read_bytes() == before
     assert not list(tmp_path.glob("*.part.*"))
+
+
+def test_compression_signals_allow_large_file_sizes(qapp):
+    worker = CompressionWorker("in.mp4", CompressionSettings(), "libx265")
+    succeeded: list[tuple] = []
+    completed: list[tuple] = []
+    worker.succeeded.connect(lambda *args: succeeded.append(args))
+    worker.completed.connect(lambda *args: completed.append(args))
+
+    before = 2_861_413_343
+    after = 1_333_666_239
+    worker.succeeded.emit("out.mp4", "out.mp4", before, after)
+    worker.completed.emit("out.mp4", "", before, after, "hash", "ok")
+
+    assert succeeded and succeeded[0][2] == before
+    assert succeeded[0][3] == after
+    assert completed and completed[0][2] == before
+    assert completed[0][3] == after
+
+
+def _display_names(model: CompressionModel) -> list[str]:
+    return [
+        model.data(model.index(row, 0), model.NAME)
+        for row in range(model.rowCount())
+    ]
+
+
+def test_compression_model_sorting_is_display_only():
+    model = CompressionModel([])
+    first = make_item(1, "b.mp4")
+    first["name"] = "b.mp4"
+    first["saving"] = 10.0
+    second = make_item(2, "a.mp4")
+    second["name"] = "a.mp4"
+    second["saving"] = 90.0
+    model.add(first)
+    model.add(second)
+
+    model.sortBy("name")
+    # A ordem de agendamento (compartilhada com o manager) não muda.
+    assert [item["name"] for item in model.items()] == ["b.mp4", "a.mp4"]
+    assert _display_names(model) == ["a.mp4", "b.mp4"]
+    assert model.data(model.index(0, 0), model.SOURCE_INDEX) == 1
+    assert model.sortKey == "name" and model.sortAscending is True
+
+    model.sortBy("name")
+    assert [item["name"] for item in model.items()] == ["b.mp4", "a.mp4"]
+    assert _display_names(model) == ["b.mp4", "a.mp4"]
+    assert model.sortAscending is False
+
+    model.sortBy("saving")
+    assert [item["saving"] for item in model.items()] == [10.0, 90.0]
+    assert [
+        model.data(model.index(row, 0), model.SAVING)
+        for row in range(model.rowCount())
+    ] == [90.0, 10.0]
+    assert model.sortKey == "saving" and model.sortAscending is False
+
+
+def test_compression_status_sort_uses_workflow_rank():
+    model = CompressionModel([])
+    for index, status in enumerate((
+        CompressStatus.WAITING,
+        CompressStatus.DONE,
+        CompressStatus.ANALYZING,
+        CompressStatus.ERROR,
+    )):
+        item = make_item(index + 1, f"{index}.mp4")
+        item["name"] = f"{index}.mp4"
+        item["status"] = status
+        model.add(item)
+
+    model.sortBy("status")
+    assert [model.data(model.index(row, 0), model.STATUS)
+            for row in range(model.rowCount())] == [
+        "analyzing", "waiting", "done", "error"
+    ]
+
+
+def test_compression_model_remove_and_add_use_source_order_after_sort():
+    model = CompressionModel([])
+    for index, name in enumerate(("b.mp4", "a.mp4", "c.mp4")):
+        item = make_item(index + 1, name)
+        item["name"] = name
+        model.add(item)
+    model.sortBy("name")
+    assert _display_names(model) == ["a.mp4", "b.mp4", "c.mp4"]
+
+    # remove_rows recebe índice de agendamento (b = 0), não a linha exibida.
+    model.remove_rows([0])
+    assert [item["name"] for item in model.items()] == ["a.mp4", "c.mp4"]
+    assert _display_names(model) == ["a.mp4", "c.mp4"]
+
+    added = make_item(4, "0.mp4")
+    added["name"] = "0.mp4"
+    model.add(added)
+    assert [item["name"] for item in model.items()] == ["a.mp4", "c.mp4", "0.mp4"]
+    assert _display_names(model) == ["0.mp4", "a.mp4", "c.mp4"]
+
+
+def test_compression_sort_does_not_change_scheduler_pick(qapp):
+    model = CompressionModel([])
+    first = make_item(1, "b.mp4")
+    second = make_item(2, "a.mp4")
+    model.add(first)
+    model.add(second)
+    manager = CompressionManager(model, defer_detection=True)
+
+    model.sortBy("name")
+    assert _display_names(model) == ["a.mp4", "b.mp4"]
+    # O scheduler continua pegando o primeiro waiting na ordem de inserção.
+    assert manager._next_waiting() is first
+    assert manager.items is model.items()
+
+
+def test_scan_media_paths_counts_dedup_and_cancel(tmp_path):
+    root = tmp_path / "videos"
+    nested = root / "sub"
+    nested.mkdir(parents=True)
+    (root / "a.mp4").write_bytes(b"a")
+    (root / "b.txt").write_bytes(b"b")
+    (root / "c.hlsdl.json").write_bytes(b"{}")
+    (nested / "d.mkv").write_bytes(b"d")
+
+    result = scan_media_paths([str(root), str(root / "a.mp4")])
+    assert {os.path.basename(path) for path in result["files"]} == {"a.mp4", "d.mkv"}
+    assert result["scanned"] == 5
+    assert result["ignored"] == 2
+    assert result["duplicates"] == 1
+    assert result["errors"] == 0
+    assert result["cancelled"] is False
+
+    cancel = threading.Event()
+    cancel.set()
+    stopped = scan_media_paths([str(root)], cancel=cancel)
+    assert stopped["cancelled"] is True
+    assert stopped["files"] == []
+
+
+def test_scan_media_paths_caps_without_partial_add(tmp_path):
+    for index in range(3):
+        (tmp_path / f"{index}.mp4").write_bytes(b"x")
+    result = scan_media_paths([str(tmp_path)], max_files=2)
+    assert result["truncated"] is True
+    assert result["files"] == []
+
+
+def test_scan_media_paths_reports_walk_errors(tmp_path, monkeypatch):
+    def failing_walk(*args, **kwargs):
+        raise OSError("unidade indisponível")
+
+    monkeypatch.setattr("hlsdl.compress.os.walk", failing_walk)
+    result = scan_media_paths([str(tmp_path)])
+    assert result["errors"] == 1
+    assert result["files"] == []
+    assert result["cancelled"] is False
+    assert result["truncated"] is False
+
+
+def test_av1_qsv_never_gets_vbr_floor_or_rf_above_51():
+    assert quality_max_for_encoder("av1", "av1_qsv") == 51
+    assert quality_max_for_encoder("av1", "libaom-av1") == 63
+    args = video_args("av1_qsv", "av1", 63, "balanced",
+                      target_bitrate=7_000_000)
+    joined = " ".join(args)
+    assert "-global_quality 51" in joined
+    assert "-b:v" not in args
+    assert "-maxrate" not in args
+    assert "-bufsize" not in args
+
+
+def test_add_scanned_deduplicates_existing_items(qapp, tmp_path):
+    model = CompressionModel([])
+    manager = CompressionManager(model, defer_detection=True)
+    first = tmp_path / "a.mp4"
+    second = tmp_path / "b.mp4"
+    first.write_bytes(b"a")
+    second.write_bytes(b"b")
+
+    assert manager.add_scanned([str(first), str(first)]) == 1
+    assert manager.add_scanned([str(first), str(second)]) == 1
+    assert [os.path.basename(item["input"]) for item in model.items()] == [
+        "a.mp4", "b.mp4"
+    ]
+
+
+def test_compression_row_actions_use_source_rows_after_sort(qapp):
+    """Cancelar/remover usam o índice de agendamento, mesmo com tabela ordenada."""
+    model = CompressionModel([])
+    first = make_item(1, "b.mp4")
+    second = make_item(2, "a.mp4")
+    first["name"] = "b.mp4"
+    second["name"] = "a.mp4"
+    model.add(first)
+    model.add(second)
+    manager = CompressionManager(model, defer_detection=True)
+
+    model.sortBy("name")
+    assert _display_names(model) == ["a.mp4", "b.mp4"]
+    manager.cancelItem(0)  # source 0 = b.mp4, não a linha exibida 0 = a.mp4
+    assert first["status"] == CompressStatus.CANCELLED
+    assert second["status"] == CompressStatus.WAITING

@@ -31,4 +31,5 @@ jobs:
       - name: Real QSV encode
         env:
           QT_QPA_PLATFORM: offscreen
-        run: python -m pytest -q tests/test_compress.py::test_real_qsv_encode_prefers_dedicated
+          HLSDL_TEST_QSV: "1"
+        run: python -m pytest -q tests/test_compress.py::test_real_qsv_encode_prefers_dedicated tests/test_hdr_hardware.py

@@ -53,3 +53,31 @@ def test_catalog_tolerates_corrupt_database_path(tmp_path):
     bad.mkdir()
     catalog = Catalog(str(bad))
     assert catalog.stats()["files"] == 0
+
+
+def test_catalog_sets_schema_version_and_enables_foreign_keys(tmp_path):
+    path = tmp_path / "catalog.sqlite3"
+    catalog = Catalog(str(path))
+    assert catalog.schema_version() == 1
+    with catalog._connect() as connection:
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 1
+        assert connection.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+
+
+def test_catalog_migrates_legacy_database_without_losing_rows(tmp_path):
+    import sqlite3
+
+    from hlsdl.catalog import SCHEMA
+
+    path = tmp_path / "legacy.sqlite3"
+    with sqlite3.connect(path) as connection:
+        connection.executescript(SCHEMA)
+        connection.execute(
+            "INSERT INTO media (source_key, kind, created_at, last_seen) "
+            "VALUES ('legacy', 'download', 1, 1)"
+        )
+        connection.execute("PRAGMA user_version=0")
+    catalog = Catalog(str(path))
+    assert catalog.schema_version() == 1
+    assert catalog.stats()["media"] == 1
+    assert catalog.find_by_source("legacy") is None  # sem arquivo associado
