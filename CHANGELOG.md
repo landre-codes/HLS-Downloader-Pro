@@ -51,7 +51,11 @@ e o versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 - **Fila**: sincronização com coalescência (`start()` sem `restart()`), teto de
   100 mil arquivos na varredura (sem adição parcial ao truncar) e benchmark
   reproduzível da projeção.
-- **Modelo da aba Lote**: `DownloadFilterProxyModel` em Python substitui a
+- **Playlist unificada à aba Downloads**: o separador Playlists foi removido;
+  `Carregar playlist` abre um diálogo na própria aba Downloads. Os itens já
+  entram marcados por padrão, podem ser filtrados/desmarcados e há
+  **Limpar lista**; os selecionados vão para a mesma fila.
+- **Modelo da aba Downloads**: `DownloadFilterProxyModel` em Python substitui a
   projeção em `ListModel`/JavaScript; filtro, ordenação e `sourceIndex` estável
   no mesmo ambiente do backend.
 - **Motion/título**: tooltips compactos na barra de título, animação de

@@ -49,7 +49,7 @@ def test_compression_filter_hides_and_restores_rows(qapp, tmp_path, fake_deps):
         return result[0] if isinstance(result, tuple) else result
 
     root.show()
-    ev("tabBar.currentIndex = 3")
+    ev("tabBar.currentIndex = 2")
     _pump(qapp, 60)
 
     page = root.findChild(QObject, "compressionPage")

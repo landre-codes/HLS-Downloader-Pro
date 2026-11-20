@@ -196,9 +196,12 @@ do próximo item pelo scheduler.
 
 ### R9/R10 — projeção Python e motion
 
-- A aba Lote usa `DownloadFilterProxyModel` (`QSortFilterProxyModel`) com
+- A aba Downloads usa `DownloadFilterProxyModel` (`QSortFilterProxyModel`) com
   filtro por tokens, ordenação por nome/status/progresso e `sourceIndex`
   estável; a projeção em `ListModel`/JavaScript foi removida.
+- A antiga aba Playlists foi absorvida: `Carregar playlist` abre um diálogo na
+  aba Downloads, marca os itens por padrão, permite filtrar/desmarcar/limpar e
+  envia os selecionados para a mesma fila.
 - A barra de título ganhou tooltips compactos, animação de minimizar/restaurar
   e foco visual apenas por teclado (`Qt.TabFocus`/`visualFocus`); durações
   compartilhadas em `hlsdl/ui/motion.js`.

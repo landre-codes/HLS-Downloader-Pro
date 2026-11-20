@@ -12,7 +12,8 @@ import "components"
 // =============================================================================
 // HLS Downloader Pro — Interface Qt Quick (Material Design)
 //
-//   - Abas: Individual | Lote | Playlists | Configurações.
+//   - Abas: Individual | Downloads | Compressão | Configurações.
+//     Playlist é carregada pelo diálogo da aba Downloads e entra na mesma fila.
 //   - Formato (vídeo+áudio / vídeo / áudio), qualidade (144p–4K) e arquivo
 //     (mp4/mkv/webm/avi/mov ou mp3/m4a/...).
 //   - O SwipeView segue o TabBar por BINDING — nunca atribuir
@@ -219,7 +220,14 @@ ApplicationWindow {
     }
 
     function openBatchOptions() { batchOptionsDialog.open() }
-    function goToSettingsTab() { tabBar.currentIndex = 4 }
+    function openPlaylistImport() { playlistImportDialog.open() }
+    function clearPlaylist() {
+        playlistModel.clear()
+        root.playlistSelCount = 0
+        root.playlistVisibleCount = 0
+        bridge.clearPlaylist()
+    }
+    function goToSettingsTab() { tabBar.currentIndex = 3 }
     function openConfirmCancel() { confirmCancel.open() }
     function openConfirmClear() { confirmClear.open() }
     function openConfirmUpdate() { confirmUpdate.open() }
@@ -245,10 +253,12 @@ ApplicationWindow {
                 url: items[i].url,
                 duration: items[i].duration,
                 thumb: items[i].thumb,
-                selected: false
+                // Playlist carregada já vem marcada; o usuário pode
+                // desmarcar exceções em vez de selecionar tudo manualmente.
+                selected: true
             })
         }
-        root.playlistSelCount = 0
+        root.refreshSelCount()
         root.refreshPlaylistVisibleCount()
     }
     function playlistMatches(it) {
@@ -359,7 +369,7 @@ ApplicationWindow {
             Math.round(base + (bridge.compressionQuality - 24) * 1.1)))
     }
 
-    // Resumo compacto do perfil de download (aba Lote).
+    // Resumo compacto do perfil de download (aba Downloads).
     function downloadSummary() {
         if (bridge.formatMode === "audio_only")
             return bridge.container.toUpperCase()
@@ -513,7 +523,7 @@ ApplicationWindow {
         onActivated: {
             if (tabBar.currentIndex === 1)
                 batchPage.filterField.forceActiveFocus()
-            else if (tabBar.currentIndex === 3)
+            else if (tabBar.currentIndex === 2)
                 compressionPage.filterField.forceActiveFocus()
         }
     }
@@ -553,7 +563,7 @@ ApplicationWindow {
             }
             if (videos.length > 0) {
                 bridge.addCompressionPaths(videos)
-                tabBar.currentIndex = 3
+                tabBar.currentIndex = 2
             }
             drop.accept()
         }
@@ -742,17 +752,12 @@ ApplicationWindow {
             tipText: strings.tab_single_tip
         }
         AppTabButton {
-            text: strings.tab_downloads; font.pixelSize: 13; implicitWidth: 130
+            text: strings.tab_downloads; font.pixelSize: 13; implicitWidth: 150
             tipTitle: strings.tab_downloads
             tipText: strings.tab_downloads_tip
         }
         AppTabButton {
-            text: strings.tab_playlist; font.pixelSize: 13; implicitWidth: 130
-            tipTitle: strings.tab_playlist
-            tipText: strings.tab_playlist_tip
-        }
-        AppTabButton {
-            text: strings.tab_compress; font.pixelSize: 13; implicitWidth: 130
+            text: strings.tab_compress; font.pixelSize: 13; implicitWidth: 140
             tipTitle: strings.tab_compress
             tipText: strings.tab_compress_tip
         }
@@ -779,16 +784,9 @@ ApplicationWindow {
             strings: root.strings
         }
 
-        // ========================================================== ABA LOTE
+        // ====================================================== ABA DOWNLOADS
         BatchPage {
             id: batchPage
-            appRoot: root
-            strings: root.strings
-        }
-
-        // ===================================================== ABA PLAYLISTS
-        PlaylistPage {
-            id: playlistPage
             appRoot: root
             strings: root.strings
         }
@@ -900,6 +898,13 @@ ApplicationWindow {
 
     BatchOptionsDialog {
         id: batchOptionsDialog
+        appRoot: root
+        strings: root.strings
+    }
+
+    PlaylistImportDialog {
+        id: playlistImportDialog
+        objectName: "playlistImportDialog"
         appRoot: root
         strings: root.strings
     }

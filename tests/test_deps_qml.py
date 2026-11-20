@@ -62,7 +62,7 @@ def test_settings_scrollbar_is_on_the_right(qapp, fake_deps):
     def ev(expr):
         return QQmlExpression(ctx, root, expr).evaluate()[0]
 
-    ev("tabBar.currentIndex = 4")
+    ev("tabBar.currentIndex = 3")
     qapp.processEvents()
     x = ev("settingsScroll.ScrollBar.vertical.x")
     width = ev("settingsScroll.ScrollBar.vertical.width")

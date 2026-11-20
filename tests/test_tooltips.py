@@ -53,7 +53,7 @@ def test_rich_tooltips_open_inside_window_and_expose_shortcut(qapp, tmp_path, fa
     root = engine.rootObjects()[0]
     root.resize(1160, 800)
     root.show()
-    _ev(engine.contextForObject(root), root, "tabBar.currentIndex = 3")
+    _ev(engine.contextForObject(root), root, "tabBar.currentIndex = 2")
     _pump(qapp, 70)
 
     header = root.findChild(QObject, "compHeaderName")

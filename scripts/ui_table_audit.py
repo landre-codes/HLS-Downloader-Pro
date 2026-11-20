@@ -27,7 +27,7 @@ if os.name == "nt" and not os.environ.get("QT_QPA_FONTDIR"):
     if fonts.is_dir():
         os.environ["QT_QPA_FONTDIR"] = str(fonts)
 
-from PySide6.QtCore import QMetaObject, QObject, QTimer, QUrl  # noqa: E402
+from PySide6.QtCore import QMetaObject, QObject, QUrl  # noqa: E402
 from PySide6.QtGui import QFont  # noqa: E402
 from PySide6.QtQml import QQmlApplicationEngine, QQmlExpression  # noqa: E402
 from PySide6.QtQuick import QQuickWindow  # noqa: E402
@@ -36,7 +36,8 @@ from PySide6.QtWidgets import QApplication  # noqa: E402
 from hlsdl import config  # noqa: E402
 from hlsdl.bridge import Bridge  # noqa: E402
 from hlsdl.compress import CompressStatus, make_item  # noqa: E402
-from hlsdl.model import DownloadModel, make_item as make_download_item  # noqa: E402
+from hlsdl.model import DownloadModel  # noqa: E402
+from hlsdl.model import make_item as make_download_item  # noqa: E402
 from hlsdl.queue import QueueManager  # noqa: E402
 from hlsdl.status import Status  # noqa: E402
 
@@ -196,10 +197,10 @@ def main() -> int:
         })
 
     # Tabela de compressão: normal, filtrada, ordenada e tema escuro.
-    scenario("1160x800-light-compression-rows", "light", 3, 1160, 800)
+    scenario("1160x800-light-compression-rows", "light", 2, 1160, 800)
     set_filter(comp_filter, "status:erro")
     grab("1160x800-light-compression-filter", {
-        "theme": "light", "tab": 3, "width": 1160, "height": 800,
+        "theme": "light", "tab": 2, "width": 1160, "height": 800,
         "filter": "status:erro",
     })
     set_filter(comp_filter, "")
@@ -207,18 +208,18 @@ def main() -> int:
     QMetaObject.invokeMethod(header, "activate")
     _pump(app, 20)
     grab("1160x800-light-compression-sorted", {
-        "theme": "light", "tab": 3, "width": 1160, "height": 800,
+        "theme": "light", "tab": 2, "width": 1160, "height": 800,
         "sort": "name asc",
     })
     open_tooltip(lambda tip: tip.property("title") == "Arquivo"
                  and "ordenar" in tip.property("text").lower())
     grab("1160x800-light-tooltip-sort", {
-        "theme": "light", "tab": 3, "width": 1160, "height": 800,
+        "theme": "light", "tab": 2, "width": 1160, "height": 800,
         "tooltip": "sort name",
     })
     close_tooltips()
-    scenario("1160x800-dark-compression-rows", "dark", 3, 1160, 800)
-    scenario("940x620-light-compression-rows", "light", 3, 940, 620)
+    scenario("1160x800-dark-compression-rows", "dark", 2, 1160, 800)
+    scenario("940x620-light-compression-rows", "light", 2, 940, 620)
 
     # Ajustes recolhidos liberam a fila em 940x620 (UX-19-06).
     def toggle_settings() -> None:
@@ -232,7 +233,7 @@ def main() -> int:
 
     toggle_settings()
     grab("940x620-light-compression-collapsed", {
-        "theme": "light", "tab": 3, "width": 940, "height": 620,
+        "theme": "light", "tab": 2, "width": 940, "height": 620,
         "settings": "collapsed",
     })
     toggle_settings()
@@ -260,6 +261,27 @@ def main() -> int:
     close_tooltips()
     scenario("1160x800-dark-batch-rows", "dark", 1, 1160, 800)
     scenario("940x620-light-batch-rows", "light", 1, 940, 620)
+
+    # Playlist agora entra pela mesma aba Downloads, em diálogo.
+    dialog = window.findChild(QObject, "playlistImportDialog")
+    resize(1160, 800)
+    set_tab(1)
+    QMetaObject.invokeMethod(dialog, "open")
+    _pump(app, 30)
+    grab("1160x800-light-playlist-import", {
+        "theme": "light", "tab": 1, "width": 1160, "height": 800,
+        "dialog": "playlist import",
+    })
+    QMetaObject.invokeMethod(dialog, "close")
+    resize(940, 620)
+    set_tab(1)
+    QMetaObject.invokeMethod(dialog, "open")
+    _pump(app, 30)
+    grab("940x620-light-playlist-import", {
+        "theme": "light", "tab": 1, "width": 940, "height": 620,
+        "dialog": "playlist import",
+    })
+    QMetaObject.invokeMethod(dialog, "close")
 
     (out / "manifest.json").write_text(
         json.dumps({"screenshots": manifest, "failures": failures},

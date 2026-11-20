@@ -170,7 +170,7 @@ def _build_app(qapp, tmp_path, fake_deps):
 
 def test_compression_header_and_rows_share_same_geometry(qapp, tmp_path, fake_deps):
     bridge, engine, root = _build_app(qapp, tmp_path, fake_deps)
-    _ev(engine.contextForObject(root), root, "tabBar.currentIndex = 3")
+    _ev(engine.contextForObject(root), root, "tabBar.currentIndex = 2")
     _pump(qapp, 70)
 
     page = root.findChild(QObject, "compressionPage")
@@ -330,5 +330,13 @@ def test_batch_filter_sort_and_source_index_mapping(
     root_ctx = engine.contextForObject(root)
     _ev(root_ctx, root, 'loadPlaylist("  https://example.com/pl  ", 7)')
     assert seen == [("https://example.com/pl", 7)]
+
+    # O diálogo de playlist deve abrir a partir da aba Downloads.
+    dialog = root.findChild(QObject, "playlistImportDialog")
+    assert dialog is not None
+    assert QMetaObject.invokeMethod(dialog, "open") is True
+    _pump(qapp, 20)
+    assert dialog.property("opened") is True
+    QMetaObject.invokeMethod(dialog, "close")
 
     bridge.shutdown()

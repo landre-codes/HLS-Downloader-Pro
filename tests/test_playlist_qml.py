@@ -1,4 +1,4 @@
-"""Regressão do contrato QML da Playlist (URL/limite explícitos)."""
+"""Regressão do contrato QML da Playlist (unificada ao Lote)."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from hlsdl.model import DownloadModel
 from hlsdl.queue import QueueManager
 
 
-def test_playlist_page_passes_url_and_limit_to_main(
+def test_playlist_dialog_passes_url_and_limit_to_main(
     qapp, tmp_path, fake_deps, monkeypatch
 ):
     manager = QueueManager(DownloadModel([]), outdir=str(tmp_path / "out"))
@@ -34,14 +34,16 @@ def test_playlist_page_passes_url_and_limit_to_main(
     assert seen == [("https://example.com/pl", 12)]
 
     main_qml = Path(qml_path()).read_text(encoding="utf-8")
-    page_qml = (Path(qml_path()).parent / "pages" / "PlaylistPage.qml").read_text(
-        encoding="utf-8"
-    )
+    dialog_qml = (
+        Path(qml_path()).parent / "dialogs" / "PlaylistImportDialog.qml"
+    ).read_text(encoding="utf-8")
     # A função não pode depender de ids internos de outro arquivo QML.
     assert "playlistUrl" not in main_qml
     assert "loadPlaylist(url, limit)" in main_qml
-    assert page_qml.count("appRoot.loadPlaylist(") == 2
-    assert page_qml.count("playlistUrl.text") >= 2
-    assert page_qml.count("playlistLimit.value") == 2
+    assert "PlaylistImportDialog" in main_qml
+    assert dialog_qml.count("appRoot.loadPlaylist(") == 2
+    assert dialog_qml.count("playlistUrl.text") >= 2
+    assert dialog_qml.count("playlistLimit.value") == 2
+    assert "playlist_clear_list" in dialog_qml
 
     bridge.shutdown()

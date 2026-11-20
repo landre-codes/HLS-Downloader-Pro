@@ -4,8 +4,8 @@ Downloader de vídeos (HLS / m3u8) com interface **Qt Quick (QML) + Material Des
 
 ## Funcionalidades
 
-- **Duas abas de download**: **Download Individual** (um link, com progresso dedicado) e **Lote** (fila com dezenas/centenas de links)
-- **Aba de Playlists**: carrega os itens de uma playlist (**YouTube** ou sites em geral), permite selecionar os desejados e enviá-los à fila
+- **Duas abas de download**: **Download Individual** (um link, com progresso dedicado) e **Downloads** (fila com dezenas/centenas de links)
+- **Playlist na própria aba Downloads**: carrega itens de uma playlist (**YouTube** ou sites em geral) em um diálogo, já marca todos por padrão e adiciona à mesma fila; é possível desmarcar exceções, filtrar e limpar a lista
 - **Aba de Compressão local**: fila de arquivos/pastas, codecs **HEVC, H.264 e AV1**, contêineres **MP4/MKV/WebM/MOV/AVI**, aceleração por **Intel QSV, NVIDIA NVENC, AMD AMF, Kvazaar ou software** (`libx265`/`libx264`/`libsvtav1`), qualidade **RF 1–51 (AV1 até 63)**, presets de velocidade (**rápida → muito lenta**), **presets prontos** (Rápido, Equilibrado, Qualidade, Arquivo 10-bit e AV1), filtros de **desentrelaçamento e redução de ruído**, política de **HDR** (pular, preservar 10-bit ou tone mapping para SDR), modos de **áudio** (automático/cópia/AAC-Opus) e **legendas** (texto/todas/nenhuma, preservando PGS e fontes em MKV). Inclui paralelismo, **sugestões/estimativa de economia por formato**, validação da saída (duração, vídeo e áudio) e substituição atômica. O modo **Auto** prioriza a **GPU dedicada** (Arc/NVIDIA/AMD), filtra encoders pela GPU realmente presente e testa o escolhido, caindo para software se ele falhar; o dispositivo QSV pode ser escolhido na interface. Inclui **10-bit** e **ajuste fino do x265** (`aq-mode`/`psy`), além de **preservar e verificar metadados HDR10** (primárias, transferência, espaço de cor, faixa, mastering display e content-light) e mostrar o **encoder real** usado em cada arquivo (ex.: `QSV HEVC · Intel Arc B580`).
 - **Interface**: busca nas filas de download e compressão (nome, caminho, encoder, status, saída e erro) com ícone de pesquisa, cabeçalhos de tabela maiores/destacados e **ordenação por clique** na fila de compressão (nome, status, progresso e economia), **console de instalação estilo terminal** no log de dependências (com copiar saída), cursor de mão em ações e **tooltips com exemplos**. A escala da interface acompanha o tamanho da tela (até 128%) sem desalinhar as tabelas.
 - **Integridade de mídia**: identidade estável (ID do extractor ou hash de manifesto HLS), **catálogo SQLite** (`catalog.sqlite3`), validação profunda de resolução/bit depth/HDR/áudio/legendas, **SSIM amostral** e recusa de saídas truncadas. Sidecars `<arquivo>.hlsdl.json` são **opcionais** (padrão desligado em Configurações → Integridade, com botão para remover os existentes); no Linux/macOS novos sidecars usam ponto inicial para ficarem ocultos. Downloads inválidos são preservados como `*.invalid`.
@@ -155,14 +155,13 @@ Se a janela der problema no Wayland: `QT_QPA_PLATFORM=xcb python3 main.py`.
 ## Como usar
 
 1. **Download Individual**: cole a URL, escolha o formato, a qualidade (144p–4K), o arquivo e a compressão (H.264/H.265), e clique em **Baixar agora**. O progresso aparece na mesma aba.
-2. **Lote**: cole vários links (um por linha) — ou importe/arraste um `.txt` —, ajuste formato/qualidade/arquivo/compressão e clique em **Adicionar à Fila**. Use o campo **Filtrar** para achar itens por título/URL.
-3. **Playlists**: cole a URL de uma playlist (YouTube ou site), clique em **Carregar itens**, marque os desejados e use **Adicionar selecionados à fila** (ou **Baixar selecionados agora**).
-4. **Compressão**: adicione arquivos/pastas (ou arraste vídeos), escolha um **preset** ou ajuste as seções **Geral**, **Vídeo**, **Áudio e legendas** e **Avançado**; clique em **Iniciar**. O botão **Sugestões** compara economia × compatibilidade. **Mídias similares** procura duplicados/reencodes na fila ou em uma pasta. O original só é apagado se você marcar "Apagar original após sucesso", e mesmo assim um backup é mantido.
-5. Em **Configurações → Downloads** você escolhe o **nome do arquivo** (ID estável ou título da página).
-6. Em **Configurações → Sobre** você vê a versão e pode **Verificar atualizações**.
-7. Clique em **Iniciar Fila** e acompanhe status, percentual, velocidade e tamanho.
-8. Ao concluir, o botão **Abrir** mostra a pasta do arquivo; botões laterais permitem editar, copiar, tentar novamente e cancelar.
-9. Duplo clique em um link para editá-lo (campo de edição na própria linha); botão direito abre o menu de contexto.
+2. **Downloads**: cole vários links (um por linha) – ou importe/arraste um `.txt` –, ajuste formato/qualidade/arquivo/compressão e clique em **Adicionar à Fila**. Use **Carregar playlist** para importar uma playlist no mesmo fluxo; os itens entram selecionados por padrão e podem ser filtrados, desmarcados ou limpos antes de enviar à fila. Use o campo **Filtrar** para achar itens por título/URL.
+3. **Compressão**: adicione arquivos/pastas (ou arraste vídeos), escolha um **preset** ou ajuste as seções **Geral**, **Vídeo**, **Áudio e legendas** e **Avançado**; clique em **Iniciar**. O botão **Sugestões** compara economia × compatibilidade. **Mídias similares** procura duplicados/reencodes na fila ou em uma pasta. O original só é apagado se você marcar "Apagar original após sucesso", e mesmo assim um backup é mantido.
+4. Em **Configurações → Downloads** você escolhe o **nome do arquivo** (ID estável ou título da página).
+5. Em **Configurações → Sobre** você vê a versão e pode **Verificar atualizações**.
+6. Clique em **Iniciar Fila** e acompanhe status, percentual, velocidade e tamanho.
+7. Ao concluir, o botão **Abrir** mostra a pasta do arquivo; botões laterais permitem editar, copiar, tentar novamente e cancelar.
+8. Duplo clique em um link para editá-lo (campo de edição na própria linha); botão direito abre o menu de contexto.
 
 ### Cookies (sites protegidos)
 
@@ -398,7 +397,7 @@ python layout_debug.py       # dump da geometria do layout
 | `hlsdl/diagnostics.py`, `diagnostico.py` | Relatório de ambiente, telas, escala, ferramentas e encoders |
 | `hlsdl/exporter.py`, `exportar.py` | Pacotes de código-fonte/portátil e `SHA256SUMS.txt` |
 | `hlsdl/ui/main.qml` | Shell da janela: título, abas, atalhos, drop zone e tema |
-| `hlsdl/ui/pages/` | Páginas QML extraídas: Individual, Lote, Playlists, Compressão e Configurações |
+| `hlsdl/ui/pages/` | Páginas QML extraídas: Individual, Downloads, Compressão e Configurações |
 | `hlsdl/ui/components/` | Componentes reutilizáveis (botões, combos, campos, painel de terminal, seletores e superfície de diálogo) |
 | `hlsdl/ui/dialogs/` | Diálogos modulares: erro, confirmações, dependências, opções do lote, sugestões, similaridade e recuperação |
 | `hlsdl/ui/i18n.js` | Traduções e retradução da interface |

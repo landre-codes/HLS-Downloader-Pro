@@ -51,7 +51,7 @@ def main() -> int:
     parser.add_argument("output", help="pasta para os PNGs")
     parser.add_argument("--sizes", default=DEFAULT_SIZES)
     parser.add_argument("--themes", default="dark,light")
-    parser.add_argument("--tabs", default="0,1,2,3,4")
+    parser.add_argument("--tabs", default="0,1,2,3")
     parser.add_argument(
         "--states", action="store_true",
         help="captura também toast longo e diálogo de erro",

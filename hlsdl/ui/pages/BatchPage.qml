@@ -186,6 +186,16 @@ import "../components"
                                 onClicked: bridge.importTxt()
                             }
                             AppButton {
+                                text: strings.btn_import_playlist
+                                variant: "secondary"
+                                icon.source: appRoot.iconPath("retry")
+                                icon.width: 16; icon.height: 16
+                                display: AbstractButton.TextBesideIcon
+                                tipTitle: strings.btn_import_playlist
+                                tipText: strings.playlist_import_hint
+                                onClicked: appRoot.openPlaylistImport()
+                            }
+                            AppButton {
                                 text: strings.btn_clear; variant: "tertiary"; flat: true
                                 icon.source: appRoot.iconPath("trash")
                                 icon.width: 16; icon.height: 16
@@ -194,6 +204,14 @@ import "../components"
                                 tipText: strings.btn_clear_tip
                                 onClicked: inputArea.clear()
                             }
+                        }
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: strings.playlist_import_hint
+                            font.pixelSize: 11
+                            color: appRoot.theme.textMuted
+                            wrapMode: Text.Wrap
                         }
 
                         RowLayout {

@@ -57,7 +57,7 @@ def main() -> int:
 
     def run():
         steps = [
-            ("pt inicial entry_title", "strings.entry_title", "Entrada em Lote"),
+            ("pt inicial entry_title", "strings.entry_title", "Entrada de Downloads"),
             ("pt inicial status concluido", "strings['s_done']", "Concluído"),
             ("pt inicial cfg_dark", "strings.cfg_dark", "Tema escuro"),
         ]
@@ -69,9 +69,9 @@ def main() -> int:
         app.processEvents()
         steps_en = [
             ("en cfg_dark", "strings.cfg_dark", "Dark theme"),
-            ("en entry_title", "strings.entry_title", "Batch Entry"),
+            ("en entry_title", "strings.entry_title", "Download Entry"),
             ("en status concluido", "strings['s_done']", "Completed"),
-            ("en tab_downloads", "strings.tab_downloads", "Batch"),
+            ("en tab_downloads", "strings.tab_downloads", "Downloads"),
             ("en tab_single", "strings.tab_single", "Single Download"),
             ("en status dinamico", "strings['s_' + 'error']", "Error"),
             ("en btn_start", "strings.btn_start", "Start Queue"),
@@ -83,7 +83,7 @@ def main() -> int:
         bridge.setLanguage("pt")
         app.processEvents()
         v = ev(ctx, root, "strings.entry_title")
-        print(f"{'OK ' if v == 'Entrada em Lote' else 'FALHA '}volta pt: {v!r}", flush=True)
+        print(f"{'OK ' if v == 'Entrada de Downloads' else 'FALHA '}volta pt: {v!r}", flush=True)
         print("I18N QML OK", flush=True)
         os._exit(0)
 
