@@ -11,7 +11,7 @@ import json
 import time
 from pathlib import Path
 
-from PySide6.QtCore import QMetaObject, QObject, Qt, QUrl
+from PySide6.QtCore import QEvent, QMetaObject, QObject, Qt, QUrl
 from PySide6.QtQml import QQmlApplicationEngine, QQmlComponent, QQmlEngine, QQmlExpression
 
 from hlsdl.bridge import Bridge
@@ -21,6 +21,7 @@ from hlsdl.model import DownloadModel
 from hlsdl.model import make_item as make_download_item
 from hlsdl.queue import QueueManager
 from hlsdl.status import Status
+from tests.conftest import process_until
 
 
 def _pump(qapp, rounds: int = 45) -> None:
@@ -179,6 +180,20 @@ def _build_app(qapp, tmp_path, fake_deps):
     return bridge, engine, root
 
 
+def _teardown(qapp, engine, bridge, root) -> None:
+    """Fecha a janela e destrói o engine entre testes.
+
+    Sem isso cada teste acumula um QQuickWindow; em CI a suíte inteira acaba
+    abortando com segfault/access violation no processamento de eventos.
+    """
+    root.close()
+    _pump(qapp, 10)
+    engine.deleteLater()
+    qapp.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    _pump(qapp, 10)
+    bridge.shutdown()
+
+
 def test_compression_header_and_rows_share_same_geometry(qapp, tmp_path, fake_deps):
     bridge, engine, root = _build_app(qapp, tmp_path, fake_deps)
     _ev(engine.contextForObject(root), root, "tabBar.currentIndex = 2")
@@ -309,7 +324,7 @@ def test_compression_header_and_rows_share_same_geometry(qapp, tmp_path, fake_de
     assert page.property("compSelectedCount") == 0
     assert select_all.property("enabled") is False
 
-    bridge.shutdown()
+    _teardown(qapp, engine, bridge, root)
 
 
 def test_compression_select_all_first_click_checks(qapp, tmp_path, fake_deps):
@@ -341,7 +356,7 @@ def test_compression_select_all_first_click_checks(qapp, tmp_path, fake_deps):
     _pump(qapp, 30)
     assert select_all.property("checkState") == Qt.Unchecked
     assert page.property("compSelectedCount") == 0
-    bridge.shutdown()
+    _teardown(qapp, engine, bridge, root)
 
 
 def test_filter_placeholder_matches_cursor_and_clear_stays_inside(
@@ -380,7 +395,7 @@ def test_filter_placeholder_matches_cursor_and_clear_stays_inside(
     field.setProperty("text", "")
     _pump(qapp, 10)
     assert placeholder.property("visible") is True
-    bridge.shutdown()
+    _teardown(qapp, engine, bridge, root)
 
 
 def test_batch_multiline_keeps_cursor_inside_viewport(qapp, tmp_path, fake_deps):
@@ -406,7 +421,7 @@ def test_batch_multiline_keeps_cursor_inside_viewport(qapp, tmp_path, fake_deps)
     assert cursor.y() >= content_y - 1
     assert cursor.y() + cursor.height() <= content_y + view_height + 1
 
-    bridge.shutdown()
+    _teardown(qapp, engine, bridge, root)
 
 
 def test_batch_filter_sort_and_source_index_mapping(
@@ -499,8 +514,8 @@ def test_batch_filter_sort_and_source_index_mapping(
     dialog = root.findChild(QObject, "playlistImportDialog")
     assert dialog is not None
     assert QMetaObject.invokeMethod(dialog, "open") is True
-    _pump(qapp, 20)
-    assert dialog.property("opened") is True
+    # Em CI o popup pode levar mais que alguns frames para concluir a abertura.
+    assert process_until(qapp, lambda: dialog.property("opened") is True)
     surface = root.findChild(QObject, "playlistDialogSurface")
     assert surface is not None
     assert surface.property("resizable") is True
@@ -535,8 +550,7 @@ def test_batch_filter_sort_and_source_index_mapping(
     options = root.findChild(QObject, "batchOptionsDialog")
     assert options is not None
     assert QMetaObject.invokeMethod(options, "open") is True
-    _pump(qapp, 20)
-    assert options.property("opened") is True
+    assert process_until(qapp, lambda: options.property("opened") is True)
     options_surface = root.findChild(QObject, "batchOptionsSurface")
     assert options_surface is not None
     # Opções é um modal compacto fixo, sem maximizar/expandir.
@@ -560,4 +574,4 @@ def test_batch_filter_sort_and_source_index_mapping(
     assert "Desfazer" in labels
     assert "Selecionar tudo" in labels
 
-    bridge.shutdown()
+    _teardown(qapp, engine, bridge, root)
