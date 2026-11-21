@@ -1,3 +1,6 @@
+# ruff: noqa: E402, I001
+
+
 """Valida a troca PT/EN no QML: bindings reavaliados via retranslate().
 
 Usa QQmlExpression (item.property() crasha nessa build do PySide6).
@@ -14,18 +17,19 @@ from PySide6.QtGui import QFont
 from PySide6.QtQml import QQmlApplicationEngine, QQmlExpression
 from PySide6.QtWidgets import QApplication
 
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, ROOT)
+
 from hlsdl.config import qml_path
 from main import Bridge, default_output_folder
 from worker import DownloadModel, QueueManager
 
 _KEEP = []
 
-
 def ev(qml_ctx, scope, expr):
     e = QQmlExpression(qml_ctx, scope, expr)
     _KEEP.append(e)  # evita o GC do QQmlExpression (build PySide6 crasha)
     return e.evaluate()[0]
-
 
 def main() -> int:
     app = QApplication(sys.argv)
@@ -112,7 +116,6 @@ def main() -> int:
 
     QTimer.singleShot(1500, run)
     return app.exec()
-
 
 if __name__ == "__main__":
     sys.exit(main())

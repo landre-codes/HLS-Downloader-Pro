@@ -1,3 +1,6 @@
+# ruff: noqa: E402, I001
+
+
 """Repro: roda yt-dlp num stream real multi-formato e mostra TODAS as linhas
 não-progresso, para ver qual padrão o worker perde. Usa --download-sections
 para baixar só os primeiros 12s (rápido) mantendo o fluxo de merge real."""
@@ -7,10 +10,12 @@ import subprocess
 import sys
 import threading
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, ROOT)
+
 from worker import PROGRESS_RE, USER_AGENT, _which
 
-OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_out")
+OUT = os.path.join(ROOT, "test_out")
 os.makedirs(OUT, exist_ok=True)
 for f in os.listdir(OUT):
     if f.endswith((".mp4", ".m4a", ".webm", ".mkv", ".part")):

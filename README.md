@@ -2,6 +2,8 @@
 
 Downloader de vídeos (HLS / m3u8) com interface **Qt Quick (QML) + Material Design**.
 
+![Interface do HLS Downloader Pro](docs/ui-review/r10-sidebar/1366x768-light.png)
+
 ## Funcionalidades
 
 - **Duas abas de download**: **Download Individual** (um link, com progresso dedicado) e **Downloads** (fila com dezenas/centenas de links)
@@ -360,14 +362,14 @@ ruff check hlsdl tests main.py worker.py diagnostico.py exportar.py
 Scripts de integração/manuais (requerem rede ou ffmpeg):
 
 ```bash
-python smoke_test.py         # backend + carregamento do QML
-python functional_test.py    # fluxo completo com servidor HLS local
-python integration_test.py   # downloads reais (Apple sample streams)
-python _i18n_test.py         # troca de idiomas no QML
-python _error_dialog_test.py # diálogo de detalhes do erro
-python _single_instance_test.py  # bloqueio de segunda instância
-python php_flow_test.py      # fluxo .php: bloqueio do yt-dlp → retry → scraper/ffmpeg
-python layout_debug.py       # dump da geometria do layout
+python scripts/dev/smoke_test.py         # backend + carregamento do QML
+python scripts/dev/functional_test.py    # fluxo completo com servidor HLS local
+python scripts/dev/integration_test.py   # downloads reais (Apple sample streams)
+python scripts/dev/_i18n_test.py         # troca de idiomas no QML
+python scripts/dev/_error_dialog_test.py # diálogo de detalhes do erro
+python scripts/dev/_single_instance_test.py  # bloqueio de segunda instância
+python scripts/dev/php_flow_test.py      # fluxo .php: bloqueio do yt-dlp → retry → scraper/ffmpeg
+python scripts/dev/layout_debug.py       # dump da geometria do layout
 ```
 
 ## Estrutura

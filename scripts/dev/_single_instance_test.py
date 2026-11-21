@@ -1,7 +1,13 @@
+# ruff: noqa: E402, I001
+
+
 import os
 import subprocess
 import sys
 import time
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, ROOT)
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ["PYTHONIOENCODING"] = "utf-8"
@@ -22,17 +28,18 @@ import sys, os
 from PySide6.QtCore import QCoreApplication
 sys.path.insert(0, os.getcwd())
 import main
+
 app = QCoreApplication([])
 print("B principal (esperado False):", main._single_instance(), flush=True)
 """
 
 pa = subprocess.Popen(
-    [sys.executable, "-c", A], cwd=os.getcwd(),
+    [sys.executable, "-c", A], cwd=ROOT,
     stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
 )
 time.sleep(1.5)
 pb = subprocess.run(
-    [sys.executable, "-c", B], cwd=os.getcwd(),
+    [sys.executable, "-c", B], cwd=ROOT,
     capture_output=True, text=True, timeout=30,
 )
 out_a, _ = pa.communicate(timeout=30)

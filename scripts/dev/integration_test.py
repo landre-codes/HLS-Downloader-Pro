@@ -1,3 +1,6 @@
+# ruff: noqa: E402, I001
+
+
 """Integração: exatamente o que o app faz (QueueManager) com streams reais,
 usando um worker que limita o download a 12s. Mostra o estado final de cada
 item da tabela (status, erro, arquivo)."""
@@ -7,14 +10,15 @@ import sys
 import time
 
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from PySide6.QtWidgets import QApplication
 
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, ROOT)
+
 from worker import DownloadModel, DownloadWorker, QueueManager, Status
 
-OUTDIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_out")
-
+OUTDIR = os.path.join(ROOT, "test_out")
 
 class FastWorker(DownloadWorker):
     """Igual ao worker real, mas baixa só 12s para o teste ser rápido."""
@@ -24,7 +28,6 @@ class FastWorker(DownloadWorker):
         idx = cmd.index("-o")
         cmd[idx:idx] = ["--download-sections", "*0-12", "--force-overwrites"]
         return super()._run_process(cmd, **kw)
-
 
 app = QApplication(sys.argv)
 model = DownloadModel([])

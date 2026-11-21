@@ -56,7 +56,6 @@ SOURCE_FILES = (
     "diagnostico.py",
     "exportar.py",
     "iniciar.cmd",
-    "smoke_test.py",
 )
 DOC_FILES = ("README.md", "CHANGELOG.md", "LICENSE", "THIRD_PARTY_NOTICES.md")
 

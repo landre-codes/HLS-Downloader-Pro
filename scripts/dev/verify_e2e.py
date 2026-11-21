@@ -1,3 +1,6 @@
+# ruff: noqa: E402, I001
+
+
 """Verificação ponta a ponta do caso do usuário: stream real multi-formato
 onde yt-dlp NÃO imprime `[download] Destination:` (visto no repro_real.py),
 com DownloadWorker real — o item deve terminar como sucesso."""
@@ -7,16 +10,17 @@ import sys
 import time
 
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from PySide6.QtCore import QThread
 from PySide6.QtWidgets import QApplication
 
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, ROOT)
+
 from worker import DownloadWorker
 
 app = QApplication(sys.argv)
-OUTDIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_out")
-
+OUTDIR = os.path.join(ROOT, "test_out")
 
 class FastWorker(DownloadWorker):
     """Igual ao worker real, mas limita o download a 12s para o teste."""
@@ -26,7 +30,6 @@ class FastWorker(DownloadWorker):
         idx = cmd.index("-o")
         cmd[idx:idx] = ["--download-sections", "*0-12", "--force-overwrites"]
         return super()._run_process(cmd, **kw)
-
 
 URL = "https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_4x3/bipbop_4x3_variant.m3u8"
 

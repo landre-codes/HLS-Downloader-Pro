@@ -1,3 +1,6 @@
+# ruff: noqa: E402, I001
+
+
 """Testa o retry em m3u8 servido via .php SEM a injeção do FastWorker
 (--download-sections) — cenário idêntico ao da produção."""
 
@@ -9,6 +12,9 @@ import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, ROOT)
+
 M3U8 = (
     "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:6\n#EXT-X-MEDIA-SEQUENCE:0\n"
     "#EXTINF:6.0,\nseg0.ts\n#EXTINF:6.0,\nseg1.ts\n#EXT-X-ENDLIST\n"
@@ -19,7 +25,6 @@ PAGE = (
     b'<html><body><video src="media.php?file=stream.m3u8"></video>'
     b'<a href="media.php?file=stream.m3u8">m3u8</a></body></html>'
 )
-
 
 class H(BaseHTTPRequestHandler):
     def log_message(self, *a):
@@ -55,7 +60,6 @@ class H(BaseHTTPRequestHandler):
             self.send_response(404)
             self.end_headers()
 
-
 def main() -> int:
     import shutil
 
@@ -63,7 +67,7 @@ def main() -> int:
     port = srv.server_address[1]
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     base = f"http://127.0.0.1:{port}"
-    outdir = os.path.abspath("php_test_out")
+    outdir = os.path.join(ROOT, "test_out", "php")
     shutil.rmtree(outdir, ignore_errors=True)
     os.makedirs(outdir, exist_ok=True)
 
@@ -88,7 +92,6 @@ def main() -> int:
     ok = r.returncode == 0 and any(f.endswith(".mp4") for f in os.listdir(outdir))
     shutil.rmtree(outdir, ignore_errors=True)
     return 0 if ok else 1
-
 
 if __name__ == "__main__":
     sys.exit(main())

@@ -1,3 +1,6 @@
+# ruff: noqa: E402, I001
+
+
 """Valida o retry: yt-dlp com --compat-options allow-unsafe-ext + -o ...mp4
 consegue baixar uma URL .php (o fallback do app)."""
 
@@ -9,8 +12,10 @@ import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-MP4 = b"\x00\x00\x00\x18ftypisom\x00\x00\x00\x00isomiso2" + b"\x00" * 64
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, ROOT)
 
+MP4 = b"\x00\x00\x00\x18ftypisom\x00\x00\x00\x00isomiso2" + b"\x00" * 64
 
 class H(BaseHTTPRequestHandler):
     def log_message(self, *a):
@@ -27,13 +32,12 @@ class H(BaseHTTPRequestHandler):
             self.send_response(404)
             self.end_headers()
 
-
 def main() -> None:
     srv = ThreadingHTTPServer(("127.0.0.1", 0), H)
     port = srv.server_address[1]
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     base = f"http://127.0.0.1:{port}"
-    outdir = os.path.abspath("php_test_out")
+    outdir = os.path.join(ROOT, "test_out", "php")
     os.makedirs(outdir, exist_ok=True)
 
     cmd = [
@@ -53,7 +57,6 @@ def main() -> None:
     print("ARQUIVOS:", os.listdir(outdir), flush=True)
     srv.shutdown()
     sys.exit(0 if r.returncode == 0 and os.listdir(outdir) else 1)
-
 
 if __name__ == "__main__":
     main()

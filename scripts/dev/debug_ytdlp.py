@@ -1,12 +1,17 @@
+# ruff: noqa: E402, I001
+
+
 import os
 import re
 import subprocess
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, ROOT)
+
 from worker import PROGRESS_RE, USER_AGENT, _which
 
-OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_out")
+OUT = os.path.join(ROOT, "test_out")
 os.makedirs(OUT, exist_ok=True)
 tmpl = os.path.join(OUT, "%(title).120B [%(id)s].%(ext)s")
 

@@ -1,3 +1,6 @@
+# ruff: noqa: E402, I001
+
+
 """Valida a troca entre os 8 idiomas e as opções de qualidade/arquivo."""
 
 from __future__ import annotations
@@ -12,6 +15,9 @@ from PySide6.QtCore import QTimer, QUrl
 from PySide6.QtQml import QQmlApplicationEngine, QQmlExpression
 from PySide6.QtWidgets import QApplication
 
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, ROOT)
+
 from hlsdl.bridge import Bridge
 from hlsdl.config import qml_path
 from hlsdl.model import DownloadModel
@@ -25,19 +31,16 @@ EXPECTED_DONE = {
     "fr": "Terminé", "ru": "Завершено", "ja": "完了", "zh": "已完成",
 }
 
-
 def ev(ctx, scope, expr):
     e = QQmlExpression(ctx, scope, expr)
     _KEEP.append(e)
     return e.evaluate()[0]
-
 
 def chk(name, got, want):
     ok = got == want
     print(f"{'OK ' if ok else 'FALHA '}{name}: {got!r} (esperado {want!r})", flush=True)
     if not ok:
         FAILS.append(name)
-
 
 def main() -> int:
     app = QApplication(sys.argv)
@@ -82,7 +85,6 @@ def main() -> int:
 
     QTimer.singleShot(1200, run)
     return app.exec()
-
 
 if __name__ == "__main__":
     sys.exit(main())

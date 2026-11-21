@@ -756,6 +756,10 @@ class DependencyManager(QObject):
         return self._run_install(cmd)
 
     def _install_ffmpeg_download(self) -> bool:
+        if sys.platform in ("linux", "darwin"):
+            self.installOutput.emit(
+                self._tr("dep_log_prefer_package_manager")
+            )
         target_dir = config.tools_dir()
         tmp_dir = tempfile.mkdtemp(prefix="hlsdl-ffmpeg-")
         try:

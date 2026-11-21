@@ -1,3 +1,6 @@
+# ruff: noqa: E402, I001
+
+
 """Smoke test do backend + carregamento do QML (sem aba de interface).
 
 Rápido, offscreen e sem rede. A suíte completa de testes vive em ``tests/``
@@ -12,11 +15,13 @@ os.environ["QT_QPA_PLATFORM"] = "offscreen"
 os.environ["HLSDL_QUEUE_STATE"] = os.path.join(
     tempfile.mkdtemp(prefix="hlsdlp-smoke-"), "queue.json"
 )
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from PySide6.QtCore import QTimer, QUrl
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtWidgets import QApplication
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, ROOT)
 
 from hlsdl.bridge import Bridge
 from hlsdl.config import qml_path

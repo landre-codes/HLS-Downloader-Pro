@@ -1,3 +1,6 @@
+# ruff: noqa: E402, I001
+
+
 """Dump da árvore de geometria do QML para depuração do layout.
 
 NOTA: nao usamos item.property() aqui — nessa build do PySide6 ler certas
@@ -14,10 +17,12 @@ from PySide6.QtGui import QFont
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtWidgets import QApplication
 
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, ROOT)
+
 from hlsdl.config import qml_path
 from main import Bridge, default_output_folder
 from worker import DownloadModel, QueueManager
-
 
 def dump(item, depth=0):
     kind = item.metaObject().className().split(".")[-1]
@@ -28,7 +33,6 @@ def dump(item, depth=0):
     )
     for child in item.childItems():
         dump(child, depth + 1)
-
 
 def main() -> int:
     app = QApplication(sys.argv)
@@ -56,7 +60,6 @@ def main() -> int:
 
     QTimer.singleShot(2500, do_dump)
     return app.exec()
-
 
 if __name__ == "__main__":
     sys.exit(main())

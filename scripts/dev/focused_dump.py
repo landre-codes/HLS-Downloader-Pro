@@ -1,3 +1,6 @@
+# ruff: noqa: E402, I001
+
+
 """Dump focado: geometrias do TabBar, SwipeView e páginas."""
 
 import os
@@ -8,6 +11,9 @@ from PySide6.QtGui import QFont
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuick import QQuickItem
 from PySide6.QtWidgets import QApplication
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, ROOT)
 
 from hlsdl.config import qml_path
 from main import Bridge, default_output_folder
@@ -27,7 +33,6 @@ engine.rootContext().setContextProperty("bridge", bridge)
 engine.load(QUrl.fromLocalFile(qml_path()))
 root = engine.rootObjects()[0]
 
-
 def walk(item, depth=0, max_depth=6):
     name = item.metaObject().className()
     vis = "" if item.isVisible() else " [INVISIVEL]"
@@ -38,11 +43,9 @@ def walk(item, depth=0, max_depth=6):
         for c in item.childItems():
             walk(c, depth + 1, max_depth)
 
-
 def do_dump():
     root.show()
     QTimer.singleShot(800, dump_targets)
-
 
 def dump_targets():
     for kind, want in (("TabBar", "TabBar"), ("SwipeView", "SwipeView")):
@@ -58,7 +61,6 @@ def dump_targets():
             print("--- ListView (SwipeView interno?) ---")
             walk(item, max_depth=1)
     os._exit(0)
-
 
 QTimer.singleShot(2500, do_dump)
 app.exec()

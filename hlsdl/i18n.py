@@ -2124,6 +2124,24 @@ for _lang, _messages in SIDECAR_MESSAGES.items():
     BACKEND.setdefault(_lang, {}).update(_messages)
 
 
+FFMPEG_SECURITY_MESSAGES: dict[str, dict[str, str]] = {
+    "pt": {"dep_log_prefer_package_manager": 'Gerenciador de pacotes do sistema não encontrado; usando download estático (MD5/tamanho). Em Linux/macOS, prefira apt/dnf/brew quando disponíveis: pacotes do sistema são assinados criptograficamente.'},
+    "pt_pt": {"dep_log_prefer_package_manager": 'Gestor de pacotes do sistema não encontrado; a usar transferência estática (MD5/tamanho). Em Linux/macOS, prefira apt/dnf/brew quando disponíveis: os pacotes do sistema são assinados criptograficamente.'},
+    "en": {"dep_log_prefer_package_manager": 'System package manager not found; using static download (MD5/size). On Linux/macOS, prefer apt/dnf/brew when available: system packages are cryptographically signed.'},
+    "es": {"dep_log_prefer_package_manager": 'No se encontró el gestor de paquetes del sistema; usando descarga estática (MD5/tamaño). En Linux/macOS, prefiera apt/dnf/brew cuando estén disponibles: los paquetes del sistema están firmados criptográficamente.'},
+    "de": {"dep_log_prefer_package_manager": 'System-Paketmanager nicht gefunden; statischer Download (MD5/Größe) wird verwendet. Unter Linux/macOS apt/dnf/brew bevorzugen, wenn verfügbar: Systempakete sind kryptografisch signiert.'},
+    "it": {"dep_log_prefer_package_manager": 'Gestore pacchetti di sistema non trovato; uso download statico (MD5/dimensione). Su Linux/macOS preferisci apt/dnf/brew quando disponibili: i pacchetti di sistema sono firmati crittograficamente.'},
+    "fr": {"dep_log_prefer_package_manager": "Gestionnaire de paquets système introuvable ; téléchargement statique (MD5/taille) utilisé. Sous Linux/macOS, préférez apt/dnf/brew lorsqu'ils sont disponibles : les paquets système sont signés cryptographiquement."},
+    "ru": {"dep_log_prefer_package_manager": 'Системный менеджер пакетов не найден; используется статическая загрузка (MD5/размер). В Linux/macOS предпочитайте apt/dnf/brew, когда они доступны: системные пакеты криптографически подписаны.'},
+    "ar": {"dep_log_prefer_package_manager": 'لم يُعثر على مدير حزم النظام؛ سيتم استخدام تنزيل ثابت (MD5/الحجم). في Linux/macOS، فضّل apt/dnf/brew عند توفرها: حزم النظام موقعة تشفيريًا.'},
+    "he": {"dep_log_prefer_package_manager": 'לא נמצא מנהל חבילות מערכת; משתמשים בהורדה סטטית (MD5/גודל). ב-Linux/macOS העדף apt/dnf/brew כשהם זמינים: חבילות מערכת חתומות קריפטוגרפית.'},
+    "ja": {"dep_log_prefer_package_manager": 'システムのパッケージマネージャーが見つかりません。静的ダウンロード（MD5/サイズ）を使用します。Linux/macOS では利用可能なら apt/dnf/brew を推奨します。システムパッケージは暗号署名されています。'},
+    "ko": {"dep_log_prefer_package_manager": '시스템 패키지 관리자를 찾을 수 없습니다. 정적 다운로드(MD5/크기)를 사용합니다. Linux/macOS에서는 가능하면 apt/dnf/brew를 사용하세요. 시스템 패키지는 암호화 서명되어 있습니다.'},
+    "zh": {"dep_log_prefer_package_manager": '未找到系统包管理器；将使用静态下载（MD5/大小）。在 Linux/macOS 上，如可用请优先使用 apt/dnf/brew：系统软件包具有加密签名。'},
+}
+for _lang, _messages in FFMPEG_SECURITY_MESSAGES.items():
+    BACKEND.setdefault(_lang, {}).update(_messages)
+
 def tr(lang: str, key: str, **kw) -> str:
     """Traduz uma chave do backend, com fallback para PT e para a própria chave."""
     catalog = BACKEND.get(lang) or BACKEND[DEFAULT_LANG]

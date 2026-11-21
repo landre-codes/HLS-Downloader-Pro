@@ -299,3 +299,10 @@ def test_deps_shutdown_joins_install_thread(qapp):
     assert started.wait(1)
     manager.shutdown(timeout=2)
     assert not thread.is_alive()
+
+def test_ffmpeg_static_download_recommends_package_manager():
+    from hlsdl.i18n import LANGUAGES, tr
+
+    for lang in LANGUAGES:
+        message = tr(lang, "dep_log_prefer_package_manager")
+        assert "apt/dnf/brew" in message, (lang, message)

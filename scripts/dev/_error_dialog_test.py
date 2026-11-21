@@ -1,3 +1,6 @@
+# ruff: noqa: E402, I001
+
+
 """Verifica o diálogo de erro: item com erro no modelo → linha mostra e o
 diálogo abre com a mensagem completa (via QQmlExpression, sem item.property).
 
@@ -18,6 +21,9 @@ from PySide6.QtGui import QFont
 from PySide6.QtQml import QQmlApplicationEngine, QQmlExpression
 from PySide6.QtWidgets import QApplication
 
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, ROOT)
+
 from hlsdl.config import qml_path
 from main import Bridge, default_output_folder
 from worker import DownloadModel, QueueManager, Status
@@ -25,19 +31,16 @@ from worker import DownloadModel, QueueManager, Status
 _KEEP = []
 FAILS = []
 
-
 def ev(ctx, scope, expr):
     e = QQmlExpression(ctx, scope, expr)
     _KEEP.append(e)
     return e.evaluate()[0]
-
 
 def chk(name, got, want):
     ok = got == want
     print(f"{'OK ' if ok else 'FALHA '}{name}: {got!r} (esperado {want!r})", flush=True)
     if not ok:
         FAILS.append(name)
-
 
 def main() -> int:
     app = QApplication(sys.argv)
@@ -90,7 +93,6 @@ def main() -> int:
 
     QTimer.singleShot(1500, run)
     return app.exec()
-
 
 if __name__ == "__main__":
     sys.exit(main())

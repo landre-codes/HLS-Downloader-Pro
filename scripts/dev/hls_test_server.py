@@ -1,3 +1,6 @@
+# ruff: noqa: E402, I001
+
+
 """
 hls_test_server.py
 ==================
@@ -10,8 +13,11 @@ import os
 import shutil
 import socketserver
 import subprocess
+import sys
 import threading
 
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, ROOT)
 
 def _which(name: str):
     for exe in (name, name + ".exe"):
@@ -19,7 +25,6 @@ def _which(name: str):
         if found:
             return found
     return None
-
 
 class HLSFixture:
     """Gera um .m3u8 de 4 segundos e o expõe em http://127.0.0.1:<porta>/"""

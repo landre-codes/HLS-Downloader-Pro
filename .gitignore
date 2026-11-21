@@ -39,3 +39,7 @@ diagnostico-hlsdl.txt
 # Estado local da fila
 /queue.json
 docs/ui-review/**/queue.json
+
+# Saídas de scripts manuais
+php_test_out/
+php_test_seg.ts

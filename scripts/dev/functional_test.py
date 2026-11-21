@@ -1,18 +1,23 @@
+# ruff: noqa: E402, I001
+
+
 import os
 import sys
 import time
 
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from PySide6.QtCore import QThread
 from PySide6.QtWidgets import QApplication
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, ROOT)
 
 from hls_test_server import HLSFixture
 from worker import DownloadWorker
 
 app = QApplication(sys.argv)
-OUTDIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_out")
+OUTDIR = os.path.join(ROOT, "test_out")
 
 # limpa saídas de execuções anteriores
 for f in os.listdir(OUTDIR) if os.path.isdir(OUTDIR) else []:
@@ -21,10 +26,9 @@ for f in os.listdir(OUTDIR) if os.path.isdir(OUTDIR) else []:
     except OSError:
         pass
 
-fixture = HLSFixture(os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_out"))
+fixture = HLSFixture(os.path.join(ROOT, "test_out"))
 LOCAL_HLS = fixture.url()
 print("HLS local:", LOCAL_HLS)
-
 
 def run_worker(url, cancel_after=None, use_ffmpeg=True, direct_ffmpeg=False):
     """Roda um DownloadWorker em thread própria e coleta os eventos."""
@@ -97,7 +101,6 @@ def run_worker(url, cancel_after=None, use_ffmpeg=True, direct_ffmpeg=False):
         app.processEvents()
         time.sleep(0.01)
     return events
-
 
 print("=== Teste 1: URL inválida (fallback falha -> evento failed) ===")
 events = run_worker("https://invalid-url-xyz-99999.com.br/")

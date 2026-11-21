@@ -1,3 +1,6 @@
+# ruff: noqa: E402, I001
+
+
 """E2E do fluxo .php: página php → yt-dlp bloqueia → scraper acha media.php
 (m3u8) → yt-dlp bloqueia de novo → retry allow-unsafe-ext + .mp4 → sucesso.
 Usa o mesmo padrão do integration_test (FastWorker)."""
@@ -10,16 +13,18 @@ import threading
 import time
 
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from PySide6.QtWidgets import QApplication
 
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, ROOT)
+
 import worker as worker_mod
 from worker import DownloadModel, QueueManager, Status
 
-OUTDIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "php_test_out")
+OUTDIR = os.path.join(ROOT, "test_out", "php")
 
 M3U8 = (
     "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:6\n#EXT-X-MEDIA-SEQUENCE:0\n"
@@ -29,8 +34,7 @@ PAGE = (
     b'<html><body><video src="media.php?file=stream.m3u8"></video>'
     b'<a href="media.php?file=stream.m3u8">m3u8</a></body></html>'
 )
-SEG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "php_test_seg.ts")
-
+SEG_FILE = os.path.join(ROOT, "test_out", "php_test_seg.ts")
 
 class H(BaseHTTPRequestHandler):
     def log_message(self, *a):
@@ -68,7 +72,6 @@ class H(BaseHTTPRequestHandler):
             self.send_response(404)
             self.end_headers()
 
-
 class FastWorker(worker_mod.DownloadWorker):
     def _run_process(self, cmd, **kw):
         cmd = list(cmd)
@@ -76,7 +79,6 @@ class FastWorker(worker_mod.DownloadWorker):
             idx = cmd.index("-o")
             cmd[idx:idx] = ["--download-sections", "*0-12", "--force-overwrites"]
         return super()._run_process(cmd, **kw)
-
 
 def main() -> int:
     ffmpeg = shutil.which("ffmpeg")
@@ -128,7 +130,6 @@ def main() -> int:
     shutil.rmtree(OUTDIR, ignore_errors=True)
     os.remove(SEG_FILE)
     return 0 if ok else 1
-
 
 if __name__ == "__main__":
     sys.exit(main())

@@ -1,3 +1,6 @@
+# ruff: noqa: E402, I001
+
+
 """Servidor local de teste: /video.php (MP4 real) e /page.php (HTML com m3u8).
 
 Para reproduzir o caso "extensão php incomum" do yt-dlp 2026+.
@@ -10,6 +13,9 @@ import subprocess
 import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, ROOT)
 
 M3U8 = """#EXTM3U
 #EXT-X-VERSION:3
@@ -24,7 +30,6 @@ seg1.ts
 
 SEG0 = b"\x47\x00\x00\x00" + b"A" * 1024
 SEG1 = b"\x47\x00\x00\x00" + b"B" * 1024
-
 
 class H(BaseHTTPRequestHandler):
     def log_message(self, *a):
@@ -73,7 +78,6 @@ class H(BaseHTTPRequestHandler):
             self.send_response(404)
             self.end_headers()
 
-
 def main() -> None:
     srv = ThreadingHTTPServer(("127.0.0.1", 0), H)
     port = srv.server_address[1]
@@ -81,7 +85,7 @@ def main() -> None:
     base = f"http://127.0.0.1:{port}"
     print(f"SERVIDOR em {base}", flush=True)
 
-    outdir = os.path.abspath("php_test_out")
+    outdir = os.path.join(ROOT, "test_out", "php")
     os.makedirs(outdir, exist_ok=True)
 
     # Teste 1: yt-dlp direto numa URL terminada em .php
@@ -127,7 +131,6 @@ def main() -> None:
 
     srv.shutdown()
     sys.exit(0)
-
 
 if __name__ == "__main__":
     main()
