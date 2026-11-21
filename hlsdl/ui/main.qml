@@ -16,9 +16,12 @@ import "components"
 //     Playlist é carregada pelo diálogo da aba Downloads e entra na mesma fila.
 //   - Formato (vídeo+áudio / vídeo / áudio), qualidade (144p–4K) e arquivo
 //     (mp4/mkv/webm/avi/mov ou mp3/m4a/...).
-//   - O SwipeView segue o TabBar por BINDING — nunca atribuir
-//     `views.currentIndex` imperativamente. Troque de aba via
-//     `tabBar.currentIndex`.
+//   - O StackLayout segue o controlador `tabBar` por BINDING - nunca atribuir
+//     `views.currentIndex` imperativamente. Troque de seção via `goToTab()`
+//     ou `tabBar.currentIndex`. Sem carrossel não há resíduo da página anterior
+//     nem vai-e-vem quando a rail muda de largura.
+//   - "mainTabBar" permanece como objectName do controlador para scripts e
+//     testes; a navegação visual é a AppSidebar.
 // =============================================================================
 
 ApplicationWindow {
@@ -34,33 +37,40 @@ ApplicationWindow {
     title: "HLS Downloader Pro"
 
     property bool dark: bridge.dark
+    readonly property bool isRtl: bridge.isRtl
+    LayoutMirroring.enabled: root.isRtl
+    LayoutMirroring.childrenInherit: true
 
     // Tokens semânticos de tema. Todo texto/plano de fundo deve usar estes
     // valores (evita combinações claro-sobre-claro/escuro-sobre-escuro).
     component ThemeTokens: QtObject {
         property bool dark: false
-        readonly property color windowBg: dark ? "#14181c" : "#f5f5f5"
-        readonly property color cardBg: dark ? "#1d2329" : "#ffffff"
-        readonly property color cardBorder: dark ? "#33404a" : "#d7dde3"
-        readonly property color titleBg: dark ? "#101419" : "#e9ebee"
-        readonly property color tabBg: dark ? "#181d22" : "#eef0f3"
-        readonly property color text: dark ? "#f2f4f6" : "#202428"
-        readonly property color textSecondary: dark ? "#c2cbd3" : "#4f5862"
-        readonly property color textMuted: dark ? "#9aa5af" : "#626b75"
-        readonly property color divider: dark ? "#33404a" : "#d7dde3"
-        readonly property color hover: dark ? "#2a323a" : "#dfe4e8"
-        readonly property color rowHighlight: dark ? "#223038" : "#dceef7"
-        readonly property color tableHeaderBg: dark ? "#232b33" : "#eef1f4"
-        readonly property color tableHeaderText: dark ? "#e3e8ec" : "#2f3a42"
-        readonly property color thumbnailBg: dark ? "#262e35" : "#eef0f3"
-        readonly property color thumbnailBorder: dark ? "#33404a" : "#d7dde3"
-        readonly property color accentText: dark ? "#90caf9" : "#0d47a1"
-        readonly property color accentFill: "#1565c0"
+        readonly property color windowBg: dark ? "#111923" : "#f3f6fb"
+        readonly property color cardBg: dark ? "#1b2633" : "#ffffff"
+        readonly property color cardBorder: dark ? "#304152" : "#d8e1ee"
+        readonly property color titleBg: dark ? "#0d141d" : "#e9eff8"
+        readonly property color tabBg: dark ? "#16202c" : "#edf2f9"
+        readonly property color text: dark ? "#e6eef7" : "#1f2937"
+        readonly property color textSecondary: dark ? "#b8c7d9" : "#475569"
+        readonly property color textMuted: dark ? "#8fa3b8" : "#5b6779"
+        readonly property color divider: dark ? "#2a3a4c" : "#d8e1ee"
+        readonly property color hover: dark ? "#273748" : "#e2e9f3"
+        readonly property color rowHighlight: dark ? "#1f3a5f" : "#dceafe"
+        // Inputs e tabelas ficam um tom abaixo dos cards para dar contraste.
+        readonly property color inputBg: dark ? "#0e1620" : "#e9eff8"
+        readonly property color inputBorder: dark ? "#3a4c60" : "#c8d5e6"
+        readonly property color tableBg: dark ? "#15202c" : "#f5f8fd"
+        readonly property color tableHeaderBg: dark ? "#223142" : "#e6edf7"
+        readonly property color tableHeaderText: dark ? "#dce6f2" : "#2f3a48"
+        readonly property color thumbnailBg: dark ? "#223142" : "#eef3fa"
+        readonly property color thumbnailBorder: dark ? "#304152" : "#d8e1ee"
+        readonly property color accentText: dark ? "#93c5fd" : "#1d4ed8"
+        readonly property color accentFill: "#2563eb"
         readonly property color onAccent: "#ffffff"
-        readonly property color dangerFill: "#b71c1c"
-        readonly property color successText: dark ? "#81c784" : "#1b5e20"
-        readonly property color busyText: dark ? "#ffb74d" : "#9a4a00"
-        readonly property color errorText: dark ? "#ff8a80" : "#b71c1c"
+        readonly property color dangerFill: "#b42332"
+        readonly property color successText: dark ? "#4ade80" : "#15803d"
+        readonly property color busyText: dark ? "#ffb74d" : "#b45309"
+        readonly property color errorText: dark ? "#f87171" : "#b42332"
         readonly property color warningBg: "#4a2c1f"
         readonly property color warningText: dark ? "#ffd180" : "#ffd180"
         readonly property color terminalBg: "#0d1117"
@@ -70,15 +80,15 @@ ApplicationWindow {
         readonly property color terminalPrompt: "#27c93f"
         readonly property color terminalSelection: "#264f78"
         readonly property color toastBg: dark ? "#2b3138" : "#32363c"
-        readonly property color heroFrom: dark ? "#1b2c3a" : "#eaf4ff"
-        readonly property color heroTo: dark ? "#1d2329" : "#ffffff"
-        readonly property color heroBorder: dark ? "#2d4557" : "#cfe0f2"
-        readonly property color badgeDone: "#2e7d32"
-        readonly property color badgeError: "#b71c1c"
-        readonly property color badgeDownloading: "#00695c"
-        readonly property color badgeAnalyzing: "#8a4b08"
-        readonly property color badgeEncoding: "#4a148c"
-        readonly property color badgeMuted: "#455a64"
+        readonly property color heroFrom: dark ? "#16283a" : "#e8f0fe"
+        readonly property color heroTo: dark ? "#1b2633" : "#ffffff"
+        readonly property color heroBorder: dark ? "#2e4864" : "#cbdcf5"
+        readonly property color badgeDone: "#15803d"
+        readonly property color badgeError: "#b42332"
+        readonly property color badgeDownloading: "#1d4ed8"
+        readonly property color badgeAnalyzing: "#b45309"
+        readonly property color badgeEncoding: "#6a1b9a"
+        readonly property color badgeMuted: "#526075"
     }
     property QtObject theme: ThemeTokens { dark: root.dark }
 
@@ -110,6 +120,30 @@ ApplicationWindow {
     property bool wasMinimized: false
     property bool minimizeAnimating: false
 
+    // Navegação: rail expandida em telas largas, rail compacta em larguras
+    // intermediárias e drawer sobreposto quando o espaço é escasso.
+    readonly property string navMode: width >= 1280 ? "expanded"
+                                    : (width >= 1120 ? "compact" : "drawer")
+    property bool navDrawerOpen: false
+    property bool sidebarCollapsed: false
+    property bool sidebarForceExpanded: false
+    readonly property bool sidebarExpanded: navMode === "expanded"
+                                            ? !sidebarCollapsed
+                                            : (navMode === "compact"
+                                               ? sidebarForceExpanded : true)
+
+    onNavModeChanged: {
+        sidebarCollapsed = false
+        sidebarForceExpanded = false
+        if (navMode !== "drawer")
+            navDrawerOpen = false
+    }
+
+    function goToTab(index) {
+        tabBar.currentIndex = index
+        navDrawerOpen = false
+    }
+
     function minimizeAnimated() {
         if (root.visibility === Window.Minimized || root.minimizeAnimating)
             return
@@ -131,7 +165,11 @@ ApplicationWindow {
     }
     onXChanged: rememberNormalGeometry()
     onYChanged: rememberNormalGeometry()
-    onWidthChanged: rememberNormalGeometry()
+    onWidthChanged: {
+        rememberNormalGeometry()
+        if (navMode !== "drawer")
+            navDrawerOpen = false
+    }
     onHeightChanged: rememberNormalGeometry()
     function toggleMaximize() {
         if (root.visibility === Window.Maximized) {
@@ -171,6 +209,20 @@ ApplicationWindow {
         strings = I18n.getAll()
     }
     function statusText(s) { return strings["s_" + s] || s }
+    function progressIconName(s) {
+        switch (s) {
+        case "waiting":     return "pause"
+        case "analyzing":   return "search"
+        case "downloading": return "download"
+        case "encoding":    return "download"
+        case "verifying":   return "search"
+        case "done":        return "check"
+        case "error":       return "alert"
+        case "cancelled":   return "stop"
+        case "skipped":     return "pause"
+        default:            return "file"
+        }
+    }
     function badgeColor(s) {
         switch (s) {
         case "done":        return root.theme.badgeDone
@@ -227,7 +279,7 @@ ApplicationWindow {
         root.playlistVisibleCount = 0
         bridge.clearPlaylist()
     }
-    function goToSettingsTab() { tabBar.currentIndex = 3 }
+    function goToSettingsTab() { goToTab(3) }
     function openConfirmCancel() { confirmCancel.open() }
     function openConfirmClear() { confirmClear.open() }
     function openConfirmUpdate() { confirmUpdate.open() }
@@ -328,8 +380,21 @@ ApplicationWindow {
 
     // Caminho do ícone SVG conforme o tema. Resolvido a partir do main.qml
     // para que páginas/componentes em subpastas não procurem "pages/icons".
-    function iconPath(name) {
+    function iconPath(name, onAccent) {
+        if (onAccent === true)
+            return Qt.resolvedUrl("icons/" + name + "_accent.svg")
         return Qt.resolvedUrl("icons/" + name + (root.dark ? "_dark.svg" : "_light.svg"))
+    }
+
+    function tonalIcon(name, enabled) {
+        if (enabled === false)
+            return iconPath(name)
+        return Qt.resolvedUrl("icons/" + name
+                              + (root.dark ? "_tonal_dark.svg" : "_tonal_light.svg"))
+    }
+
+    function settingsIcon(name) {
+        return Qt.resolvedUrl("icons/" + name + "_blue.svg")
     }
 
     function formatBytes(value) {
@@ -501,6 +566,10 @@ ApplicationWindow {
     }
 
     Shortcut { sequence: "Ctrl+V"; enabled: !root.typing; onActivated: bridge.pasteFromClipboard() }
+    Shortcut { sequence: "Ctrl+1"; onActivated: root.goToTab(0) }
+    Shortcut { sequence: "Ctrl+2"; onActivated: root.goToTab(1) }
+    Shortcut { sequence: "Ctrl+3"; onActivated: root.goToTab(2) }
+    Shortcut { sequence: "Ctrl+4"; onActivated: root.goToTab(3) }
     Shortcut {
         sequence: "Ctrl+Return"
         enabled: !root.typing && tabBar.currentIndex === 1
@@ -563,7 +632,7 @@ ApplicationWindow {
             }
             if (videos.length > 0) {
                 bridge.addCompressionPaths(videos)
-                tabBar.currentIndex = 2
+                root.goToTab(2)
             }
             drop.accept()
         }
@@ -664,6 +733,27 @@ ApplicationWindow {
             anchors.rightMargin: 6
             spacing: 8
 
+            AppToolButton {
+                objectName: "navMenuButton"
+                width: 32
+                height: 32
+                display: AbstractButton.IconOnly
+                icon.source: root.iconPath("menu")
+                icon.width: 18
+                icon.height: 18
+                Layout.alignment: Qt.AlignVCenter
+                Accessible.name: strings.nav_menu || "Menu"
+                tipTitle: strings.nav_menu || "Menu"
+                onClicked: {
+                    if (root.navMode === "drawer")
+                        root.navDrawerOpen = !root.navDrawerOpen
+                    else if (root.navMode === "expanded")
+                        root.sidebarCollapsed = !root.sidebarCollapsed
+                    else
+                        root.sidebarForceExpanded = !root.sidebarForceExpanded
+                }
+            }
+
             Rectangle {
                 width: 7
                 height: 28
@@ -704,12 +794,29 @@ ApplicationWindow {
                 }
             }
             Item { Layout.fillWidth: true }
+
             Rectangle {
                 width: 1
                 height: 18
                 color: root.theme.divider
                 Layout.alignment: Qt.AlignVCenter
                 Layout.rightMargin: 2
+            }
+
+            AppToolButton {
+                objectName: "themeToggleButton"
+                width: 32
+                height: 32
+                display: AbstractButton.IconOnly
+                icon.source: root.dark ? root.iconPath("sun")
+                                       : root.iconPath("moon")
+                icon.width: 18
+                icon.height: 18
+                Layout.alignment: Qt.AlignVCenter
+                Accessible.name: strings.cfg_dark
+                tipTitle: strings.cfg_dark
+                tipText: strings.cfg_dark_tip
+                onClicked: bridge.setDark(!root.dark)
             }
 
             TitleBarButton {
@@ -737,72 +844,132 @@ ApplicationWindow {
         }
     }
 
-    // ================================================== ABAS
-    TabBar {
+    // ================================================== NAVEGAÇÃO
+    // Compatibilidade: scripts e testes acessam "mainTabBar" e currentIndex.
+    // A navegação real é feita pela AppSidebar; as páginas continuam no
+    // StackLayout e nunca são recriadas na troca de seção.
+    QtObject {
         id: tabBar
         objectName: "mainTabBar"
-        anchors.top: titleBar.bottom
-        anchors.left: parent.left
-        anchors.right: parent.right
-        contentHeight: 42
-        background: Rectangle { color: root.theme.tabBg }
-        AppTabButton {
-            text: strings.tab_single; font.pixelSize: 13; implicitWidth: 170
-            tipTitle: strings.tab_single
-            tipText: strings.tab_single_tip
-        }
-        AppTabButton {
-            text: strings.tab_downloads; font.pixelSize: 13; implicitWidth: 150
-            tipTitle: strings.tab_downloads
-            tipText: strings.tab_downloads_tip
-        }
-        AppTabButton {
-            text: strings.tab_compress; font.pixelSize: 13; implicitWidth: 140
-            tipTitle: strings.tab_compress
-            tipText: strings.tab_compress_tip
-        }
-        AppTabButton {
-            text: strings.tab_settings; font.pixelSize: 13; implicitWidth: 150
-            tipTitle: strings.tab_settings
-            tipText: strings.tab_settings_tip
-        }
+        property int currentIndex: 0
     }
 
-    SwipeView {
-        id: views
-        anchors.top: tabBar.bottom
+    AppSidebar {
+        id: sidebar
+        objectName: "appSidebar"
+        visible: root.navMode !== "drawer"
+        anchors.top: titleBar.bottom
         anchors.bottom: parent.bottom
         anchors.left: parent.left
-        anchors.right: parent.right
+        theme: root.theme
+        strings: root.strings
+        appRoot: root
         currentIndex: tabBar.currentIndex
-        interactive: false
+        expanded: root.sidebarExpanded
+        downloadsBadge: root.statWaiting + root.statDownloading
+        compressionBadge: root.compWait + root.compWork
+        onActivated: function(index) { root.goToTab(index) }
+    }
+
+    StackLayout {
+        id: views
+        objectName: "mainStack"
+        anchors.top: titleBar.bottom
+        anchors.bottom: parent.bottom
+        anchors.left: root.navMode === "drawer" ? parent.left : sidebar.right
+        anchors.right: parent.right
+        clip: true
+        currentIndex: tabBar.currentIndex
+        property int _previousIndex: 0
+
+        onCurrentIndexChanged: {
+            var host = children[currentIndex]
+            if (host && host.reveal)
+                host.reveal(currentIndex >= _previousIndex ? 1 : -1)
+            _previousIndex = currentIndex
+        }
 
         // ==================================================== ABA INDIVIDUAL
-        SinglePage {
-            id: singlePage
-            appRoot: root
-            strings: root.strings
+        PageFrame {
+            objectName: "singlePageFrame"
+            SinglePage {
+                id: singlePage
+                anchors.fill: parent
+                appRoot: root
+                strings: root.strings
+            }
         }
 
         // ====================================================== ABA DOWNLOADS
-        BatchPage {
-            id: batchPage
-            appRoot: root
-            strings: root.strings
+        PageFrame {
+            objectName: "batchPageFrame"
+            BatchPage {
+                id: batchPage
+                anchors.fill: parent
+                appRoot: root
+                strings: root.strings
+            }
         }
 
         // ===================================================== ABA COMPRESSÃO
-        CompressionPage {
-            id: compressionPage
-            appRoot: root
-            strings: root.strings
+        PageFrame {
+            objectName: "compressionPageFrame"
+            CompressionPage {
+                id: compressionPage
+                anchors.fill: parent
+                appRoot: root
+                strings: root.strings
+            }
         }
 
-        SettingsPage {
-            id: settingsPage
-            appRoot: root
-            strings: root.strings
+        PageFrame {
+            objectName: "settingsPageFrame"
+            SettingsPage {
+                id: settingsPage
+                anchors.fill: parent
+                appRoot: root
+                strings: root.strings
+            }
         }
+    }
+
+    // Drawer em janelas estreitas: sobrepõe o conteúdo, sem roubar largura
+    // permanente das tabelas.
+    Rectangle {
+        id: navScrim
+        objectName: "navScrim"
+        visible: root.navMode === "drawer" && root.navDrawerOpen
+        anchors.top: titleBar.bottom
+        anchors.bottom: parent.bottom
+        anchors.left: parent.left
+        anchors.right: parent.right
+        color: "#000000"
+        opacity: 0.35
+        z: 55
+        MouseArea {
+            anchors.fill: parent
+            onClicked: root.navDrawerOpen = false
+        }
+    }
+
+    AppSidebar {
+        id: navDrawer
+        objectName: "navDrawer"
+        visible: root.navMode === "drawer" && root.navDrawerOpen
+        anchors.top: titleBar.bottom
+        anchors.bottom: parent.bottom
+        anchors.left: parent.left
+        z: 56
+        drawer: true
+        expanded: true
+        theme: root.theme
+        strings: root.strings
+        appRoot: root
+        currentIndex: tabBar.currentIndex
+        downloadsBadge: root.statWaiting + root.statDownloading
+        compressionBadge: root.compWait + root.compWork
+        onActivated: function(index) { root.goToTab(index) }
+        onCloseRequested: root.navDrawerOpen = false
     }
 
     // ===================================================== ZONAS DE REDIMENSIONAR
@@ -884,6 +1051,7 @@ ApplicationWindow {
         strings: root.strings
         title: root.strings.confirm_cancel_title
         message: root.strings.confirm_cancel_text
+        destructive: true
         onConfirmed: bridge.cancelAll()
     }
 
@@ -893,6 +1061,7 @@ ApplicationWindow {
         strings: root.strings
         title: root.strings.confirm_clear_title
         message: root.strings.confirm_clear_text
+        destructive: true
         onConfirmed: bridge.clearFinished()
     }
 
@@ -930,10 +1099,10 @@ ApplicationWindow {
         id: confirmClose
         appRoot: root
         strings: root.strings
-        width: 460
         title: root.strings.confirm_close_title
         message: root.strings.confirm_close_text
         okText: root.strings.dlg_error_close
+        destructive: true
         onConfirmed: {
             root.allowClose = true
             root.close()
@@ -944,7 +1113,6 @@ ApplicationWindow {
         id: confirmUpdate
         appRoot: root
         strings: root.strings
-        width: 480
         title: root.strings.update_title
         message: root.strings.confirm_close_text
         onConfirmed: bridge.downloadUpdate()
@@ -954,20 +1122,20 @@ ApplicationWindow {
         id: qualityConfirm
         appRoot: root
         strings: root.strings
-        bridge: root.bridgeApi
+        backend: root.bridgeApi
     }
 
     SimilarityDialog {
         id: similarDialog
         appRoot: root
         strings: root.strings
-        bridge: root.bridgeApi
+        backend: root.bridgeApi
     }
 
     RecoveryDialog {
         id: recoveryDialog
         appRoot: root
         strings: root.strings
-        bridge: root.bridgeApi
+        backend: root.bridgeApi
     }
 }

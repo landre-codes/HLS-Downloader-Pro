@@ -10,6 +10,7 @@ import "../components"
     property var strings: ({})
     property alias settingsScroll: settingsScroll
     readonly property bool showHero: width >= 1050 && height >= 650
+    readonly property int scrollGutter: 16
 
     ScrollView {
                 id: settingsScroll
@@ -22,7 +23,7 @@ import "../components"
                 ScrollBar.vertical.policy: ScrollBar.AlwaysOn
 
                 ColumnLayout {
-                    width: settingsScroll.availableWidth
+                    width: settingsScroll.availableWidth - page.scrollGutter
                     spacing: 12
 
                     PageHero {
@@ -46,29 +47,21 @@ import "../components"
                             anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
                             anchors.margins: 16
                             spacing: 12
-                            Label { text: strings.cfg_appearance; font.pixelSize: 15; font.weight: Font.DemiBold }
-                            RowLayout {
+                            SectionHeader {
                                 Layout.fillWidth: true
-                                spacing: 12
-                                Label { text: strings.cfg_dark; Layout.fillWidth: true; font.pixelSize: 13; wrapMode: Text.WordWrap }
-                                AppToolButton {
-                                    display: AbstractButton.IconOnly
-                                    icon.source: appRoot.dark
-                                                 ? appRoot.iconPath("sun")
-                                                 : appRoot.iconPath("moon")
-                                    icon.width: 20
-                                    icon.height: 20
-                                    Accessible.name: strings.cfg_dark
-                                    tipText: strings.cfg_dark_tip
-                                    onClicked: bridge.setDark(!appRoot.dark)
-                                }
+                                theme: appRoot.theme
+                                iconSource: appRoot.dark ? appRoot.settingsIcon("moon")
+                                                         : appRoot.settingsIcon("sun")
+                                title: strings.cfg_appearance
                             }
                             RowLayout {
                                 Layout.fillWidth: true
                                 spacing: 12
-                                Label { text: strings.cfg_language; Layout.fillWidth: true; font.pixelSize: 13; wrapMode: Text.WordWrap }
-                                AppComboBox {
+                                Label { text: strings.cfg_language; Layout.fillWidth: true; font.pixelSize: 14; wrapMode: Text.WordWrap }
+                                LanguageComboBox {
                                     id: langCombo
+                                    objectName: "languageCombo"
+                                    appRoot: page.appRoot
                                     model: bridge.languages
                                     textRole: "name"
                                     valueRole: "code"
@@ -98,11 +91,16 @@ import "../components"
                             anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
                             anchors.margins: 16
                             spacing: 12
-                            Label { text: strings.cfg_downloads; font.pixelSize: 15; font.weight: Font.DemiBold }
+                            SectionHeader {
+                                Layout.fillWidth: true
+                                theme: appRoot.theme
+                                iconSource: appRoot.settingsIcon("download")
+                                title: strings.cfg_downloads
+                            }
                             RowLayout {
                                 Layout.fillWidth: true
                                 spacing: 12
-                                Label { text: strings.cfg_concurrency; Layout.fillWidth: true; font.pixelSize: 13; wrapMode: Text.WordWrap }
+                                Label { text: strings.cfg_concurrency; Layout.fillWidth: true; font.pixelSize: 14; wrapMode: Text.WordWrap }
                                 AppSpinBox {
                                     id: concurrencySpin
                                     from: 1; to: 8
@@ -119,7 +117,7 @@ import "../components"
                                     text: strings.naming_label
                                     tip: strings.naming_tip
                                     Layout.fillWidth: true
-                                    font.pixelSize: 13
+                                    font.pixelSize: 14
                                     wrapMode: Text.WordWrap
                                 }
                                 AppComboBox {
@@ -146,6 +144,10 @@ import "../components"
                                 copyText: strings.folder_copy
                                 folderIcon: appRoot.iconPath("open")
                                 copyIcon: appRoot.iconPath("copy")
+                                changeIcon: appRoot.iconPath("edit")
+                                openIcon: appRoot.iconPath("open")
+                                changeTip: strings.folder_output_label
+                                openTip: bridge.outputFolder
                                 onChangeRequested: bridge.chooseOutputFolder()
                                 onOpenRequested: bridge.openOutputFolder()
                                 onCopyRequested: bridge.copyLink(bridge.outputFolder)
@@ -166,14 +168,19 @@ import "../components"
                             anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
                             anchors.margins: 16
                             spacing: 12
-                            Label { text: strings.cfg_sidecars; font.pixelSize: 15; font.weight: Font.DemiBold }
+                            SectionHeader {
+                                Layout.fillWidth: true
+                                theme: appRoot.theme
+                                iconSource: appRoot.settingsIcon("shield")
+                                title: strings.cfg_sidecars
+                            }
                             RowLayout {
                                 Layout.fillWidth: true
                                 spacing: 12
                                 Label {
                                     text: strings.cfg_sidecars_tip
                                     Layout.fillWidth: true
-                                    font.pixelSize: 12
+                                    font.pixelSize: 14
                                     color: appRoot.theme.textSecondary
                                     wrapMode: Text.WordWrap
                                 }
@@ -185,6 +192,12 @@ import "../components"
                             }
                             AppButton {
                                 text: strings.cfg_sidecars_cleanup
+                                variant: "secondary"
+                                dangerHover: true
+                                icon.source: appRoot.iconPath("trash")
+                                icon.width: 16
+                                icon.height: 16
+                                display: AbstractButton.TextBesideIcon
                                 onClicked: bridge.cleanupSidecars()
                             }
                         }
@@ -203,21 +216,18 @@ import "../components"
                             anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
                             anchors.margins: 16
                             spacing: 12
-                            Label {
-                                id: networkLabel
-                                text: strings.cfg_network; font.pixelSize: 15; font.weight: Font.DemiBold
-                                HoverHandler { id: networkHover }
-                                AppToolTip {
-                                    target: networkLabel
-                                    title: strings.cfg_network
-                                    text: strings.cfg_network_tip
-                                    available: strings.cfg_network_tip.length > 0
-                                }
+                            SectionHeader {
+                                Layout.fillWidth: true
+                                theme: appRoot.theme
+                                iconSource: appRoot.settingsIcon("network")
+                                title: strings.cfg_network
+                                tipTitle: strings.cfg_network
+                                tipText: strings.cfg_network_tip
                             }
                             RowLayout {
                                 Layout.fillWidth: true
                                 spacing: 12
-                                Label { text: strings.cfg_limit_rate; Layout.fillWidth: true; font.pixelSize: 13; wrapMode: Text.WordWrap }
+                                Label { text: strings.cfg_limit_rate; Layout.fillWidth: true; font.pixelSize: 14; wrapMode: Text.WordWrap }
                                 AppSpinBox {
                                     id: limitRateSpin
                                     from: 0; to: 100; stepSize: 1
@@ -230,7 +240,7 @@ import "../components"
                             RowLayout {
                                 Layout.fillWidth: true
                                 spacing: 12
-                                Label { text: strings.cfg_fragments; Layout.fillWidth: true; font.pixelSize: 13; wrapMode: Text.WordWrap }
+                                Label { text: strings.cfg_fragments; Layout.fillWidth: true; font.pixelSize: 14; wrapMode: Text.WordWrap }
                                 AppSpinBox {
                                     id: fragmentsSpin
                                     from: 1; to: 8
@@ -256,11 +266,16 @@ import "../components"
                             anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
                             anchors.margins: 16
                             spacing: 12
-                            Label { text: strings.cfg_cookies_title; font.pixelSize: 15; font.weight: Font.DemiBold }
+                            SectionHeader {
+                                Layout.fillWidth: true
+                                theme: appRoot.theme
+                                iconSource: appRoot.settingsIcon("cookie")
+                                title: strings.cfg_cookies_title
+                            }
                             RowLayout {
                                 Layout.fillWidth: true
                                 spacing: 12
-                                Label { text: strings.cfg_cookies_use; font.pixelSize: 13; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                                Label { text: strings.cfg_cookies_use; font.pixelSize: 14; Layout.fillWidth: true; wrapMode: Text.WordWrap }
                                 AppSwitch {
                                     checked: bridge.cookiesEnabled
                                     tipText: strings.cfg_cookies_use_tip
@@ -270,10 +285,22 @@ import "../components"
                             RowLayout {
                                 Layout.fillWidth: true
                                 spacing: 12
-                                Label { text: strings.cfg_browser; font.pixelSize: 13; color: appRoot.theme.textSecondary; Layout.fillWidth: true; wrapMode: Text.WordWrap }
-                                AppComboBox {
+                                Label { text: strings.cfg_browser; font.pixelSize: 14; color: appRoot.theme.textSecondary; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                                BrowserComboBox {
                                     id: browserCombo
-                                    model: ["Chrome", "Chromium", "Edge", "Firefox", "Opera", "Vivaldi", "Brave"]
+                                    objectName: "browserCombo"
+                                    appRoot: page.appRoot
+                                    textRole: "name"
+                                    valueRole: "icon"
+                                    model: [
+                                        { icon: "chrome", name: "Chrome" },
+                                        { icon: "chromium", name: "Chromium" },
+                                        { icon: "edge", name: "Edge" },
+                                        { icon: "firefox", name: "Firefox" },
+                                        { icon: "opera", name: "Opera" },
+                                        { icon: "vivaldi", name: "Vivaldi" },
+                                        { icon: "brave", name: "Brave" }
+                                    ]
                                     currentIndex: bridge.cookiesBrowserIndex
                                     onActivated: bridge.setCookiesBrowserIndex(currentIndex)
                                     enabled: bridge.cookiesEnabled
@@ -286,7 +313,7 @@ import "../components"
                                 spacing: 8
                                 Label {
                                     text: strings.cfg_cookies_file
-                                    font.pixelSize: 12
+                                    font.pixelSize: 14
                                     color: appRoot.theme.textSecondary
                                     Layout.preferredWidth: 220
                                     wrapMode: Text.WordWrap
@@ -295,6 +322,7 @@ import "../components"
                                     text: bridge.cookiesFile
                                     onEditingFinished: bridge.setCookiesFile(text)
                                     hint: strings.cfg_cookies_placeholder
+                                    strings: page.strings
                                     selectByMouse: true
                                     Layout.fillWidth: true
                                     tipText: strings.cfg_cookies_file_tip
@@ -311,7 +339,7 @@ import "../components"
                             }
                             Label {
                                 text: strings.cfg_cookies_hint
-                                font.pixelSize: 11
+                                font.pixelSize: 14
                                 color: appRoot.theme.textSecondary
                                 wrapMode: Text.Wrap
                                 Layout.fillWidth: true
@@ -338,13 +366,18 @@ import "../components"
                             RowLayout {
                                 Layout.fillWidth: true
                                 spacing: 8
-                                Label { text: strings.cfg_deps_title; font.pixelSize: 15; font.weight: Font.DemiBold }
+                                SectionHeader {
+                                    Layout.fillWidth: true
+                                    theme: appRoot.theme
+                                    iconSource: appRoot.settingsIcon("package")
+                                    title: strings.cfg_deps_title
+                                }
                                 Item { Layout.fillWidth: true }
                                 Label {
                                     visible: bridge.depsBusy
                                     text: bridge.depsBusy ? strings.dep_busy : ""
                                     color: appRoot.theme.busyText
-                                    font.pixelSize: 12
+                                    font.pixelSize: 14
                                     Layout.rightMargin: 6
                                     Layout.alignment: Qt.AlignVCenter
                                 }
@@ -369,7 +402,7 @@ import "../components"
                             }
                             Label {
                                 text: strings.cfg_deps_tip
-                                font.pixelSize: 11
+                                font.pixelSize: 14
                                 color: appRoot.theme.textSecondary
                                 wrapMode: Text.Wrap
                                 Layout.fillWidth: true
@@ -380,7 +413,7 @@ import "../components"
                                 spacing: 12
                                 Label {
                                     text: strings.dep_ytdlp_channel
-                                    font.pixelSize: 13
+                                    font.pixelSize: 14
                                     color: appRoot.theme.textSecondary
                                     Layout.alignment: Qt.AlignVCenter
                                 }
@@ -415,13 +448,13 @@ import "../components"
                                     }
                                     Label {
                                         text: modelData.name
-                                        font.pixelSize: 13
+                                        font.pixelSize: 14
                                         Layout.preferredWidth: 104
                                         elide: Text.ElideRight
                                     }
                                     Label {
                                         text: modelData.version ? ("v" + modelData.version) : ""
-                                        font.pixelSize: 11
+                                        font.pixelSize: 14
                                         color: appRoot.theme.textSecondary
                                         Layout.preferredWidth: 96
                                         elide: Text.ElideRight
@@ -431,7 +464,7 @@ import "../components"
                                               ? (modelData.found ? strings.dep_bundled : strings.dep_missing)
                                               : ((modelData.required ? strings.dep_required : strings.dep_optional)
                                                  + " · " + (modelData.found ? strings.dep_found : strings.dep_missing))
-                                        font.pixelSize: 11
+                                        font.pixelSize: 14
                                         color: modelData.found ? appRoot.theme.textSecondary : appRoot.theme.dangerFill
                                         Layout.fillWidth: true
                                         elide: Text.ElideRight
@@ -475,14 +508,19 @@ import "../components"
                             anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
                             anchors.margins: 16
                             spacing: 10
-                            Label { text: strings.about_title; font.pixelSize: 15; font.weight: Font.DemiBold }
+                            SectionHeader {
+                                Layout.fillWidth: true
+                                theme: appRoot.theme
+                                iconSource: appRoot.settingsIcon("info")
+                                title: strings.about_title
+                            }
                             RowLayout {
                                 Layout.fillWidth: true
                                 spacing: 10
                                 Label {
                                     Layout.fillWidth: true
                                     text: strings.update_current + " " + bridge.appVersion
-                                    font.pixelSize: 13
+                                    font.pixelSize: 14
                                     color: appRoot.theme.textSecondary
                                 }
                                 AppButton {
@@ -496,11 +534,11 @@ import "../components"
                                 }
                                 AppButton {
                                     text: strings.update_download
-                                    icon.source: appRoot.iconPath("download")
+                                    icon.source: appRoot.iconPath("download", enabled)
                                     display: AbstractButton.TextBesideIcon
                                     visible: bridge.updateAvailable
                                     enabled: !bridge.updateBusy
-                                    highlighted: true
+                                    variant: "warning"
                                     icon.width: 18; icon.height: 18
                                     onClicked: {
                                         if (bridge.queueActive || bridge.compressionActive)
@@ -523,7 +561,7 @@ import "../components"
                                 text: bridge.updateStatus
                                 visible: bridge.updateStatus !== ""
                                 wrapMode: Text.Wrap
-                                font.pixelSize: 12
+                                font.pixelSize: 14
                             }
                             ProgressBar {
                                 Layout.fillWidth: true
@@ -534,7 +572,7 @@ import "../components"
                             }
                             Label {
                                 text: strings.update_notes
-                                font.pixelSize: 11
+                                font.pixelSize: 14
                                 font.bold: true
                                 color: appRoot.theme.textSecondary
                                 visible: bridge.updateNotes !== ""
@@ -544,10 +582,11 @@ import "../components"
                                 Layout.preferredHeight: 110
                                 visible: bridge.updateNotes !== ""
                                 clip: true
+                                rightPadding: 16
                                 TextArea {
                                     readOnly: true
                                     text: bridge.updateNotes
-                                    font.pixelSize: 11
+                                    font.pixelSize: 14
                                     wrapMode: TextEdit.Wrap
                                 }
                             }

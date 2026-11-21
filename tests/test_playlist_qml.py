@@ -41,9 +41,10 @@ def test_playlist_dialog_passes_url_and_limit_to_main(
     assert "playlistUrl" not in main_qml
     assert "loadPlaylist(url, limit)" in main_qml
     assert "PlaylistImportDialog" in main_qml
-    assert dialog_qml.count("appRoot.loadPlaylist(") == 2
+    assert dialog_qml.count("dialog.appRoot.loadPlaylist(") == 1
+    assert dialog_qml.count("dialog.submitPlaylist()") == 2
     assert dialog_qml.count("playlistUrl.text") >= 2
-    assert dialog_qml.count("playlistLimit.value") == 2
+    assert dialog_qml.count("playlistLimit.value") == 1
     assert "playlist_clear_list" in dialog_qml
 
     bridge.shutdown()

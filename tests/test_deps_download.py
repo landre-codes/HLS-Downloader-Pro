@@ -96,6 +96,32 @@ def test_install_ytdlp_from_file_url(tmp_path, monkeypatch):
     assert any("checksum SHA256 verificado" in line for line in output)
 
 
+def test_dependency_output_uses_selected_language():
+    from hlsdl.i18n import tr
+
+    manager = deps.DependencyManager()
+    manager.set_translator(lambda key, **kw: tr("en", key, **kw))
+    assert manager._tr(
+        "dep_log_downloading", url="https://example.com/file"
+    ) == "Downloading https://example.com/file"
+    assert manager._tr("dep_log_cancelled") == "cancelled"
+    assert "checksum" in manager._tr(
+        "dep_log_verifying", algorithm="SHA256", asset="yt-dlp.exe"
+    )
+
+
+def test_checksum_errors_use_the_injected_language():
+    from hlsdl.i18n import tr
+
+    translator = lambda key, **kw: tr("en", key, **kw)  # noqa: E731
+    with pytest.raises(ValueError, match="checksum missing"):
+        deps.parse_checksum("", "yt-dlp.exe", translator)
+    with pytest.raises(ValueError, match="ambiguous checksum"):
+        deps.parse_checksum(
+            f"{'a' * 64}\n{'b' * 64}\n", None, translator
+        )
+
+
 def test_parse_checksum_uses_exact_asset():
     text = (
         "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  yt-dlp\n"

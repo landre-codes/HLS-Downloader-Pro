@@ -20,6 +20,6 @@ AppComboBox {
         return 0
     }
     onActivated: bridge.setCodec(currentValue)
-    Layout.preferredWidth: 210
+    Layout.preferredWidth: 245
     tipText: strings.codec_keep_original || ""
 }

@@ -20,10 +20,10 @@ Item {
     // Recuo only do texto (não do fundo), para alinhar com células que têm
     // miniatura/ícone à esquerda sem perder a área clicável da coluna.
     property int labelLeftMargin: 0
-    property color textColor: "#202428"
+    property color textColor: "#1f2937"
     property color mutedColor: "#5b6570"
     property color hoverColor: "#e6eaee"
-    property color accentColor: "#0d47a1"
+    property color accentColor: "#1d4ed8"
 
     signal activated()
 

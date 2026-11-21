@@ -11,7 +11,7 @@ import json
 import time
 from pathlib import Path
 
-from PySide6.QtCore import QMetaObject, QObject, QUrl
+from PySide6.QtCore import QMetaObject, QObject, Qt, QUrl
 from PySide6.QtQml import QQmlApplicationEngine, QQmlComponent, QQmlEngine, QQmlExpression
 
 from hlsdl.bridge import Bridge
@@ -55,6 +55,13 @@ QtObject {
         {name: ["alpha 4k.mp4"], status: ["erro"]})
     property bool emptyPrefix: TF.matchText("status:",
         {status: "status"}, {name: ["alpha.mp4"]})
+    property bool decimalComma: TF.normalize("9,5 MB") === "9.5 mb"
+    property bool unitWithoutSpace: TF.matchText("tamanho:9.5mb",
+        {tamanho: "size"}, {size: ["9.5MB"]})
+    property bool spacePrefixed: TF.matchText("tamanho 9.5",
+        {tamanho: "size"}, {size: ["9.5 MB"]})
+    property bool bareAlias: TF.matchText("tamanho",
+        {tamanho: "size"}, {size: ["9.5 MB"]})
 }'''
     component.setData(qml.encode("utf-8"), QUrl.fromLocalFile(str(base)))
     obj = component.create()
@@ -65,6 +72,10 @@ QtObject {
     assert obj.property("prefixed") is True
     assert obj.property("multi") is True
     assert obj.property("emptyPrefix") is True
+    assert obj.property("decimalComma") is True
+    assert obj.property("unitWithoutSpace") is True
+    assert obj.property("spacePrefixed") is True
+    assert obj.property("bareAlias") is True
 
 
 def test_download_snapshot_preserves_source_order_and_indexes():
@@ -213,6 +224,29 @@ def test_compression_header_and_rows_share_same_geometry(qapp, tmp_path, fake_de
     _pump(qapp, 20)
     assert listing.property("contentHeight") == 174
 
+    # A coluna Tamanho mostra a saída quando existe; o filtro segue a coluna.
+    page.setProperty("compFilterText", "tamanho:2.9")
+    _pump(qapp, 20)
+    assert listing.property("contentHeight") == 58
+    page.setProperty("compFilterText", "tamanho:9.5")
+    _pump(qapp, 20)
+    assert listing.property("contentHeight") == 116
+    page.setProperty("compFilterText", "tamanho:9,5")
+    _pump(qapp, 20)
+    assert listing.property("contentHeight") == 116
+    page.setProperty("compFilterText", "tamanho:9.5mb")
+    _pump(qapp, 20)
+    assert listing.property("contentHeight") == 116
+    page.setProperty("compFilterText", "tamanho 2.9")
+    _pump(qapp, 20)
+    assert listing.property("contentHeight") == 58
+    page.setProperty("compFilterText", "tamanho")
+    _pump(qapp, 20)
+    assert listing.property("contentHeight") == 174
+    page.setProperty("compFilterText", "")
+    _pump(qapp, 20)
+    assert listing.property("contentHeight") == 174
+
     # Clique no cabeçalho ordena; segundo clique inverte.
     QMetaObject.invokeMethod(headers["compHeaderName"], "activate")
     _pump(qapp, 10)
@@ -229,6 +263,23 @@ def test_compression_header_and_rows_share_same_geometry(qapp, tmp_path, fake_de
     _pump(qapp, 10)
     assert model.property("sortAscending") is False
 
+    # Resultado e Tamanho mantêm filtros/sorts independentes.
+    result_header = root.findChild(QObject, "compHeaderResult")
+    size_header = root.findChild(QObject, "compHeaderSize")
+    assert result_header is not None and size_header is not None
+    QMetaObject.invokeMethod(result_header, "activate")
+    _pump(qapp, 10)
+    assert model.property("sortKey") == "saving"
+    QMetaObject.invokeMethod(size_header, "activate")
+    _pump(qapp, 10)
+    assert model.property("sortKey") == "size"
+    # Ordena pelo tamanho exibido: saída quando existe, origem caso contrário.
+    # Descendente: beta/gamma (10 MB de origem) antes de alpha (3 MB de saída).
+    assert [
+        model.data(model.index(row, 0), CompressionModel.NAME)
+        for row in range(3)
+    ] == ["beta-lecture.mp4", "gamma-archive.mkv", "alpha-documentary.mp4"]
+
     # Em 940x620 os ajustes podem ser recolhidos para liberar a fila.
     root.resize(940, 620)
     _pump(qapp, 40)
@@ -241,6 +292,119 @@ def test_compression_header_and_rows_share_same_geometry(qapp, tmp_path, fake_de
     _ev(ctx, page, "toggleSettings()")
     _pump(qapp, 30)
     assert page.property("compSettingsCollapsed") is False
+
+    # Seleção múltipla e remoção em lote na fila de compressão.
+    remove_selected = root.findChild(QObject, "compRemoveSelected")
+    select_all = root.findChild(QObject, "compSelectAll")
+    assert remove_selected is not None and select_all is not None
+    assert page.property("compSelectedCount") == 0
+    _ev(ctx, page, "selectAllCompression(true)")
+    _pump(qapp, 15)
+    assert page.property("compSelectedCount") == 3
+    assert remove_selected.property("enabled") is True
+    assert remove_selected.property("height") == 56
+    _ev(ctx, page, "removeSelectedCompression()")
+    _pump(qapp, 40)
+    assert listing.property("count") == 0
+    assert page.property("compSelectedCount") == 0
+    assert select_all.property("enabled") is False
+
+    bridge.shutdown()
+
+
+def test_compression_select_all_first_click_checks(qapp, tmp_path, fake_deps):
+    bridge, engine, root = _build_app(qapp, tmp_path, fake_deps)
+    _ev(engine.contextForObject(root), root, "tabBar.currentIndex = 2")
+    root.resize(940, 620)
+    _pump(qapp, 60)
+
+    select_all = root.findChild(QObject, "compSelectAll")
+    page = root.findChild(QObject, "compressionPage")
+    remove_selected = root.findChild(QObject, "compRemoveSelected")
+    filter = root.findChild(QObject, "compFilter")
+    assert select_all is not None and page is not None
+    assert select_all.property("checkState") == Qt.Unchecked
+    x_before = select_all.property("x")
+
+    assert QMetaObject.invokeMethod(select_all, "click")
+    _pump(qapp, 30)
+    # Primeiro clique marca tudo de uma vez, sem passar por "-".
+    assert select_all.property("checkState") == Qt.Checked
+    assert page.property("compSelectedCount") == 3
+    # O contador do botão de remoção não pode deslocar o seletor.
+    assert select_all.property("x") == x_before
+    assert remove_selected.property("width") == 200
+    assert remove_selected.property("height") == 56
+    assert filter.property("height") == 56
+
+    assert QMetaObject.invokeMethod(select_all, "click")
+    _pump(qapp, 30)
+    assert select_all.property("checkState") == Qt.Unchecked
+    assert page.property("compSelectedCount") == 0
+    bridge.shutdown()
+
+
+def test_filter_placeholder_matches_cursor_and_clear_stays_inside(
+    qapp, tmp_path, fake_deps
+):
+    bridge, engine, root = _build_app(qapp, tmp_path, fake_deps)
+    _ev(engine.contextForObject(root), root, "tabBar.currentIndex = 1")
+    _pump(qapp, 50)
+
+    field = root.findChild(QObject, "batchFilter")
+    placeholder = field.findChild(QObject, "hintFieldPlaceholder")
+    clear_button = field.findChild(QObject, "hintFieldClearButton")
+    icon = field.findChild(QObject, "hintFieldLeadingIcon")
+    assert field is not None and placeholder is not None and clear_button is not None
+    assert icon is not None
+    assert field.property("height") == 56
+    # O hint e o ícone compartilham a linha de base do cursor.
+    cursor = field.property("cursorRectangle")
+    assert placeholder.property("y") == cursor.y()
+    assert placeholder.property("height") == cursor.height()
+    assert placeholder.property("visible") is True
+    icon_center = icon.property("y") + icon.property("height") / 2
+    cursor_center = cursor.y() + cursor.height() / 2
+    assert abs(icon_center - cursor_center) <= 0.5
+    assert clear_button.property("visible") is False
+
+    field.setProperty("text", "status:erro")
+    _pump(qapp, 20)
+    assert placeholder.property("visible") is False
+    assert clear_button.property("visible") is True
+    # O botão de limpar fica dentro do campo, não ao lado.
+    assert clear_button.property("x") >= 0
+    assert (clear_button.property("x") + clear_button.property("width")
+            <= field.property("width"))
+
+    field.setProperty("text", "")
+    _pump(qapp, 10)
+    assert placeholder.property("visible") is True
+    bridge.shutdown()
+
+
+def test_batch_multiline_keeps_cursor_inside_viewport(qapp, tmp_path, fake_deps):
+    bridge, engine, root = _build_app(qapp, tmp_path, fake_deps)
+    _ev(engine.contextForObject(root), root, "tabBar.currentIndex = 1")
+    _pump(qapp, 40)
+
+    area = root.findChild(QObject, "batchInputArea")
+    flick = root.findChild(QObject, "hintAreaFlickable")
+    editor = root.findChild(QObject, "hintAreaTextArea")
+    assert area is not None and flick is not None and editor is not None
+
+    text = "\n".join(f"https://example.com/item/{i}" for i in range(90))
+    area.setProperty("text", text)
+    area.setProperty("cursorPosition", len(text))
+    _pump(qapp, 30)
+
+    assert editor.property("height") > flick.property("height")
+    assert flick.property("contentY") > 0
+    cursor = editor.property("cursorRectangle")
+    content_y = flick.property("contentY")
+    view_height = flick.property("height")
+    assert cursor.y() >= content_y - 1
+    assert cursor.y() + cursor.height() <= content_y + view_height + 1
 
     bridge.shutdown()
 
@@ -337,6 +501,63 @@ def test_batch_filter_sort_and_source_index_mapping(
     assert QMetaObject.invokeMethod(dialog, "open") is True
     _pump(qapp, 20)
     assert dialog.property("opened") is True
+    surface = root.findChild(QObject, "playlistDialogSurface")
+    assert surface is not None
+    assert surface.property("resizable") is True
+    assert surface.property("showCloseButton") is True
+    assert surface.property("title") == _ev(root_ctx, root, "strings.playlist_title")
+
+    # Campo de URL tem limpeza integrada e o botão só aparece com conteúdo.
+    clear = surface.findChild(QObject, "hintFieldClearButton")
+    assert clear is not None
+    field = clear.parent()
+    field.setProperty("text", "https://example.com/playlist")
+    _pump(qapp, 10)
+    assert clear.property("visible") is True
+    assert QMetaObject.invokeMethod(field, "clearField") is True
+    _pump(qapp, 10)
+    assert field.property("text") == ""
+    assert clear.property("visible") is False
+
+    # Expandir/restaurar altera a geometria real do diálogo.
+    initial_width = dialog.property("width")
+    assert QMetaObject.invokeMethod(surface, "toggleMaximized") is True
+    _pump(qapp, 10)
+    assert dialog.property("width") == root.property("width")
+    assert dialog.property("height") == root.property("height")
+    assert QMetaObject.invokeMethod(surface, "restoreGeometry") is True
+    _pump(qapp, 10)
+    assert dialog.property("width") == initial_width
     QMetaObject.invokeMethod(dialog, "close")
+    _pump(qapp, 10)
+
+    # Mini-formulário de opções usa a mesma superfície expressiva.
+    options = root.findChild(QObject, "batchOptionsDialog")
+    assert options is not None
+    assert QMetaObject.invokeMethod(options, "open") is True
+    _pump(qapp, 20)
+    assert options.property("opened") is True
+    options_surface = root.findChild(QObject, "batchOptionsSurface")
+    assert options_surface is not None
+    # Opções é um modal compacto fixo, sem maximizar/expandir.
+    assert options_surface.property("resizable") is False
+    assert options_surface.property("draggable") is False
+    assert options_surface.property("title") == _ev(root_ctx, root, "strings.batch_options")
+    _pump(qapp, 25)
+    assert options.property("width") == 560
+    assert options.property("height") == 380
+    QMetaObject.invokeMethod(options, "close")
+    _pump(qapp, 10)
+
+    # O menu de contexto do campo de links usa o catálogo da UI, não o do Qt.
+    menu = root.findChild(QObject, "hintAreaContextMenu")
+    assert menu is not None
+    labels = {
+        child.property("text")
+        for child in menu.children()
+        if child.property("text")
+    }
+    assert "Desfazer" in labels
+    assert "Selecionar tudo" in labels
 
     bridge.shutdown()

@@ -54,7 +54,7 @@ Button {
         radius: 6
         color: control.surfaceColor
         border.width: control.visualFocus ? 1 : 0
-        border.color: theme ? theme.accentText : "#90caf9"
+        border.color: theme ? theme.accentText : "#93c5fd"
         Behavior on color { ColorAnimation { duration: Motion.fast; easing.type: Easing.OutQuad } }
     }
 

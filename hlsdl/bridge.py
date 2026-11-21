@@ -124,6 +124,7 @@ class Bridge(
         )
         stored_lang = str(self._settings.value("i18n/language", "") or "").strip()
         self._lang = detect_language(stored_lang)
+        self._apply_layout_direction()
         self._format_mode = str(self._settings.value("download/format_mode", "video_audio"))
         if self._format_mode not in FORMAT_MODES:
             self._format_mode = "video_audio"
@@ -285,6 +286,9 @@ class Bridge(
         # -------------------------------------------------- dependências
         self.deps = deps or DependencyManager(self)
         self.deps.variant = self._ytdlp_variant
+        set_deps_translator = getattr(self.deps, "set_translator", None)
+        if set_deps_translator is not None:
+            set_deps_translator(self._translator())
         self.deps.checked.connect(self._on_deps_checked)
         self.deps.installStarted.connect(self._on_deps_started)
         self.deps.installOutput.connect(self.depsOutput.emit)
@@ -448,6 +452,8 @@ class Bridge(
     @Property(str, constant=True)
     def appVersion(self) -> str:
         return __version__
+
+
 
 
 

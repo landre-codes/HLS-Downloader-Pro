@@ -14,6 +14,7 @@ import "../components"
     property alias queueFilter: queueFilter
     property alias filterField: queueFilter
     readonly property bool showHero: width >= 1050 && height >= 650
+    readonly property int scrollGutter: 16
     readonly property string batchSortKey: bridge.batchModel
                                                ? bridge.batchModel.sortKey : ""
     readonly property bool batchSortAscending: bridge.batchModel
@@ -138,9 +139,12 @@ import "../components"
 
                         AppHintArea {
                             id: inputArea
+                            objectName: "batchInputArea"
                             Layout.fillWidth: true
                             Layout.preferredHeight: page.showHero ? 66 : 60
                             hint: strings.entry_placeholder
+                            strings: page.strings
+                            showClearButton: false
                             wrapMode: TextEdit.Wrap
                             selectByMouse: true
                         }
@@ -149,8 +153,8 @@ import "../components"
                             Layout.fillWidth: true
                             spacing: 8
                             AppButton {
-                                text: strings.btn_add; highlighted: true
-                                icon.source: appRoot.iconPath("add")
+                                text: strings.btn_add; variant: "primary"
+                                icon.source: appRoot.iconPath("add", enabled)
                                 icon.width: 16; icon.height: 16
                                 display: AbstractButton.TextBesideIcon
                                 tipTitle: strings.btn_add
@@ -163,8 +167,8 @@ import "../components"
                             }
                             AppButton {
                                 text: strings.btn_paste
-                                variant: "secondary"
-                                icon.source: appRoot.iconPath("copy")
+                                variant: "tonal"
+                                icon.source: appRoot.tonalIcon("copy", enabled)
                                 icon.width: 16; icon.height: 16
                                 display: AbstractButton.TextBesideIcon
                                 tipTitle: strings.btn_paste
@@ -177,8 +181,8 @@ import "../components"
                             }
                             AppButton {
                                 text: strings.btn_import
-                                variant: "secondary"
-                                icon.source: appRoot.iconPath("file")
+                                variant: "tonal"
+                                icon.source: appRoot.tonalIcon("file", enabled)
                                 icon.width: 16; icon.height: 16
                                 display: AbstractButton.TextBesideIcon
                                 tipTitle: strings.btn_import
@@ -187,8 +191,8 @@ import "../components"
                             }
                             AppButton {
                                 text: strings.btn_import_playlist
-                                variant: "secondary"
-                                icon.source: appRoot.iconPath("retry")
+                                variant: "tonal"
+                                icon.source: appRoot.tonalIcon("retry", enabled)
                                 icon.width: 16; icon.height: 16
                                 display: AbstractButton.TextBesideIcon
                                 tipTitle: strings.btn_import_playlist
@@ -196,12 +200,15 @@ import "../components"
                                 onClicked: appRoot.openPlaylistImport()
                             }
                             AppButton {
-                                text: strings.btn_clear; variant: "tertiary"; flat: true
+                                text: strings.btn_clear
+                                variant: "secondary"
+                                dangerHover: true
                                 icon.source: appRoot.iconPath("trash")
                                 icon.width: 16; icon.height: 16
                                 display: AbstractButton.TextBesideIcon
                                 tipTitle: strings.btn_clear
                                 tipText: strings.btn_clear_tip
+                                tipShortcut: "Esc"
                                 onClicked: inputArea.clear()
                             }
                         }
@@ -218,7 +225,7 @@ import "../components"
                             Layout.fillWidth: true
                             spacing: 10
                             Label {
-                                text: strings.batch_fmt_label; font.pixelSize: 13
+                                text: strings.batch_fmt_label; font.pixelSize: 14
                                 color: appRoot.theme.textSecondary
                                 Layout.alignment: Qt.AlignVCenter
                             }
@@ -292,7 +299,7 @@ import "../components"
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     radius: 12
-                    color: appRoot.theme.cardBg
+                    color: appRoot.theme.tableBg
                     border.color: appRoot.theme.cardBorder
                     border.width: 1
 
@@ -310,9 +317,11 @@ import "../components"
                             AppHintField {
                                 id: queueFilter
                                 objectName: "batchFilter"
-                                Layout.preferredWidth: 310
-                                Layout.preferredHeight: 38
+                                Layout.preferredWidth: 340
+                                Layout.preferredHeight: 56
                                 hint: strings.queue_filter_placeholder
+                                strings: page.strings
+                                showClearButton: true
                                 leadingIcon: appRoot.iconPath("search")
                                 selectByMouse: true
                                 tipTitle: strings.queue_filter_title
@@ -333,23 +342,11 @@ import "../components"
                                 interval: 180
                                 onTriggered: appRoot.queueFilterText = queueFilter.text
                             }
-                            AppToolButton {
-                                display: AbstractButton.IconOnly
-                                icon.source: appRoot.iconPath("cancel")
-                                icon.width: 14
-                                icon.height: 14
-                                opacity: queueFilter.text.length > 0 ? 1 : 0
-                                enabled: queueFilter.text.length > 0
-                                Accessible.name: strings.filter_clear
-                                tipTitle: strings.filter_clear
-                                tipText: strings.filter_clear_tip
-                                tipShortcut: "Esc"
-                                onClicked: queueFilter.clear()
-                            }
                         }
 
                         Rectangle {
                             Layout.fillWidth: true
+                            Layout.rightMargin: page.scrollGutter
                             Layout.preferredHeight: 36
                             radius: 6
                             color: appRoot.theme.tableHeaderBg
@@ -446,9 +443,9 @@ import "../components"
                                 }
                                 Item {
                                     objectName: "batchHeaderActions"
-                                    Layout.preferredWidth: 136
-                                    Layout.minimumWidth: 136
-                                    Layout.maximumWidth: 136
+                                    Layout.preferredWidth: 168
+                                    Layout.minimumWidth: 168
+                                    Layout.maximumWidth: 168
                                     Layout.fillHeight: true
                                     Text {
                                         anchors.centerIn: parent
@@ -555,8 +552,8 @@ import "../components"
                     }
 
                     AppButton {
-                        text: strings.btn_start; highlighted: true
-                        icon.source: appRoot.iconPath("play")
+                        text: strings.btn_start; variant: "primary"
+                        icon.source: appRoot.iconPath("play", enabled)
                         icon.width: 16; icon.height: 16
                         display: AbstractButton.TextBesideIcon
                         visible: !bridge.queueActive
@@ -568,6 +565,7 @@ import "../components"
                     }
                     AppButton {
                         text: strings.btn_pause
+                        variant: "secondary"
                         icon.source: appRoot.iconPath("pause")
                         icon.width: 16; icon.height: 16
                         display: AbstractButton.TextBesideIcon
@@ -578,11 +576,11 @@ import "../components"
                     }
                     AppButton {
                         text: strings.btn_resume
-                        icon.source: appRoot.iconPath("play")
+                        icon.source: appRoot.iconPath("play", enabled)
                         icon.width: 16; icon.height: 16
                         display: AbstractButton.TextBesideIcon
                         visible: bridge.queueActive && bridge.queuePaused
-                        highlighted: true
+                        variant: "primary"
                         tipTitle: strings.btn_resume
                         tipText: strings.btn_resume_tip
                         onClicked: bridge.resumeQueue()
@@ -601,6 +599,7 @@ import "../components"
                     AppButton {
                         text: strings.btn_clear_finished
                         variant: "secondary"
+                        dangerHover: true
                         icon.source: appRoot.iconPath("trash")
                         icon.width: 16; icon.height: 16
                         display: AbstractButton.TextBesideIcon
@@ -616,7 +615,7 @@ import "../components"
         id: downloadDelegate
         Item {
             id: rowItem
-            width: listView.width
+            width: listView.width - page.scrollGutter
             property bool editing: false
             property bool cancelEdit: false
             property string st: model.status
@@ -699,11 +698,12 @@ import "../components"
 
                         TextField {
                             id: editField
+                            objectName: "batchEditField"
                             Layout.fillWidth: true
                             Layout.preferredHeight: 28
                             visible: rowItem.editing
                             leftPadding: 6
-                            rightPadding: 6
+                            rightPadding: 30
                             topPadding: 2
                             bottomPadding: 2
                             font.pixelSize: 11
@@ -727,6 +727,40 @@ import "../components"
                             Keys.onEscapePressed: {
                                 rowItem.cancelEdit = true
                                 rowItem.editing = false
+                            }
+
+                            background: Rectangle {
+                                radius: 4
+                                color: appRoot.theme.inputBg
+                                border.width: 1
+                                border.color: editField.activeFocus
+                                              ? appRoot.theme.accentText
+                                              : appRoot.theme.inputBorder
+                            }
+
+                            // Cancela a edição sem salvar. Fica dentro do
+                            // próprio campo para não exigir Esc.
+                            AppToolButton {
+                                objectName: "batchEditCancel"
+                                anchors.right: parent.right
+                                anchors.rightMargin: 3
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 24
+                                height: 24
+                                display: AbstractButton.IconOnly
+                                danger: true
+                                icon.source: appRoot.iconPath("cancel")
+                                icon.width: 12
+                                icon.height: 12
+                                focusPolicy: Qt.NoFocus
+                                Accessible.name: strings.edit_cancel
+                                tipTitle: strings.edit_cancel
+                                tipText: strings.tip_edit_tip
+                                tipShortcut: "Esc"
+                                onClicked: {
+                                    rowItem.cancelEdit = true
+                                    rowItem.editing = false
+                                }
                             }
                         }
 
@@ -793,11 +827,33 @@ import "../components"
                     Layout.preferredWidth: 150
                     Layout.alignment: Qt.AlignVCenter
                     spacing: 2
-                    ProgressBar {
-                        width: 150; height: 6
-                        from: 0; to: 100
-                        value: model.progress
-                        indeterminate: rowItem.st === "analyzing"
+                    RowLayout {
+                        width: 150
+                        spacing: 4
+                        Image {
+                            id: batchProgressIcon
+                            Layout.preferredWidth: 14
+                            Layout.preferredHeight: 14
+                            source: appRoot.iconPath(
+                                appRoot.progressIconName(rowItem.st))
+                            sourceSize.width: 14
+                            sourceSize.height: 14
+                            Accessible.name: appRoot.statusText(rowItem.st)
+                            AppToolTip {
+                                target: batchProgressIcon
+                                title: appRoot.statusText(rowItem.st)
+                                text: model.error
+                                available: model.error.length > 0
+                                delay: 400
+                            }
+                        }
+                        ProgressBar {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 6
+                            from: 0; to: 100
+                            value: model.progress
+                            indeterminate: rowItem.st === "analyzing"
+                        }
                     }
                     Label {
                         anchors.right: parent.right
@@ -816,7 +872,7 @@ import "../components"
                 }
 
                 Item {
-                    Layout.preferredWidth: 136
+                    Layout.preferredWidth: 168
                     Layout.alignment: Qt.AlignVCenter
                     Row {
                         anchors.centerIn: parent
@@ -874,6 +930,18 @@ import "../components"
                             tipTitle: strings.tip_open
                             tipText: model.path
                             onClicked: bridge.openDownloadPath(model.path)
+                        }
+                        AppToolButton {
+                            objectName: "batchRemoveButton"
+                            width: 32; height: 28
+                            display: AbstractButton.IconOnly
+                            danger: true
+                            icon.source: appRoot.iconPath("trash")
+                            icon.width: 16; icon.height: 16
+                            Accessible.name: strings.ctx_remove
+                            tipTitle: strings.ctx_remove
+                            tipText: strings.compress_remove_tip
+                            onClicked: bridge.removeItem(rowItem.sourceIndex)
                         }
                     }
                 }

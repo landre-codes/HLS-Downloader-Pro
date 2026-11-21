@@ -14,6 +14,8 @@ function normalize(value) {
     var text = value === null || value === undefined ? "" : String(value)
     if (text.normalize)
         text = text.normalize("NFD")
+    // Aceita decimal com vírgula (pt-BR) sem alterar separadores de texto.
+    text = text.replace(/(\d),(\d)/g, "$1.$2")
     return text.replace(/[\u0300-\u036f]/g, "").toLowerCase()
 }
 
@@ -30,10 +32,16 @@ function tokenize(query, aliases) {
         var match = part.match(/^([a-z_]+):(.*)$/)
         if (match && match[2].length === 0)
             continue  // "status:" sozinho não deve esconder todas as linhas
-        if (match && aliases && aliases[match[1]])
+        if (match && aliases && aliases[match[1]]) {
             result.push({ field: aliases[match[1]], term: match[2] })
-        else
+        } else if (aliases && aliases[part]) {
+            // Também aceita "tamanho 9.5" sem dois-pontos. Um nome de campo
+            // sozinho é ignorado em vez de esconder todas as linhas.
+            if (i + 1 < parts.length)
+                result.push({ field: aliases[part], term: parts[++i] })
+        } else {
             result.push({ field: "", term: part })
+        }
     }
     return result
 }

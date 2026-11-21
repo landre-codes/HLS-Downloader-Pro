@@ -44,6 +44,8 @@ hlsdl = [
     "ui/*.qml",
     "ui/*.js",
     "ui/icons/*.svg",
+    "ui/icons/browsers/*.svg",
+    "ui/icons/flags/*.svg",
     "ui/components/*.qml",
     "ui/dialogs/*.qml",
     "ui/pages/*.qml",

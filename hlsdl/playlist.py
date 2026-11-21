@@ -119,6 +119,10 @@ class PlaylistLoader(QObject):
                 self.failed.emit(msg[-1] if msg else self._t("playlist_load_failed", err=""))
                 return
             data = json.loads(out or "{}")
+            if not isinstance(data, dict):
+                # yt-dlp pode devolver "null"/lista em respostas inválidas.
+                self.failed.emit(self._t("playlist_empty"))
+                return
             entries = data.get("entries") or [data]
             items = []
             for i, entry in enumerate(entries):
@@ -147,6 +151,8 @@ class PlaylistLoader(QObject):
 
     @staticmethod
     def _to_item(entry: dict, index: int) -> dict:
+        if not isinstance(entry, dict):
+            entry = {}
         title = entry.get("title") or entry.get("id") or f"#{index + 1}"
         url = entry.get("webpage_url") or entry.get("url") or ""
         video_id = entry.get("id") or ""
@@ -162,7 +168,9 @@ class PlaylistLoader(QObject):
             else:
                 url = ""
         thumbs = entry.get("thumbnails") or []
-        thumb = thumbs[-1].get("url", "") if thumbs else ""
+        thumb = ""
+        if thumbs and isinstance(thumbs[-1], dict):
+            thumb = str(thumbs[-1].get("url") or "")
         return {
             "index": index + 1,
             "id": video_id,

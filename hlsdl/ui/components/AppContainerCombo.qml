@@ -10,5 +10,5 @@ AppComboBox {
     model: items
     currentIndex: Math.max(0, items.indexOf(bridge.container))
     onActivated: bridge.setContainer(currentText)
-    Layout.preferredWidth: 110
+    Layout.preferredWidth: 120
 }

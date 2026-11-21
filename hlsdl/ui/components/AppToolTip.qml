@@ -50,11 +50,11 @@ Popup {
 
     readonly property color surfaceColor: darkTheme ? "#232b33" : "#ffffff"
     readonly property color borderColor: darkTheme ? "#4b5966" : "#c6d0d9"
-    readonly property color titleColor: darkTheme ? "#f2f4f6" : "#202428"
+    readonly property color titleColor: darkTheme ? "#e6eef7" : "#1f2937"
     readonly property color bodyColor: darkTheme ? "#d3dbe2" : "#3f4852"
     readonly property color mutedColor: darkTheme ? "#a8b3bd" : "#5b6570"
-    readonly property color accentColor: darkTheme ? "#90caf9" : "#0d47a1"
-    readonly property color shortcutBg: darkTheme ? "#33404a" : "#eef1f4"
+    readonly property color accentColor: darkTheme ? "#93c5fd" : "#1d4ed8"
+    readonly property color shortcutBg: darkTheme ? "#304152" : "#e6edf7"
 
     parent: Overlay.overlay
     popupType: Popup.Item

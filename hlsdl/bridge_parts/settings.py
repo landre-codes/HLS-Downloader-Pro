@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import os
 
-from PySide6.QtCore import Property, Slot
+from PySide6.QtCore import Property, Qt, Slot
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QFileDialog
 
 from ..config import BROWSERS, is_portable
@@ -20,7 +21,7 @@ from ..formats import (
     QUALITIES,
     VIDEO_CONTAINERS,
 )
-from ..i18n import LANGUAGE_NAMES, LANGUAGES
+from ..i18n import LANGUAGE_NAMES, LANGUAGES, is_rtl
 from ..integrity import cleanup_sidecars, set_sidecars_enabled
 from .signals import *
 
@@ -31,6 +32,17 @@ class SettingsMixin(BridgeSignals):
     def language(self) -> str:
         return self._lang
 
+    @Property(bool, notify=languageChanged)
+    def isRtl(self) -> bool:
+        return is_rtl(self._lang)
+
+    def _apply_layout_direction(self) -> None:
+        app = QGuiApplication.instance()
+        if app is not None:
+            app.setLayoutDirection(
+                Qt.RightToLeft if is_rtl(self._lang) else Qt.LeftToRight
+            )
+
     @Slot(str)
     def setLanguage(self, lang: str) -> None:
         lang = lang if lang in LANGUAGES else "pt"
@@ -38,16 +50,28 @@ class SettingsMixin(BridgeSignals):
             return
         self._lang = lang
         self._save("i18n/language", lang)
+        self._apply_layout_direction()
         self.manager.set_translator(self._translator())
         self.single_manager.set_translator(self._translator())
         self._playlist.set_translator(self._translator())
         self.compression.set_translator(self._translator())
+        set_deps_translator = getattr(self.deps, "set_translator", None)
+        if set_deps_translator is not None:
+            set_deps_translator(self._translator())
         self.languageChanged.emit(lang)
 
     @Property(list, constant=True)
     def languages(self) -> list:
-        """Idiomas disponíveis para o seletor (código + nome)."""
-        return [{"code": code, "name": LANGUAGE_NAMES[code]} for code in LANGUAGES]
+        """Idiomas disponíveis para o seletor (código, nome e bandeira)."""
+        flags = {
+            "pt": "br", "en": "us", "es": "es", "de": "de",
+            "it": "it", "fr": "fr", "ru": "ru", "ar": "ar",
+            "he": "il", "ja": "jp", "ko": "kr", "zh": "cn",
+        }
+        return [
+            {"code": code, "name": LANGUAGE_NAMES[code], "flag": flags[code]}
+            for code in LANGUAGES
+        ]
 
     @Property(str, notify=outputFolderChanged)
     def outputFolder(self) -> str:

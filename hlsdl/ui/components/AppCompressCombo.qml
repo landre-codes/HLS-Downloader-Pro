@@ -20,5 +20,5 @@ AppComboBox {
         return 1
     }
     onActivated: bridge.setCompressLevel(currentValue)
-    Layout.preferredWidth: 130
+    Layout.preferredWidth: 150
 }

@@ -10,13 +10,24 @@ import "../components"
     property var strings: ({})
     property alias singleUrl: singleUrl
     readonly property bool showHero: width >= 1050 && height >= 650
+    readonly property int scrollGutter: 16
 
-    ColumnLayout {
-                anchors.fill: parent
-                anchors.margins: 16
+    ScrollView {
+        id: singleScroll
+        objectName: "singleScroll"
+        anchors.fill: parent
+        anchors.margins: 16
+        clip: true
+        contentWidth: availableWidth
+        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+        ScrollBar.vertical.policy: ScrollBar.AlwaysOn
+
+        ColumnLayout {
+                width: singleScroll.availableWidth - page.scrollGutter
                 spacing: 12
 
                 Rectangle {
+                    id: singleCard
                     Layout.fillWidth: true
                     Layout.preferredHeight: singleCol.implicitHeight + 32
                     radius: 12
@@ -40,6 +51,7 @@ import "../components"
                             id: singleUrl
                             Layout.fillWidth: true
                             hint: strings.single_url_placeholder
+                            strings: page.strings
                             selectByMouse: true
                             onAccepted: appRoot.startSingle()
                         }
@@ -48,7 +60,7 @@ import "../components"
                             Layout.fillWidth: true
                             spacing: 12
                             Label {
-                                text: strings.fmt_label; font.pixelSize: 13
+                                text: strings.fmt_label; font.pixelSize: 14
                                 color: appRoot.theme.textSecondary; Layout.alignment: Qt.AlignVCenter
                             }
                             AppFormatSelector {
@@ -56,7 +68,7 @@ import "../components"
                                 Layout.alignment: Qt.AlignVCenter }
                             Item { Layout.fillWidth: true }
                             Label {
-                                text: strings.container_label; font.pixelSize: 13
+                                text: strings.container_label; font.pixelSize: 14
                                 color: appRoot.theme.textSecondary; Layout.alignment: Qt.AlignVCenter
                             }
                             AppContainerCombo {
@@ -68,7 +80,7 @@ import "../components"
                             spacing: 12
                             visible: bridge.formatMode !== "audio_only"
                             Label {
-                                text: strings.quality_label; font.pixelSize: 13
+                                text: strings.quality_label; font.pixelSize: 14
                                 color: appRoot.theme.textSecondary; Layout.alignment: Qt.AlignVCenter
                             }
                             AppQualityCombo {
@@ -83,7 +95,7 @@ import "../components"
                             visible: bridge.formatMode !== "audio_only"
                             Label {
                                 visible: bridge.formatMode !== "audio_only"
-                                text: strings.codec_label; font.pixelSize: 13
+                                text: strings.codec_label; font.pixelSize: 14
                                 color: appRoot.theme.textSecondary; Layout.alignment: Qt.AlignVCenter
                             }
                             AppCodecCombo {
@@ -93,7 +105,7 @@ import "../components"
                             }
                             Label {
                                 visible: bridge.formatMode !== "audio_only" && bridge.codec !== "copy"
-                                text: strings.compress_label; font.pixelSize: 13
+                                text: strings.compress_label; font.pixelSize: 14
                                 color: appRoot.theme.textSecondary; Layout.alignment: Qt.AlignVCenter
                             }
                             AppCompressCombo {
@@ -108,8 +120,8 @@ import "../components"
                             Layout.fillWidth: true
                             spacing: 12
                             AppButton {
-                                text: strings.btn_download_now; highlighted: true
-                                icon.source: appRoot.iconPath("play")
+                                text: strings.btn_download_now; variant: "primary"
+                                icon.source: appRoot.iconPath("play", enabled)
                                 icon.width: 18; icon.height: 18
                                 display: AbstractButton.TextBesideIcon
                                 tipText: strings.single_hint
@@ -133,7 +145,7 @@ import "../components"
 
                         Label {
                             text: strings.single_hint
-                            font.pixelSize: 11
+                            font.pixelSize: 14
                             color: appRoot.theme.textSecondary
                             wrapMode: Text.Wrap
                             Layout.fillWidth: true
@@ -143,7 +155,8 @@ import "../components"
 
                 Rectangle {
                     Layout.fillWidth: true
-                    Layout.fillHeight: true
+                    Layout.preferredHeight: Math.max(
+                        200, singleScroll.availableHeight - singleCard.height - 28)
                     radius: 12
                     color: appRoot.theme.cardBg
                     border.color: appRoot.theme.cardBorder
@@ -158,7 +171,7 @@ import "../components"
                             visible: bridge.lastItem.url === undefined || bridge.lastItem.url === ""
                             text: strings.single_idle
                             color: appRoot.theme.textSecondary
-                            font.pixelSize: 13
+                            font.pixelSize: 14
                         }
 
                         ColumnLayout {
@@ -185,7 +198,7 @@ import "../components"
                                         anchors.margins: 4
                                         text: appRoot.statusText(bridge.lastItem.status || "")
                                         color: appRoot.theme.onAccent
-                                        font.pixelSize: 11
+                                        font.pixelSize: 14
                                         font.bold: true
                                         horizontalAlignment: Text.AlignHCenter
                                         verticalAlignment: Text.AlignVCenter
@@ -196,7 +209,7 @@ import "../components"
                                     Layout.fillWidth: true
                                     text: (bridge.lastItem.speed || "") + "   " + (bridge.lastItem.size || "")
                                     color: appRoot.theme.textSecondary
-                                    font.pixelSize: 12
+                                    font.pixelSize: 14
                                     elide: Text.ElideRight
                                 }
                             }
@@ -214,7 +227,7 @@ import "../components"
                                 text: bridge.lastItem.error || ""
                                 color: appRoot.theme.errorText
                                 wrapMode: Text.Wrap
-                                font.pixelSize: 12
+                                font.pixelSize: 14
                                 MouseArea {
                                     anchors.fill: parent
                                     cursorShape: Qt.PointingHandCursor
@@ -227,18 +240,25 @@ import "../components"
                                 AppButton {
                                     visible: bridge.lastItem.status === "done"
                                     text: strings.btn_open
+                                    variant: "secondary"
                                     onClicked: bridge.openDownloadPath(bridge.lastItem.path)
                                 }
                                 AppButton {
                                     visible: bridge.lastItem.status === "waiting"
                                              || appRoot.isActive(bridge.lastItem.status)
                                     text: strings.tip_cancel
+                                    variant: "secondary"
+                                    dangerHover: true
                                     onClicked: bridge.cancelSingle()
                                 }
                                 AppButton {
                                     visible: bridge.lastItem.status === "error"
                                              || bridge.lastItem.status === "cancelled"
                                     text: strings.ctx_retry
+                                    variant: "tonal"
+                                    icon.source: appRoot.tonalIcon("retry", enabled)
+                                    icon.width: 16; icon.height: 16
+                                    display: AbstractButton.TextBesideIcon
                                     onClicked: bridge.retrySingle()
                                 }
                                 Item { Layout.fillWidth: true }
@@ -249,4 +269,5 @@ import "../components"
                     }
                 }
             }
-        }
+    }
+}

@@ -283,6 +283,27 @@ def main() -> int:
     })
     QMetaObject.invokeMethod(dialog, "close")
 
+    # Mini-formulário de opções usa a mesma superfície dos demais diálogos.
+    options = window.findChild(QObject, "batchOptionsDialog")
+    resize(1160, 800)
+    set_tab(1)
+    QMetaObject.invokeMethod(options, "open")
+    _pump(app, 30)
+    grab("1160x800-light-batch-options", {
+        "theme": "light", "tab": 1, "width": 1160, "height": 800,
+        "dialog": "batch options",
+    })
+    QMetaObject.invokeMethod(options, "close")
+    resize(940, 620)
+    set_tab(1)
+    QMetaObject.invokeMethod(options, "open")
+    _pump(app, 30)
+    grab("940x620-light-batch-options", {
+        "theme": "light", "tab": 1, "width": 940, "height": 620,
+        "dialog": "batch options",
+    })
+    QMetaObject.invokeMethod(options, "close")
+
     (out / "manifest.json").write_text(
         json.dumps({"screenshots": manifest, "failures": failures},
                    ensure_ascii=False, indent=2),

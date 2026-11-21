@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QApplication
 
 from hlsdl.bridge import Bridge
+from hlsdl.deps import DependencyManager
 from hlsdl.i18n import tr
 from hlsdl.model import DownloadModel
 from hlsdl.queue import QueueManager
@@ -35,6 +38,63 @@ def test_persistence_roundtrip(qapp, tmp_path, fake_deps):
     assert b2.cookiesEnabled is True
     assert b2.cookiesBrowserIndex == 3
     assert b2._build_cookies_arg() == "browser:firefox"
+
+
+def test_bridge_rewires_dependency_output_on_language_change(qapp, tmp_path):
+    model = DownloadModel([])
+    manager = QueueManager(model, outdir="out")
+    dependency_manager = DependencyManager()
+    bridge = Bridge(
+        manager,
+        "out",
+        settings_path=str(tmp_path / "s.ini"),
+        deps=dependency_manager,
+        defer_detection=True,
+    )
+    bridge.setLanguage("en")
+    assert dependency_manager._tr(
+        "dep_log_downloading", url="https://example.com/file"
+    ) == "Downloading https://example.com/file"
+    for lang, expected in (
+        ("de", "wird heruntergeladen"),
+        ("ar", "جارٍ تنزيل"),
+        ("he", "מוריד"),
+        ("ko", "다운로드 중"),
+    ):
+        bridge.setLanguage(lang)
+        output = dependency_manager._tr(
+            "dep_log_downloading", url="https://example.com/file"
+        )
+        assert expected in output, (lang, output)
+    bridge.shutdown()
+
+
+def test_language_flags(qapp, tmp_path, fake_deps):
+    b = _bridge(tmp_path, fake_deps)
+    languages = b.languages
+    assert [item["code"] for item in languages] == [
+        "pt", "en", "es", "de", "it", "fr", "ru", "ar", "he", "ja", "ko", "zh"
+    ]
+    assert all(item["name"] for item in languages)
+    assert [item["flag"] for item in languages] == [
+        "br", "us", "es", "de", "it", "fr", "ru", "ar", "il", "jp", "kr", "cn"
+    ]
+    b.shutdown()
+
+
+def test_rtl_languages_set_layout_direction(qapp, tmp_path, fake_deps):
+    b = _bridge(tmp_path, fake_deps)
+    assert b.isRtl is False
+    b.setLanguage("ar")
+    assert b.isRtl is True
+    assert QGuiApplication.layoutDirection() == Qt.RightToLeft
+    b.setLanguage("he")
+    assert b.isRtl is True
+    assert QGuiApplication.layoutDirection() == Qt.RightToLeft
+    b.setLanguage("en")
+    assert b.isRtl is False
+    assert QGuiApplication.layoutDirection() == Qt.LeftToRight
+    b.shutdown()
 
 
 def test_limit_rate_arg(qapp, tmp_path, fake_deps):

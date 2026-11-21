@@ -35,6 +35,7 @@ import threading
 import time
 import urllib.request
 import zipfile
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from PySide6.QtCore import QObject, Signal
@@ -77,6 +78,16 @@ _HEX_DIGEST = re.compile(r"^[0-9a-fA-F]{32,128}$")
 _HASH_CHUNK = 1024 * 1024
 
 
+def _checksum_tr(
+    translator: Callable[..., str] | None, key: str, **kw
+) -> str:
+    if translator is not None:
+        return translator(key, **kw)
+    from .i18n import tr
+
+    return tr("pt", key, **kw)
+
+
 def _hash_file(path: str, algorithm: str) -> str:
     """Calcula o digest hexadecimal de um arquivo em blocos."""
     digest = hashlib.new(algorithm)
@@ -86,7 +97,11 @@ def _hash_file(path: str, algorithm: str) -> str:
     return digest.hexdigest()
 
 
-def parse_checksum(text: str, asset: str | None = None) -> str:
+def parse_checksum(
+    text: str,
+    asset: str | None = None,
+    translator: Callable[..., str] | None = None,
+) -> str:
     """Extrai um digest de um sidecar de checksum.
 
     Aceita os formatos publicados pelos fornecedores:
@@ -117,28 +132,54 @@ def parse_checksum(text: str, asset: str | None = None) -> str:
 
     unique = sorted(set(hashes))
     if not unique:
+        if asset:
+            raise ValueError(
+                _checksum_tr(translator, "dep_log_checksum_missing", asset=asset)
+            )
         raise ValueError(
-            f"checksum ausente para {asset}" if asset else "checksum ausente"
+            _checksum_tr(translator, "dep_log_checksum_missing_plain")
         )
     if len(unique) > 1:
-        raise ValueError("checksum ambíguo (mais de um digest no sidecar)")
+        raise ValueError(
+            _checksum_tr(translator, "dep_log_checksum_ambiguous")
+        )
     return unique[0]
 
 
-def verify_checksum(path: str, expected: str, algorithm: str = "sha256") -> bool:
+def verify_checksum(
+    path: str,
+    expected: str,
+    algorithm: str = "sha256",
+    translator: Callable[..., str] | None = None,
+) -> bool:
     """Confere o digest de ``path``; levanta ``ValueError`` se não conferir."""
     expected = (expected or "").strip().lower()
     try:
         digest_size = hashlib.new(algorithm).digest_size
     except ValueError as exc:
-        raise ValueError(f"algoritmo de checksum desconhecido: {algorithm}") from exc
+        raise ValueError(
+            _checksum_tr(
+                translator, "dep_log_checksum_unknown_algorithm",
+                algorithm=algorithm,
+            )
+        ) from exc
     if len(expected) != digest_size * 2 or not _HEX_DIGEST.match(expected):
-        raise ValueError(f"checksum {algorithm.upper()} inválido")
+        raise ValueError(
+            _checksum_tr(
+                translator, "dep_log_checksum_invalid",
+                algorithm=algorithm.upper(),
+            )
+        )
     actual = _hash_file(path, algorithm)
     if not hmac.compare_digest(actual, expected):
         raise ValueError(
-            f"checksum {algorithm.upper()} não confere "
-            f"(esperado {expected[:12]}…, obtido {actual[:12]}…)"
+            _checksum_tr(
+                translator,
+                "dep_log_checksum_mismatch",
+                algorithm=algorithm.upper(),
+                expected=expected[:12],
+                actual=actual[:12],
+            )
         )
     return True
 
@@ -341,6 +382,18 @@ class DependencyManager(QObject):
         self._thread: threading.Thread | None = None
         self._closing = False
         self.variant = "stable"  # canal do yt-dlp: stable | nightly | master
+        self._translator: Callable[..., str] | None = None
+
+    def set_translator(self, translator: Callable[..., str]) -> None:
+        """Define a tradução usada nas mensagens do terminal de dependências."""
+        self._translator = translator
+
+    def _tr(self, key: str, **kw) -> str:
+        if self._translator is not None:
+            return self._translator(key, **kw)
+        from .i18n import tr
+
+        return tr("pt", key, **kw)
 
     def set_variant(self, variant: str) -> None:
         if variant in YTDLP_VARIANTS and variant != self.variant:
@@ -469,7 +522,7 @@ class DependencyManager(QObject):
             ok = bool(job())
         except Exception as exc:
             log.exception("falha instalando %s", name)
-            self.installOutput.emit(f"erro: {exc}")
+            self.installOutput.emit(self._tr("dep_log_error", err=exc))
         finally:
             self._busy = False
             if not self._closing:
@@ -500,7 +553,9 @@ class DependencyManager(QObject):
                 config.ensure_tools_on_path()
             return rc == 0 and not self._cancel
         except FileNotFoundError:
-            self.installOutput.emit(f"{cmd[0]}: executável não encontrado")
+            self.installOutput.emit(
+                self._tr("dep_log_executable_missing", cmd=cmd[0])
+            )
             return False
         finally:
             self._proc = None
@@ -540,18 +595,26 @@ class DependencyManager(QObject):
         instalação. O chamador é responsável por remover o arquivo temporário.
         """
         self.installOutput.emit(
-            f"Verificando checksum {algorithm.upper()} de {os.path.basename(path)}…"
+            self._tr(
+                "dep_log_verifying",
+                algorithm=algorithm.upper(),
+                asset=os.path.basename(path),
+            )
         )
         try:
             text = self._fetch_text(checksum_url)
-            expected = parse_checksum(text, asset)
-            verify_checksum(path, expected, algorithm)
+            expected = parse_checksum(text, asset, self._tr)
+            verify_checksum(path, expected, algorithm, self._tr)
         except ValueError as exc:
-            raise RuntimeError(f"verificação de integridade falhou: {exc}") from exc
-        self.installOutput.emit(f"checksum {algorithm.upper()} verificado")
+            raise RuntimeError(
+                self._tr("dep_log_integrity_failed", err=exc)
+            ) from exc
+        self.installOutput.emit(
+            self._tr("dep_log_checksum_ok", algorithm=algorithm.upper())
+        )
 
     def _download(self, url: str, dest: str) -> None:
-        self.installOutput.emit(f"Baixando {url}")
+        self.installOutput.emit(self._tr("dep_log_downloading", url=url))
         req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
         with urllib.request.urlopen(req, timeout=120) as resp, open(dest, "wb") as fh:
             total = resp.headers.get("Content-Length")
@@ -560,7 +623,7 @@ class DependencyManager(QObject):
             last_report = 0
             while True:
                 if self._cancel:
-                    raise RuntimeError("cancelado")
+                    raise RuntimeError(self._tr("dep_log_cancelled"))
                 chunk = resp.read(262144)
                 if not chunk:
                     break
@@ -601,7 +664,11 @@ class DependencyManager(QObject):
             raise
         self._make_executable(target)
         ok = os.path.isfile(target) and os.path.getsize(target) > 0
-        self.installOutput.emit(f"yt-dlp instalado em {target}" if ok else "falha ao baixar yt-dlp")
+        self.installOutput.emit(
+            self._tr("dep_log_installed", name="yt-dlp", path=target)
+            if ok
+            else self._tr("dep_log_install_failed", name="yt-dlp")
+        )
         if ok:
             config.ensure_tools_on_path()
         return ok
@@ -675,12 +742,12 @@ class DependencyManager(QObject):
         try:
             if self._install_ffmpeg_download():
                 return True
-            self.installOutput.emit(
-                "download estático do ffmpeg falhou; tentando gerenciador de pacotes"
-            )
+            self.installOutput.emit(self._tr("dep_log_trying_package"))
         except Exception as exc:
             log.warning("download estático do ffmpeg falhou: %s", exc)
-            self.installOutput.emit(f"download estático falhou: {exc}")
+            self.installOutput.emit(
+                self._tr("dep_log_static_failed", err=exc)
+            )
 
         cmd = _ffmpeg_package_command()
         if not cmd:
@@ -706,7 +773,9 @@ class DependencyManager(QObject):
                     info = self._mac_ffmpeg_zip(name)
                     url = str(info.get("url") or "")
                     if not url:
-                        raise RuntimeError(f"URL de download ausente para {name}")
+                        raise RuntimeError(
+                            self._tr("dep_log_url_missing", name=name)
+                        )
                     archive = os.path.join(tmp_dir, f"{name}.zip")
                     self._download(url, archive)
                     # O evermeet não publica SHA-256 estável. Um pin explícito
@@ -715,9 +784,11 @@ class DependencyManager(QObject):
                     # garantia de integridade.
                     expected_hash = FFMPEG_MAC_SHA256.get(name, "")
                     if expected_hash:
-                        verify_checksum(archive, expected_hash, "sha256")
+                        verify_checksum(
+                            archive, expected_hash, "sha256", self._tr
+                        )
                         self.installOutput.emit(
-                            f"SHA-256 de {name} verificado contra pin do projeto"
+                            self._tr("dep_log_mac_pin", name=name)
                         )
                     else:
                         allow_unverified = os.environ.get(
@@ -725,24 +796,23 @@ class DependencyManager(QObject):
                         ).strip().lower() in ("1", "true", "yes")
                         if not allow_unverified:
                             raise RuntimeError(
-                                "download estático do ffmpeg no macOS não tem "
-                                "SHA-256 publicado; instale pelo Homebrew ou "
-                                f"defina {_FFMPEG_MAC_UNVERIFIED_ENV}=1 para "
-                                "aceitar o risco"
+                                self._tr(
+                                    "dep_log_mac_no_hash",
+                                    env=_FFMPEG_MAC_UNVERIFIED_ENV,
+                                )
                             )
                         digest = _hash_file(archive, "sha256")
                         self.installOutput.emit(
-                            "AVISO: ffmpeg do evermeet sem hash autenticado; "
-                            f"SHA-256 observado: {digest}"
+                            self._tr("dep_log_mac_warning", digest=digest)
                         )
                     expected_size = int(info.get("size") or 0)
                     if expected_size <= 0:
                         raise RuntimeError(
-                            f"tamanho de verificação ausente para {name}"
+                            self._tr("dep_log_size_missing", name=name)
                         )
                     if os.path.getsize(archive) != expected_size:
                         raise RuntimeError(
-                            f"tamanho do download de {name} não confere"
+                            self._tr("dep_log_size_mismatch", name=name)
                         )
                     found |= self._extract_members(archive, {name}, target_dir)
                 needed = "ffmpeg"
@@ -756,9 +826,10 @@ class DependencyManager(QObject):
                 # observado e deixamos claro o nível de garantia; o caminho
                 # preferido em Linux é o gerenciador de pacotes do sistema.
                 self.installOutput.emit(
-                    "AVISO: build Linux do ffmpeg verificado apenas por MD5 "
-                    "(fornecedor não publica SHA-256); SHA-256 observado: "
-                    + _hash_file(archive, "sha256")
+                    self._tr(
+                        "dep_log_linux_md5",
+                        digest=_hash_file(archive, "sha256"),
+                    )
                 )
                 found = self._extract_members(archive, {"ffmpeg", "ffprobe"}, target_dir)
                 needed = "ffmpeg"
@@ -768,11 +839,16 @@ class DependencyManager(QObject):
                 spec = next(s for s in SPECS if s.key == "ffmpeg")
                 version = _binary_version(spec, config.find_binary("ffmpeg") or "")
                 self.installOutput.emit(
-                    f"ffmpeg pronto (v{version}) em {target_dir}" if version
-                    else f"ffmpeg pronto em {target_dir}"
+                    self._tr(
+                        "dep_log_ffmpeg_ready",
+                        version=version,
+                        path=target_dir,
+                    )
+                    if version
+                    else self._tr("dep_log_ffmpeg_ready_plain", path=target_dir)
                 )
             else:
-                self.installOutput.emit("falha ao extrair ffmpeg")
+                self.installOutput.emit(self._tr("dep_log_extract_failed"))
             return ok
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)

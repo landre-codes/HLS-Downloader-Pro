@@ -80,6 +80,28 @@ def main() -> int:
             v = ev(ctx, root, expr)
             ok = v == want
             print(f"{'OK ' if ok else 'FALHA '}{name}: {v!r} (esperado {want!r})", flush=True)
+        new_languages = (
+            ("de", "Download-Eingabe"),
+            ("ar", "إدخال التنزيلات"),
+            ("he", "קלט הורדות"),
+            ("ko", "다운로드 입력"),
+        )
+        for lang, expected in new_languages:
+            bridge.setLanguage(lang)
+            app.processEvents()
+            v = ev(ctx, root, "strings.entry_title")
+            ok = v == expected
+            print(
+                f"{'OK ' if ok else 'FALHA '}{lang} entry_title: {v!r} "
+                f"(esperado {expected!r})",
+                flush=True,
+            )
+            rtl = ev(ctx, root, "root.isRtl")
+            rtl_ok = bool(rtl) == (lang in ("ar", "he"))
+            print(
+                f"{'OK ' if rtl_ok else 'FALHA '}{lang} isRtl: {rtl!r}",
+                flush=True,
+            )
         bridge.setLanguage("pt")
         app.processEvents()
         v = ev(ctx, root, "strings.entry_title")

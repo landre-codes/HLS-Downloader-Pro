@@ -9,7 +9,7 @@ Dialog {
 
     property var appRoot
     property var strings
-    property var bridge
+    property var backend
 
     modal: true
     title: strings.similar_title
@@ -53,50 +53,55 @@ Dialog {
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 8
-                Label { text: strings.similar_threshold; font.pixelSize: 12; color: appRoot.theme.textSecondary }
+                Label { text: strings.similar_threshold; font.pixelSize: 13; color: appRoot.theme.textSecondary }
                 AppSpinBox {
                     from: 50; to: 100; stepSize: 5
-                    value: bridge.similarityThreshold
+                    value: backend.similarityThreshold
                     editable: true
-                    onValueChanged: if (value !== bridge.similarityThreshold)
-                                        bridge.setSimilarityThreshold(value)
+                    onValueChanged: if (value !== backend.similarityThreshold)
+                                        backend.setSimilarityThreshold(value)
                     tipText: strings.similar_threshold_tip
                 }
                 AppButton {
                     text: strings.similar_scan_queue
-                    enabled: !bridge.similarityBusy
-                    onClicked: bridge.scanSimilarQueue()
+                    variant: "tonal"
+                    enabled: !backend.similarityBusy
+                    onClicked: backend.scanSimilarQueue()
                 }
                 AppButton {
                     text: strings.similar_scan_folder
-                    enabled: !bridge.similarityBusy
-                    onClicked: bridge.scanSimilarFolder()
+                    variant: "tonal"
+                    enabled: !backend.similarityBusy
+                    onClicked: backend.scanSimilarFolder()
                 }
                 AppButton {
                     text: strings.similar_cancel
-                    enabled: bridge.similarityBusy
-                    onClicked: bridge.cancelSimilarityScan()
+                    variant: "secondary"
+                    enabled: backend.similarityBusy
+                    onClicked: backend.cancelSimilarityScan()
                 }
                 Item { Layout.fillWidth: true }
                 AppButton {
                     text: strings.similar_clear
-                    enabled: bridge.similarityGroups.length > 0
-                    onClicked: bridge.clearSimilarityResults()
+                    variant: "secondary"
+                    dangerHover: true
+                    enabled: backend.similarityGroups.length > 0
+                    onClicked: backend.clearSimilarityResults()
                 }
             }
 
             ProgressBar {
                 Layout.fillWidth: true
                 from: 0; to: 1
-                value: bridge.similarityTotal > 0
-                       ? bridge.similarityProgress / bridge.similarityTotal : 0
-                visible: bridge.similarityBusy
+                value: backend.similarityTotal > 0
+                       ? backend.similarityProgress / backend.similarityTotal : 0
+                visible: backend.similarityBusy
             }
 
             Label {
                 Layout.fillWidth: true
-                text: bridge.similarityStatus
-                visible: bridge.similarityStatus.length > 0
+                text: backend.similarityStatus
+                visible: backend.similarityStatus.length > 0
                 wrapMode: Text.Wrap
                 font.pixelSize: 11
                 color: appRoot.theme.textSecondary
@@ -114,11 +119,13 @@ Dialog {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 360
                 clip: true
+                rightPadding: 16
+                contentWidth: availableWidth
                 ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
                 ScrollBar.vertical.policy: ScrollBar.AsNeeded
                 ListView {
                     id: similarList
-                    model: bridge.similarityGroups
+                    model: backend.similarityGroups
                     spacing: 8
                     delegate: Rectangle {
                         width: similarList.width
@@ -166,7 +173,7 @@ Dialog {
                                         text: "…"
                                         Accessible.name: strings.similar_open
                                         tipText: strings.similar_open
-                                        onClicked: bridge.openDownloadPath(modelData.path)
+                                        onClicked: backend.openDownloadPath(modelData.path)
                                     }
                                 }
                             }
@@ -177,7 +184,7 @@ Dialog {
 
             Label {
                 Layout.fillWidth: true
-                visible: bridge.similarityGroups.length === 0 && !bridge.similarityBusy
+                visible: backend.similarityGroups.length === 0 && !backend.similarityBusy
                 text: strings.similar_empty
                 color: appRoot.theme.textSecondary
                 font.pixelSize: 12
@@ -189,6 +196,8 @@ Dialog {
     footer: DialogButtonBox {
         AppButton {
             text: strings.similar_close
+            variant: "secondary"
+            dangerHover: true
             DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
             onClicked: dialog.close()
         }

@@ -19,7 +19,11 @@ class PlaylistMixin(BridgeSignals):
 
     @Slot(str, int)
     def loadPlaylist(self, url: str, limit: int) -> None:
-        self._playlist.load(url, int(limit), self._build_cookies_arg())
+        value = (url or "").strip()
+        if not value:
+            self.notifyText.emit(self._tr("playlist_invalid"))
+            return
+        self._playlist.load(value, int(limit), self._build_cookies_arg())
 
     @Slot()
     def cancelPlaylist(self) -> None:

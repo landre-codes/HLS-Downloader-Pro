@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from hlsdl.i18n import BACKEND, LANGUAGES, tr, translator
+from hlsdl.i18n import BACKEND, LANGUAGES, is_rtl, tr, translator
 from hlsdl.status import ACTIVE, FINAL, Status
 
 
@@ -43,7 +43,9 @@ def test_translator_is_bound_to_lang():
 def test_all_languages_are_present_and_translated():
     from hlsdl.i18n import BACKEND, LANGUAGES
 
-    assert LANGUAGES == ("pt", "en", "es", "it", "fr", "ru", "ja", "zh")
+    assert LANGUAGES == (
+        "pt", "en", "es", "de", "it", "fr", "ru", "ar", "he", "ja", "ko", "zh"
+    )
     core_keys = (
         "links_added", "queue_started", "err_unexpected", "dep_found",
         "compress_quality_rejected",
@@ -55,6 +57,13 @@ def test_all_languages_are_present_and_translated():
     assert BACKEND["ja"]["links_added"] != BACKEND["pt"]["links_added"]
     assert BACKEND["ru"]["dep_found"] != BACKEND["pt"]["dep_found"]
     assert BACKEND["zh"]["err_unexpected"] != BACKEND["pt"]["err_unexpected"]
+    for lang in ("de", "ar", "he", "ko"):
+        assert BACKEND[lang]["links_added"] != BACKEND["pt"]["links_added"]
+        assert BACKEND[lang]["dep_log_downloading"] != BACKEND["pt"]["dep_log_downloading"]
+    assert is_rtl("ar") is True
+    assert is_rtl("he") is True
+    assert is_rtl("en") is False
+    assert is_rtl("ko") is False
 
 
 def test_backend_catalogs_have_full_key_parity():
@@ -115,7 +124,7 @@ def _ui_catalog_keys() -> dict[str, set[str]]:
             block_end = _js_object_end(body, block_start)
             block = body[block_start + 1:block_end]
             keys = set(
-                re.findall(r"(?:^|[{,])\s*([A-Za-z_]\w*)\s*:", block)
+                re.findall(r'(?:^|[{,])\s*"?([A-Za-z_]\w*)"?\s*:', block)
             )
             result.setdefault(lang_match.group(1), set()).update(keys)
     return result

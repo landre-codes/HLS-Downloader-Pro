@@ -30,7 +30,7 @@ Dialog {
             wrapMode: Text.Wrap
             font.pixelSize: 13
             font.weight: Font.DemiBold
-            color: dialog.appRoot ? dialog.appRoot.theme.text : "#202428"
+            color: dialog.appRoot ? dialog.appRoot.theme.text : "#1f2937"
         }
 
         RowLayout {
@@ -60,6 +60,7 @@ Dialog {
             Layout.maximumHeight: dialog.detailsVisible ? 150 : 0
             visible: dialog.detailsVisible
             clip: true
+            rightPadding: 16
             ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
             ScrollBar.vertical.policy: ScrollBar.AsNeeded
             contentWidth: availableWidth
@@ -75,9 +76,9 @@ Dialog {
                 color: dialog.appRoot ? dialog.appRoot.theme.textSecondary : "#4f5862"
                 background: Rectangle {
                     radius: 6
-                    color: dialog.appRoot ? dialog.appRoot.theme.cardBg : "#ffffff"
+                    color: dialog.appRoot ? dialog.appRoot.theme.inputBg : "#e9eef2"
                     border.width: 1
-                    border.color: dialog.appRoot ? dialog.appRoot.theme.cardBorder : "#d7dde3"
+                    border.color: dialog.appRoot ? dialog.appRoot.theme.inputBorder : "#c6d0d8"
                 }
             }
         }
@@ -87,6 +88,7 @@ Dialog {
         AppButton {
             text: dialog.strings.dlg_error_close || ""
             variant: "secondary"
+            dangerHover: true
             DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
             onClicked: dialog.close()
         }

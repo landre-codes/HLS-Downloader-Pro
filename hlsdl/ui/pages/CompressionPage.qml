@@ -22,8 +22,15 @@ import "../tablefilter.js" as TableFilter
     readonly property int compColStatus: 112
     readonly property int compColProgress: 148
     readonly property int compColResult: 214
+    readonly property int compColSize: 112
     readonly property int compColActions: 140
     readonly property int compColGap: 10
+    readonly property bool showSizeColumn: width >= 1050
+    property var compSelection: ({})
+    readonly property int compSelectedCount: Object.keys(compSelection).length
+    // Reserva o trilho da scrollbar vertical. Sem essa margem, a barra
+    // sobrepõe o último controle das grades em larguras intermediárias.
+    readonly property int compScrollGutter: 16
 
     readonly property var compFilterAliases: ({
         "status": "status",
@@ -37,11 +44,30 @@ import "../tablefilter.js" as TableFilter
         "error": "error",
         "tamanho": "size",
         "size": "size",
+        "antes": "size_before",
+        "depois": "size_after",
+        "saida": "size_after",
         "economia": "saving",
-        "saving": "saving"
+        "saving": "saving",
+        "resultado": "saving",
+        "result": "saving",
+        "comparacao": "saving"
     })
     readonly property var compFilterTokens: TableFilter.tokenize(compFilterText,
                                                                 compFilterAliases)
+
+    function compSizeValues(value) {
+        var bytes = Number(value) || 0
+        var formatted = appRoot.formatBytes(bytes)
+        // Inclui "9.5 MB", "9.5MB" e o valor bruto em bytes.
+        return [String(bytes), formatted, formatted.replace(" ", "")]
+    }
+
+    // A coluna "Tamanho" exibe a saída quando existe; só cai para a origem
+    // quando o item ainda não gerou arquivo. O filtro precisa seguir a coluna.
+    function compDisplayedSize(row) {
+        return (Number(row.sizeAfter) || 0) > 0 ? row.sizeAfter : row.sizeBefore
+    }
 
     function compRowFields(row) {
         return {
@@ -50,9 +76,9 @@ import "../tablefilter.js" as TableFilter
             "status": [appRoot.statusText(row.status)],
             "progress": [String(Math.round(Number(row.progress) || 0)) + "%",
                          String(row.progress || "")],
-            "size": [String(row.sizeBefore || ""), String(row.sizeAfter || ""),
-                     appRoot.formatBytes(row.sizeBefore || 0),
-                     appRoot.formatBytes(row.sizeAfter || 0)],
+            "size_before": compSizeValues(row.sizeBefore),
+            "size_after": compSizeValues(row.sizeAfter),
+            "size": compSizeValues(compDisplayedSize(row)),
             "saving": [String(row.saving || "") + "%",
                        String(row.bitrateAfter || ""),
                        String(row.ssim || "")],
@@ -68,13 +94,81 @@ import "../tablefilter.js" as TableFilter
         compSettingsCollapsed = !compSettingsCollapsed
     }
 
+    function _copyCompSelection() {
+        var next = {}
+        for (var key in compSelection)
+            next[key] = compSelection[key]
+        return next
+    }
+
+    function isCompSelected(sourceIndex) {
+        return compSelection[String(sourceIndex)] === true
+    }
+
+    function setCompSelected(sourceIndex, selected) {
+        var next = _copyCompSelection()
+        if (selected)
+            next[String(sourceIndex)] = true
+        else
+            delete next[String(sourceIndex)]
+        compSelection = next
+    }
+
+    function selectAllCompression(selected) {
+        var next = {}
+        if (selected) {
+            for (var i = 0; i < compList.count; i++) {
+                var source = compressionModel.sourceIndexAt(i)
+                if (source >= 0)
+                    next[String(source)] = true
+            }
+        }
+        compSelection = next
+    }
+
+    function pruneCompSelection() {
+        var next = {}
+        for (var i = 0; i < compList.count; i++) {
+            var source = compressionModel.sourceIndexAt(i)
+            if (source >= 0 && compSelection[String(source)] === true)
+                next[String(source)] = true
+        }
+        compSelection = next
+    }
+
+    function removeCompressionItem(sourceIndex) {
+        var next = _copyCompSelection()
+        delete next[String(sourceIndex)]
+        compSelection = next
+        bridge.removeCompressionItem(sourceIndex)
+    }
+
+    function removeSelectedCompression() {
+        var ids = []
+        for (var key in compSelection)
+            if (compSelection[key] === true)
+                ids.push(Number(key))
+        ids.sort(function(a, b) { return b - a })
+        compSelection = ({})
+        for (var i = 0; i < ids.length; i++)
+            bridge.removeCompressionItem(ids[i])
+    }
+
     // Diagnóstico de layout: posições X das células da linha (usado pelos
     // testes para garantir que o cabeçalho e o delegate compartilham colunas).
     function rowCellXsAt(row) {
         var item = compList.itemAtIndex(row)
-        if (!item || item.children.length === 0)
+        if (!item)
             return []
-        var layout = item.children[0]
+        var layout = null
+        for (var c = 0; c < item.children.length; c++) {
+            if (item.children[c].objectName === "compRowLayout") {
+                layout = item.children[c]
+                break
+            }
+        }
+        if (!layout)
+            return []
         var xs = []
         for (var i = 0; i < layout.children.length; i++)
             xs.push(layout.children[i].x)
@@ -121,7 +215,7 @@ import "../tablefilter.js" as TableFilter
                         : Math.max(
                             appRoot.height < 700 ? 240 : 300,
                             Math.min(
-                                appRoot.height - 440,
+                                appRoot.height - 480,
                                 32 + compHero.implicitHeight + 12
                                 + compPresetRow.implicitHeight + 12
                                 + compTabsRow.implicitHeight + 12
@@ -147,16 +241,16 @@ import "../tablefilter.js" as TableFilter
                             description: strings.hero_compress_desc
                             AppButton {
                                 text: strings.compress_add_files
-                                variant: "secondary"
-                                icon.source: appRoot.iconPath("file")
+                                variant: "tonal"
+                                icon.source: appRoot.tonalIcon("file", enabled)
                                 icon.width: 16; icon.height: 16
                                 display: AbstractButton.TextBesideIcon
                                 onClicked: bridge.addCompressionFiles()
                             }
                             AppButton {
                                 text: strings.compress_add_folder
-                                variant: "secondary"
-                                icon.source: appRoot.iconPath("open")
+                                variant: "tonal"
+                                icon.source: appRoot.tonalIcon("open", enabled)
                                 icon.width: 16; icon.height: 16
                                 display: AbstractButton.TextBesideIcon
                                 enabled: !bridge.compressionScanBusy
@@ -190,12 +284,12 @@ import "../tablefilter.js" as TableFilter
                             spacing: 12
                             Label {
                                 text: strings.compress_preset
-                                font.pixelSize: 12
+                                font.pixelSize: 14
                                 color: appRoot.theme.textSecondary
                             }
                             AppComboBox {
                                 id: compPreset
-                                Layout.preferredWidth: 260
+                                Layout.preferredWidth: 320
                                 model: [
                                     { text: strings.compress_preset_custom, value: "custom" },
                                     { text: strings.compress_preset_fast_h264, value: "fast_h264" },
@@ -275,19 +369,19 @@ import "../tablefilter.js" as TableFilter
                                 contentWidth: availableWidth
 
                                 ColumnLayout {
-                                    width: generalScroll.availableWidth
+                                    width: generalScroll.availableWidth - page.compScrollGutter
                                     spacing: 12
 
                                     GridLayout {
                                         Layout.fillWidth: true
-                                        columns: width > 1180 ? 4 : (width > 900 ? 3 : 2)
+                                        columns: width > 1650 ? 4 : (width > 1280 ? 3 : 2)
                                         columnSpacing: 24
                                         rowSpacing: 12
 
                                         ColumnLayout {
                                             Layout.fillWidth: true
                                             spacing: 4
-                                            Label { text: strings.compress_codec; font.pixelSize: 11; color: appRoot.theme.textSecondary }
+                                            Label { text: strings.compress_codec; font.pixelSize: 14; color: appRoot.theme.textSecondary }
                                             AppComboBox {
                                                 id: compCodec
                                                 Layout.fillWidth: true
@@ -308,7 +402,7 @@ import "../tablefilter.js" as TableFilter
                                         ColumnLayout {
                                             Layout.fillWidth: true
                                             spacing: 4
-                                            Label { text: strings.compress_container; font.pixelSize: 11; color: appRoot.theme.textSecondary }
+                                            Label { text: strings.compress_container; font.pixelSize: 14; color: appRoot.theme.textSecondary }
                                             AppComboBox {
                                                 id: compContainer
                                                 Layout.fillWidth: true
@@ -322,12 +416,13 @@ import "../tablefilter.js" as TableFilter
                                         ColumnLayout {
                                             Layout.fillWidth: true
                                             spacing: 4
-                                            Label { text: strings.compress_quality_rf; font.pixelSize: 11; color: appRoot.theme.textSecondary }
+                                            Label { text: strings.compress_quality_rf; font.pixelSize: 14; color: appRoot.theme.textSecondary }
                                             RowLayout {
                                                 spacing: 10
                                                 AppSpinBox {
                                                     id: compQuality
-                                                    Layout.preferredWidth: 130
+                                                    objectName: "compQualitySpin"
+                                                    Layout.preferredWidth: 200
                                                     from: 1; to: bridge.compressionQualityMax
                                                     value: bridge.compressionQuality
                                                     editable: true
@@ -347,11 +442,12 @@ import "../tablefilter.js" as TableFilter
                                         ColumnLayout {
                                             Layout.fillWidth: true
                                             spacing: 4
-                                            Label { text: strings.compress_min_bitrate; font.pixelSize: 11; color: appRoot.theme.textSecondary }
+                                            Label { text: strings.compress_min_bitrate; font.pixelSize: 14; color: appRoot.theme.textSecondary }
                                             RowLayout {
                                                 spacing: 10
                                                 AppSpinBox {
-                                                    Layout.preferredWidth: 130
+                                                    objectName: "compBitrateSpin"
+                                                    Layout.preferredWidth: 200
                                                     from: 0; to: 90; stepSize: 5
                                                     value: bridge.compressionBitrateTargetSupported
                                                            ? bridge.compressionMinBitrate : 0
@@ -382,7 +478,7 @@ import "../tablefilter.js" as TableFilter
                                         ColumnLayout {
                                             Layout.fillWidth: true
                                             spacing: 4
-                                            Label { text: strings.compress_speed; font.pixelSize: 11; color: appRoot.theme.textSecondary }
+                                            Label { text: strings.compress_speed; font.pixelSize: 14; color: appRoot.theme.textSecondary }
                                             AppComboBox {
                                                 id: compSpeed
                                                 Layout.fillWidth: true
@@ -408,7 +504,7 @@ import "../tablefilter.js" as TableFilter
                                         ColumnLayout {
                                             Layout.fillWidth: true
                                             spacing: 4
-                                            Label { text: strings.compress_encoder; font.pixelSize: 11; color: appRoot.theme.textSecondary }
+                                            Label { text: strings.compress_encoder; font.pixelSize: 14; color: appRoot.theme.textSecondary }
                                             AppComboBox {
                                                 id: compEncoder
                                                 Layout.fillWidth: true
@@ -431,7 +527,7 @@ import "../tablefilter.js" as TableFilter
                                             spacing: 4
                                             visible: bridge.compressionEncoder === "auto"
                                                      || bridge.compressionEncoder === "qsv"
-                                            Label { text: strings.compress_gpu; font.pixelSize: 11; color: appRoot.theme.textSecondary }
+                                            Label { text: strings.compress_gpu; font.pixelSize: 14; color: appRoot.theme.textSecondary }
                                             RowLayout {
                                                 spacing: 6
                                                 AppComboBox {
@@ -465,10 +561,11 @@ import "../tablefilter.js" as TableFilter
                                         ColumnLayout {
                                             Layout.fillWidth: true
                                             spacing: 4
-                                            Label { text: strings.compress_parallel; font.pixelSize: 11; color: appRoot.theme.textSecondary }
+                                            Label { text: strings.compress_parallel; font.pixelSize: 14; color: appRoot.theme.textSecondary }
                                             AppSpinBox {
                                                 id: compParallel
-                                                Layout.preferredWidth: 130
+                                                objectName: "compParallelSpin"
+                                                Layout.preferredWidth: 200
                                                 from: 1; to: 8
                                                 value: bridge.compressionParallel
                                                 editable: true
@@ -479,10 +576,11 @@ import "../tablefilter.js" as TableFilter
                                         ColumnLayout {
                                             Layout.fillWidth: true
                                             spacing: 4
-                                            Label { text: strings.compress_min_size; font.pixelSize: 11; color: appRoot.theme.textSecondary }
+                                            Label { text: strings.compress_min_size; font.pixelSize: 14; color: appRoot.theme.textSecondary }
                                             AppSpinBox {
                                                 id: compMinSize
-                                                Layout.preferredWidth: 130
+                                                objectName: "compMinSizeSpin"
+                                                Layout.preferredWidth: 200
                                                 from: 0; to: 100000
                                                 stepSize: 100
                                                 value: bridge.compressionMinSizeMB
@@ -503,19 +601,19 @@ import "../tablefilter.js" as TableFilter
                                 contentWidth: availableWidth
 
                                 ColumnLayout {
-                                    width: videoScroll.availableWidth
+                                    width: videoScroll.availableWidth - page.compScrollGutter
                                     spacing: 12
 
                                     GridLayout {
                                         Layout.fillWidth: true
-                                        columns: width > 1180 ? 4 : (width > 900 ? 3 : 2)
+                                        columns: width > 1650 ? 4 : (width > 1280 ? 3 : 2)
                                         columnSpacing: 24
                                         rowSpacing: 12
 
                                         ColumnLayout {
                                             Layout.fillWidth: true
                                             spacing: 4
-                                            Label { text: strings.compress_deinterlace; font.pixelSize: 11; color: appRoot.theme.textSecondary }
+                                            Label { text: strings.compress_deinterlace; font.pixelSize: 14; color: appRoot.theme.textSecondary }
                                             AppComboBox {
                                                 Layout.fillWidth: true
                                                 model: [
@@ -539,7 +637,7 @@ import "../tablefilter.js" as TableFilter
                                         ColumnLayout {
                                             Layout.fillWidth: true
                                             spacing: 4
-                                            Label { text: strings.compress_denoise; font.pixelSize: 11; color: appRoot.theme.textSecondary }
+                                            Label { text: strings.compress_denoise; font.pixelSize: 14; color: appRoot.theme.textSecondary }
                                             AppComboBox {
                                                 Layout.fillWidth: true
                                                 model: [
@@ -564,7 +662,7 @@ import "../tablefilter.js" as TableFilter
                                         ColumnLayout {
                                             Layout.fillWidth: true
                                             spacing: 4
-                                            Label { text: strings.compress_hdr_policy; font.pixelSize: 11; color: appRoot.theme.textSecondary }
+                                            Label { text: strings.compress_hdr_policy; font.pixelSize: 14; color: appRoot.theme.textSecondary }
                                             AppComboBox {
                                                 Layout.fillWidth: true
                                                 model: [
@@ -596,7 +694,7 @@ import "../tablefilter.js" as TableFilter
                                         ColumnLayout {
                                             Layout.fillWidth: true
                                             spacing: 4
-                                            Label { text: strings.compress_rotate; font.pixelSize: 11; color: appRoot.theme.textSecondary }
+                                            Label { text: strings.compress_rotate; font.pixelSize: 14; color: appRoot.theme.textSecondary }
                                             AppComboBox {
                                                 Layout.fillWidth: true
                                                 model: [
@@ -620,9 +718,10 @@ import "../tablefilter.js" as TableFilter
                                         ColumnLayout {
                                             Layout.fillWidth: true
                                             spacing: 4
-                                            Label { text: strings.compress_fps; font.pixelSize: 11; color: appRoot.theme.textSecondary }
+                                            Label { text: strings.compress_fps; font.pixelSize: 14; color: appRoot.theme.textSecondary }
                                             AppSpinBox {
-                                                Layout.preferredWidth: 130
+                                                objectName: "compFpsSpin"
+                                                Layout.preferredWidth: 200
                                                 from: 0; to: 240
                                                 value: bridge.compressionFps
                                                 editable: true
@@ -635,12 +734,13 @@ import "../tablefilter.js" as TableFilter
                                         ColumnLayout {
                                             Layout.fillWidth: true
                                             spacing: 4
-                                            Label { text: strings.compress_scale; font.pixelSize: 11; color: appRoot.theme.textSecondary }
+                                            Label { text: strings.compress_scale; font.pixelSize: 14; color: appRoot.theme.textSecondary }
                                             RowLayout {
                                                 spacing: 8
                                                 AppSpinBox {
                                                     id: scaleWidth
-                                                    Layout.preferredWidth: 120
+                                                    objectName: "compScaleWidthSpin"
+                                                    Layout.preferredWidth: 200
                                                     from: 0; to: 7680; stepSize: 2
                                                     value: bridge.compressionScaleWidth
                                                     editable: true
@@ -651,7 +751,8 @@ import "../tablefilter.js" as TableFilter
                                                 Label { text: "×"; color: appRoot.theme.textSecondary }
                                                 AppSpinBox {
                                                     id: scaleHeight
-                                                    Layout.preferredWidth: 120
+                                                    objectName: "compScaleHeightSpin"
+                                                    Layout.preferredWidth: 200
                                                     from: 0; to: 4320; stepSize: 2
                                                     value: bridge.compressionScaleHeight
                                                     editable: true
@@ -664,11 +765,12 @@ import "../tablefilter.js" as TableFilter
                                         ColumnLayout {
                                             Layout.fillWidth: true
                                             spacing: 4
-                                            Label { text: strings.compress_crop; font.pixelSize: 11; color: appRoot.theme.textSecondary }
+                                            Label { text: strings.compress_crop; font.pixelSize: 14; color: appRoot.theme.textSecondary }
                                             AppHintField {
                                                 id: cropField
                                                 Layout.fillWidth: true
                                                 hint: "w:h:x:y"
+                                                strings: page.strings
                                                 text: bridge.compressionCrop
                                                 onEditingFinished: bridge.setCompressionCrop(text)
                                                 tipText: strings.compress_crop_tip
@@ -714,7 +816,7 @@ import "../tablefilter.js" as TableFilter
                                 contentWidth: availableWidth
 
                                 ColumnLayout {
-                                    width: tracksScroll.availableWidth
+                                    width: tracksScroll.availableWidth - page.compScrollGutter
                                     spacing: 14
 
                                     GridLayout {
@@ -726,7 +828,7 @@ import "../tablefilter.js" as TableFilter
                                         ColumnLayout {
                                             Layout.fillWidth: true
                                             spacing: 4
-                                            Label { text: strings.compress_audio_mode; font.pixelSize: 11; color: appRoot.theme.textSecondary }
+                                            Label { text: strings.compress_audio_mode; font.pixelSize: 14; color: appRoot.theme.textSecondary }
                                             AppComboBox {
                                                 Layout.fillWidth: true
                                                 model: [
@@ -757,7 +859,7 @@ import "../tablefilter.js" as TableFilter
                                         ColumnLayout {
                                             Layout.fillWidth: true
                                             spacing: 4
-                                            Label { text: strings.compress_subtitle_mode; font.pixelSize: 11; color: appRoot.theme.textSecondary }
+                                            Label { text: strings.compress_subtitle_mode; font.pixelSize: 14; color: appRoot.theme.textSecondary }
                                             AppComboBox {
                                                 Layout.fillWidth: true
                                                 model: [
@@ -796,7 +898,7 @@ import "../tablefilter.js" as TableFilter
                                 contentWidth: availableWidth
 
                                 ColumnLayout {
-                                    width: advancedScroll.availableWidth
+                                    width: advancedScroll.availableWidth - page.compScrollGutter
                                     spacing: 14
 
                                     Flow {
@@ -864,7 +966,7 @@ import "../tablefilter.js" as TableFilter
                     Layout.fillHeight: true
                     Layout.minimumHeight: 100
                     radius: 12
-                    color: appRoot.theme.cardBg
+                    color: appRoot.theme.tableBg
                     border.color: appRoot.theme.cardBorder
                     border.width: 1
                     ColumnLayout {
@@ -882,12 +984,38 @@ import "../tablefilter.js" as TableFilter
                                 color: appRoot.theme.busyText
                             }
                             Item { Layout.fillWidth: true }
+                            AppCheckBox {
+                                objectName: "compSelectAll"
+                                text: strings.btn_select_all
+                                enabled: compList.count > 0
+                                Layout.alignment: Qt.AlignVCenter
+                                tristate: true
+                                checkState: page.compSelectedCount === 0
+                                            ? Qt.Unchecked
+                                            : (page.compSelectedCount === compList.count
+                                               ? Qt.Checked : Qt.PartiallyChecked)
+                                // O primeiro clique marca tudo direto (V), sem
+                                // passar pelo estado intermediário "-".
+                                nextCheckState: function() {
+                                    return page.compSelectedCount === compList.count
+                                           && compList.count > 0
+                                           ? Qt.Unchecked : Qt.Checked
+                                }
+                                onClicked: page.selectAllCompression(
+                                               page.compSelectedCount < compList.count)
+                                Accessible.name: strings.btn_select_all
+                                tipTitle: strings.btn_select_all
+                                tipText: strings.compress_select_item
+                            }
                             AppHintField {
                                 id: compFilter
                                 objectName: "compFilter"
-                                Layout.preferredWidth: 310
-                                Layout.preferredHeight: 38
+                                Layout.preferredWidth: 340
+                                Layout.preferredHeight: 56
+                                Layout.alignment: Qt.AlignVCenter
                                 hint: strings.compress_filter_placeholder
+                                strings: page.strings
+                                showClearButton: true
                                 leadingIcon: appRoot.iconPath("search")
                                 selectByMouse: true
                                 tipTitle: strings.compress_filter_title
@@ -908,23 +1036,34 @@ import "../tablefilter.js" as TableFilter
                                 interval: 180
                                 onTriggered: page.compFilterText = compFilter.text
                             }
-                            AppToolButton {
-                                display: AbstractButton.IconOnly
-                                icon.source: appRoot.iconPath("cancel")
-                                icon.width: 14
-                                icon.height: 14
-                                opacity: compFilter.text.length > 0 ? 1 : 0
-                                enabled: compFilter.text.length > 0
-                                Accessible.name: strings.filter_clear
-                                tipTitle: strings.filter_clear
-                                tipText: strings.filter_clear_tip
-                                tipShortcut: "Esc"
-                                onClicked: compFilter.clear()
+                            AppButton {
+                                objectName: "compRemoveSelected"
+                                // Largura fixa: o contador no texto não pode
+                                // empurrar o "Selecionar tudo" no primeiro clique.
+                                Layout.preferredWidth: 200
+                                Layout.minimumWidth: 200
+                                Layout.maximumWidth: 200
+                                Layout.preferredHeight: 56
+                                Layout.minimumHeight: 56
+                                Layout.maximumHeight: 56
+                                Layout.alignment: Qt.AlignVCenter
+                                text: strings.compress_remove_selected
+                                      + (page.compSelectedCount > 0
+                                         ? " (" + page.compSelectedCount + ")" : "")
+                                variant: page.compSelectedCount > 0 ? "danger" : "secondary"
+                                size: "compact"
+                                icon.source: appRoot.iconPath("trash", enabled)
+                                icon.width: 16
+                                icon.height: 16
+                                display: AbstractButton.TextBesideIcon
+                                enabled: page.compSelectedCount > 0
+                                onClicked: page.removeSelectedCompression()
                             }
                         }
 
                         Rectangle {
                             Layout.fillWidth: true
+                            Layout.rightMargin: page.compScrollGutter
                             Layout.preferredHeight: 36
                             radius: 6
                             color: appRoot.theme.tableHeaderBg
@@ -1009,7 +1148,7 @@ import "../tablefilter.js" as TableFilter
                                     Layout.maximumWidth: page.compColResult
                                     Layout.fillHeight: true
                                     label: strings.compress_col_result
-                                    sortKey: "size"
+                                    sortKey: "saving"
                                     activeKey: compressionModel.sortKey
                                     ascending: compressionModel.sortAscending
                                     textColor: appRoot.theme.tableHeaderText
@@ -1017,6 +1156,30 @@ import "../tablefilter.js" as TableFilter
                                     hoverColor: appRoot.theme.hover
                                     accentColor: appRoot.theme.accentText
                                     tipTitle: strings.compress_col_result
+                                    tipText: strings.sort_tip
+                                    tipFooter: strings.sort_tip
+                                    sortStateText: compressionModel.sortAscending
+                                                   ? strings.sort_ascending
+                                                   : strings.sort_descending
+                                    onActivated: compressionModel.sortBy("saving")
+                                }
+                                TableSortHeader {
+                                    objectName: "compHeaderSize"
+                                    visible: page.showSizeColumn
+                                    Layout.preferredWidth: page.compColSize
+                                    Layout.minimumWidth: page.compColSize
+                                    Layout.maximumWidth: page.compColSize
+                                    Layout.fillHeight: true
+                                    label: strings.compress_col_size
+                                    sortKey: "size"
+                                    activeKey: compressionModel.sortKey
+                                    ascending: compressionModel.sortAscending
+                                    horizontalAlignment: Text.AlignHCenter
+                                    textColor: appRoot.theme.tableHeaderText
+                                    mutedColor: appRoot.theme.textMuted
+                                    hoverColor: appRoot.theme.hover
+                                    accentColor: appRoot.theme.accentText
+                                    tipTitle: strings.compress_col_size
                                     tipText: strings.sort_tip
                                     tipFooter: strings.sort_result_tip
                                     sortStateText: compressionModel.sortAscending
@@ -1053,6 +1216,7 @@ import "../tablefilter.js" as TableFilter
                             spacing: 0
                             ScrollBar.vertical: ScrollBar {}
                             boundsBehavior: Flickable.StopAtBounds
+                            onCountChanged: page.pruneCompSelection()
 
                             Rectangle {
                                 anchors.fill: parent
@@ -1107,35 +1271,91 @@ import "../tablefilter.js" as TableFilter
 
                             delegate: Item {
                                 id: compRow
-                                width: compList.width
+                                width: compList.width - page.compScrollGutter
                                 property bool matches: page.compRowMatches(model)
                                 height: matches ? 58 : 0
                                 visible: matches
                                 property string st: model.status
+
+                                MouseArea {
+                                    anchors.fill: parent
+                                    acceptedButtons: Qt.RightButton
+                                    onClicked: {
+                                        compList.currentIndex = index
+                                        compRowMenu.popup()
+                                    }
+                                }
+
+                                Menu {
+                                    id: compRowMenu
+                                    MenuItem {
+                                        text: strings.ctx_open
+                                        visible: compRow.st === "done" && model.output !== ""
+                                        onTriggered: bridge.openCompressionOutput(model.output)
+                                    }
+                                    MenuItem {
+                                        text: strings.compress_retry
+                                        visible: compRow.st === "error" || compRow.st === "skipped"
+                                                 || compRow.st === "cancelled"
+                                        onTriggered: bridge.retryCompressionItem(model.sourceIndex)
+                                    }
+                                    MenuItem {
+                                        text: strings.ctx_cancel
+                                        visible: compRow.st === "waiting" || compRow.st === "analyzing"
+                                                 || compRow.st === "encoding" || compRow.st === "verifying"
+                                        onTriggered: bridge.cancelCompressionItem(model.sourceIndex)
+                                    }
+                                    MenuItem {
+                                        text: strings.ctx_remove
+                                        onTriggered: page.removeCompressionItem(model.sourceIndex)
+                                    }
+                                    MenuItem {
+                                        text: strings.compress_remove_selected
+                                              + " (" + page.compSelectedCount + ")"
+                                        visible: page.compSelectedCount > 1
+                                                 && page.isCompSelected(model.sourceIndex)
+                                        onTriggered: page.removeSelectedCompression()
+                                    }
+                                }
+
                                 RowLayout {
+                                    objectName: "compRowLayout"
                                     anchors.fill: parent
                                     anchors.leftMargin: 8
                                     anchors.rightMargin: 8
                                     spacing: page.compColGap
-                                    ColumnLayout {
+                                    RowLayout {
                                         objectName: "compCellName"
                                         Layout.fillWidth: true
                                         Layout.minimumWidth: 160
-                                        spacing: 0
-                                        Label {
-                                            Layout.fillWidth: true
-                                            text: model.name
-                                            elide: Text.ElideMiddle
-                                            font.pixelSize: 12
-                                            font.weight: Font.DemiBold
+                                        spacing: 4
+                                        AppCheckBox {
+                                            objectName: "compRowSelect"
+                                            Layout.alignment: Qt.AlignVCenter
+                                            checked: page.isCompSelected(model.sourceIndex)
+                                            onToggled: page.setCompSelected(model.sourceIndex, checked)
+                                            Accessible.name: strings.compress_select_item
+                                            tipTitle: strings.compress_select_item
+                                            tipText: model.name
                                         }
-                                        Label {
+                                        ColumnLayout {
                                             Layout.fillWidth: true
-                                            text: model.encoder
-                                            visible: model.encoder.length > 0
-                                            elide: Text.ElideRight
-                                            font.pixelSize: 9
-                                            color: appRoot.theme.textSecondary
+                                            spacing: 0
+                                            Label {
+                                                Layout.fillWidth: true
+                                                text: model.name
+                                                elide: Text.ElideMiddle
+                                                font.pixelSize: 12
+                                                font.weight: Font.DemiBold
+                                            }
+                                            Label {
+                                                Layout.fillWidth: true
+                                                text: model.encoder
+                                                visible: model.encoder.length > 0
+                                                elide: Text.ElideRight
+                                                font.pixelSize: 9
+                                                color: appRoot.theme.textSecondary
+                                            }
                                         }
                                     }
                                     Item {
@@ -1166,11 +1386,33 @@ import "../tablefilter.js" as TableFilter
                                         Layout.minimumWidth: page.compColProgress
                                         Layout.maximumWidth: page.compColProgress
                                         spacing: 2
-                                        ProgressBar {
-                                            width: parent.width; height: 6
-                                            from: 0; to: 100
-                                            value: model.progress
-                                            indeterminate: compRow.st === "analyzing"
+                                        RowLayout {
+                                            width: parent.width
+                                            spacing: 4
+                                            Image {
+                                                id: compProgressIcon
+                                                Layout.preferredWidth: 14
+                                                Layout.preferredHeight: 14
+                                                source: appRoot.iconPath(
+                                                    appRoot.progressIconName(compRow.st))
+                                                sourceSize.width: 14
+                                                sourceSize.height: 14
+                                                Accessible.name: appRoot.statusText(compRow.st)
+                                                AppToolTip {
+                                                    target: compProgressIcon
+                                                    title: appRoot.statusText(compRow.st)
+                                                    text: page.compDetailTip(model)
+                                                    available: model.error.length > 0
+                                                    delay: 400
+                                                }
+                                            }
+                                            ProgressBar {
+                                                Layout.fillWidth: true
+                                                Layout.preferredHeight: 6
+                                                from: 0; to: 100
+                                                value: model.progress
+                                                indeterminate: compRow.st === "analyzing"
+                                            }
                                         }
                                         Label {
                                             anchors.right: parent.right
@@ -1223,6 +1465,34 @@ import "../tablefilter.js" as TableFilter
                                             }
                                         }
                                     }
+                                    Column {
+                                        objectName: "compCellSize"
+                                        visible: page.showSizeColumn
+                                        Layout.preferredWidth: page.compColSize
+                                        Layout.minimumWidth: page.compColSize
+                                        Layout.maximumWidth: page.compColSize
+                                        spacing: 2
+                                        Label {
+                                            width: parent.width
+                                            text: model.sizeAfter > 0
+                                                  ? appRoot.formatBytes(model.sizeAfter)
+                                                  : (model.sizeBefore > 0
+                                                     ? appRoot.formatBytes(model.sizeBefore) : "-")
+                                            font.pixelSize: 12
+                                            horizontalAlignment: Text.AlignHCenter
+                                            elide: Text.ElideRight
+                                        }
+                                        Label {
+                                            width: parent.width
+                                            text: model.sizeAfter > 0
+                                                  ? strings.compress_size_output
+                                                  : strings.compress_size_source
+                                            font.pixelSize: 9
+                                            color: appRoot.theme.textSecondary
+                                            horizontalAlignment: Text.AlignHCenter
+                                            elide: Text.ElideRight
+                                        }
+                                    }
                                     Item {
                                         objectName: "compCellActions"
                                         Layout.preferredWidth: page.compColActions
@@ -1268,14 +1538,13 @@ import "../tablefilter.js" as TableFilter
                                             AppToolButton {
                                                 width: 32; height: 28
                                                 display: AbstractButton.IconOnly
+                                                danger: true
                                                 icon.source: appRoot.iconPath("trash")
                                                 icon.width: 16; icon.height: 16
-                                                visible: compRow.st === "done" || compRow.st === "error"
-                                                         || compRow.st === "cancelled" || compRow.st === "skipped"
                                                 Accessible.name: strings.ctx_remove
                                                 tipTitle: strings.ctx_remove
                                                 tipText: strings.compress_remove_tip
-                                                onClicked: bridge.removeCompressionItem(model.sourceIndex)
+                                                onClicked: page.removeCompressionItem(model.sourceIndex)
                                             }
                                         }
                                     }
@@ -1319,8 +1588,8 @@ import "../tablefilter.js" as TableFilter
                     }
                     AppButton {
                         text: bridge.compressionDetecting ? strings.compress_detecting_ui : strings.btn_start
-                        highlighted: !bridge.compressionDetecting
-                        icon.source: appRoot.iconPath("play")
+                        variant: bridge.compressionDetecting ? "secondary" : "primary"
+                        icon.source: appRoot.iconPath("play", enabled)
                         icon.width: 16; icon.height: 16
                         display: AbstractButton.TextBesideIcon
                         visible: !bridge.compressionActive
@@ -1331,6 +1600,7 @@ import "../tablefilter.js" as TableFilter
                     }
                     AppButton {
                         text: strings.btn_pause
+                        variant: "secondary"
                         icon.source: appRoot.iconPath("pause")
                         icon.width: 16; icon.height: 16
                         display: AbstractButton.TextBesideIcon
@@ -1341,11 +1611,11 @@ import "../tablefilter.js" as TableFilter
                     }
                     AppButton {
                         text: strings.btn_resume
-                        icon.source: appRoot.iconPath("play")
+                        icon.source: appRoot.iconPath("play", enabled)
                         icon.width: 16; icon.height: 16
                         display: AbstractButton.TextBesideIcon
                         visible: bridge.compressionActive && bridge.compressionPaused
-                        highlighted: true
+                        variant: "primary"
                         tipTitle: strings.btn_resume
                         tipText: strings.btn_resume_tip
                         onClicked: bridge.resumeCompression()
@@ -1364,6 +1634,7 @@ import "../tablefilter.js" as TableFilter
                     AppButton {
                         text: strings.btn_clear_finished
                         variant: "secondary"
+                        dangerHover: true
                         icon.source: appRoot.iconPath("trash")
                         icon.width: 16; icon.height: 16
                         display: AbstractButton.TextBesideIcon
@@ -1377,50 +1648,43 @@ import "../tablefilter.js" as TableFilter
 
         Dialog {
             id: confirmReplace
+            objectName: "confirmReplaceDialog"
             parent: appRoot.contentItem
             modal: true
             title: strings.compress_replace_original
-            width: 500
+            header: null
+            footer: null
+            background: Rectangle { color: "transparent"; radius: 24 }
+            width: 484
             x: (appRoot.width - width) / 2
             y: (appRoot.height - height) / 2
+            padding: 0
             standardButtons: Dialog.NoButton
+            closePolicy: Popup.CloseOnEscape
             onClosed: {
                 if (!bridge.compressionReplaceOriginal)
                     replaceOriginalCheck.checked = false
             }
-            contentItem: AppDialogSurface {
-                theme: appRoot.theme
-                Label {
-                    Layout.fillWidth: true
-                    text: strings.compress_replace_original_tip
-                    wrapMode: Text.Wrap
-                }
-                Label {
-                    Layout.fillWidth: true
-                    text: strings.compress_backup_kept
-                          + ": <nome>.hlsdl-backup-<data>.<ext>"
-                    wrapMode: Text.Wrap
-                    font.pixelSize: 11
-                    color: appRoot.theme.textSecondary
-                }
-            }
-            footer: DialogButtonBox {
-                AppButton {
-                    text: strings.confirm_ok
-                    DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
-                    onClicked: {
-                        bridge.setCompressionReplaceOriginal(true)
-                        confirmReplace.close()
-                    }
-                }
-                AppButton {
-                    text: strings.confirm_cancel
-                    DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
-                    onClicked: {
-                        bridge.setCompressionReplaceOriginal(false)
-                        replaceOriginalCheck.checked = false
-                        confirmReplace.close()
-                    }
+            contentItem: ConfirmSurface {
+                width: confirmReplace.width
+                height: implicitHeight
+                theme: appRoot ? appRoot.theme : null
+                appRoot: appRoot
+                strings: page.strings
+                dialog: confirmReplace
+                title: strings.compress_replace_original
+                message: strings.compress_replace_original_tip
+                detail: strings.compress_backup_kept
+                        + ": <nome>.hlsdl-backup-<data>.<ext>"
+                iconText: "!"
+                destructive: true
+                acceptText: strings.confirm_ok
+                cancelText: strings.confirm_cancel
+                closeText: strings.confirm_cancel
+                onAccepted: bridge.setCompressionReplaceOriginal(true)
+                onCancelled: {
+                    bridge.setCompressionReplaceOriginal(false)
+                    replaceOriginalCheck.checked = false
                 }
             }
         }

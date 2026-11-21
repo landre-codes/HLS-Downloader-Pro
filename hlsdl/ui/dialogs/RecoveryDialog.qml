@@ -9,7 +9,7 @@ Dialog {
 
     property var appRoot
     property var strings
-    property var bridge
+    property var backend
 
     modal: true
     title: strings.recovery_title
@@ -38,7 +38,7 @@ Dialog {
             }
 
             Repeater {
-                model: bridge.recoveryMessages
+                model: backend.recoveryMessages
                 delegate: Label {
                     Layout.fillWidth: true
                     text: "• " + modelData
@@ -52,10 +52,12 @@ Dialog {
     footer: DialogButtonBox {
         AppButton {
             text: strings.recovery_dismiss
+            variant: "secondary"
+            dangerHover: true
             DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
             onClicked: {
                 dialog.close()
-                bridge.clearRecoveryMessages()
+                backend.clearRecoveryMessages()
             }
         }
     }

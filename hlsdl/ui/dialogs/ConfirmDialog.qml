@@ -1,7 +1,6 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
-import QtQuick.Layouts
 import "../components"
 
 Dialog {
@@ -11,40 +10,39 @@ Dialog {
     property var strings: ({})
     property string message: ""
     property string okText: ""
+    property bool destructive: false
 
     signal confirmed()
 
     parent: appRoot ? appRoot.contentItem : null
     modal: true
     standardButtons: Dialog.NoButton
-    width: 420
+    header: null
+    footer: null
+    background: Rectangle { color: "transparent"; radius: 24 }
+    width: 484
     x: appRoot ? (appRoot.width - width) / 2 : 0
     y: appRoot ? (appRoot.height - height) / 2 : 0
+    padding: 0
+    closePolicy: Popup.CloseOnEscape
 
-    contentItem: AppDialogSurface {
+    contentItem: ConfirmSurface {
+        width: dialog.width
+        height: implicitHeight
         theme: dialog.appRoot ? dialog.appRoot.theme : null
-        Label {
-            Layout.fillWidth: true
-            text: dialog.message
-            wrapMode: Text.Wrap
-        }
-    }
-
-    footer: DialogButtonBox {
-        AppButton {
-            text: dialog.okText.length > 0
-                  ? dialog.okText
-                  : (dialog.strings.confirm_ok || "")
-            DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
-            onClicked: {
-                dialog.close()
-                dialog.confirmed()
-            }
-        }
-        AppButton {
-            text: dialog.strings.confirm_cancel || ""
-            DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
-            onClicked: dialog.close()
-        }
+        appRoot: dialog.appRoot
+        strings: dialog.strings
+        dialog: dialog
+        title: dialog.title
+        message: dialog.message
+        destructive: dialog.destructive
+        iconText: dialog.destructive ? "!" : "?"
+        acceptText: dialog.okText.length > 0
+                    ? dialog.okText
+                    : (dialog.strings.confirm_ok || "")
+        cancelText: dialog.strings.confirm_cancel || ""
+        closeText: dialog.strings.dlg_error_close || ""
+        showClose: true
+        onAccepted: dialog.confirmed()
     }
 }

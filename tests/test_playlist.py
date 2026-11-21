@@ -22,6 +22,22 @@ def test_to_item_non_youtube_id_is_not_forced_to_youtube():
     assert item["url"] == ""
 
 
+def test_to_item_tolerates_null_thumbnail_entries():
+    entry = {
+        "id": "x", "title": "T", "webpage_url": "https://site/v/1",
+        "thumbnails": [None],
+    }
+    item = PlaylistLoader._to_item(entry, 0)
+    assert item["url"] == "https://site/v/1"
+    assert item["thumb"] == ""
+
+
+def test_to_item_tolerates_non_dict_entry():
+    item = PlaylistLoader._to_item(None, 2)
+    assert item["url"] == ""
+    assert item["title"] == "#3"
+
+
 def test_to_item_full_url_and_thumb():
     entry = {
         "id": "x", "title": "T", "webpage_url": "https://site/v/1",
@@ -65,6 +81,32 @@ def test_loader_parses_entries(qapp, monkeypatch):
 
     assert got and len(got[0]) == 2
     assert [i["title"] for i in got[0]] == ["A", "B"]
+
+
+def test_loader_reports_invalid_json_without_crashing(qapp, monkeypatch):
+    monkeypatch.setattr(
+        subprocess, "Popen", lambda *a, **k: _FakeProc("null")
+    )
+    loader = PlaylistLoader()
+    loader._ytdlp_argv = lambda: ["yt-dlp"]
+    errors: list = []
+    loader.failed.connect(errors.append)
+
+    loader._run(["yt-dlp"], "https://site/playlist", 10, "")
+
+    assert errors
+    assert "Nenhum item" in errors[0]
+
+
+def test_loader_rejects_empty_url(qapp):
+    loader = PlaylistLoader()
+    errors: list = []
+    loader.failed.connect(errors.append)
+
+    loader.load("   ", 10, "")
+
+    assert errors
+    assert "URL" in errors[0]
 
 
 def test_loader_reports_failure_on_error(qapp, monkeypatch):

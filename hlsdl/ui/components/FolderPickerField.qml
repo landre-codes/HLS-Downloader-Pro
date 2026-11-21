@@ -13,6 +13,10 @@ Item {
     property string copyText: ""
     property string folderIcon: ""
     property string copyIcon: ""
+    property string changeIcon: ""
+    property string openIcon: ""
+    property string changeTip: ""
+    property string openTip: ""
 
     signal changeRequested()
     signal openRequested()
@@ -29,7 +33,7 @@ Item {
         Label {
             text: root.label
             visible: text.length > 0
-            font.pixelSize: 12
+            font.pixelSize: 14
             color: root.theme ? root.theme.textSecondary : "#4f5862"
         }
 
@@ -43,9 +47,9 @@ Item {
                 Layout.minimumWidth: 160
                 implicitHeight: 44
                 radius: 6
-                color: root.theme ? root.theme.cardBg : "#ffffff"
+                color: root.theme ? root.theme.inputBg : "#e9eef2"
                 border.width: 1
-                border.color: root.theme ? root.theme.cardBorder : "#d7dde3"
+                border.color: root.theme ? root.theme.inputBorder : "#c6d0d8"
 
                 RowLayout {
                     anchors.fill: parent
@@ -61,8 +65,8 @@ Item {
                     Label {
                         Layout.fillWidth: true
                         text: root.path
-                        color: root.theme ? root.theme.textSecondary : "#4f5862"
-                        font.pixelSize: 12
+                        color: root.theme ? root.theme.text : "#1f2937"
+                        font.pixelSize: 13
                         elide: Text.ElideMiddle
                     }
                 }
@@ -82,11 +86,23 @@ Item {
             AppButton {
                 text: root.changeText
                 variant: "secondary"
+                icon.source: root.changeIcon
+                icon.width: 18
+                icon.height: 18
+                display: AbstractButton.TextBesideIcon
+                tipTitle: root.changeText
+                tipText: root.changeTip.length > 0 ? root.changeTip : root.path
                 onClicked: root.changeRequested()
             }
             AppButton {
                 text: root.openText
                 variant: "secondary"
+                icon.source: root.openIcon
+                icon.width: 18
+                icon.height: 18
+                display: AbstractButton.TextBesideIcon
+                tipTitle: root.openText
+                tipText: root.openTip.length > 0 ? root.openTip : root.path
                 onClicked: root.openRequested()
             }
             AppButton {

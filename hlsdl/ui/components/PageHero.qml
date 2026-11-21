@@ -13,12 +13,12 @@ Rectangle {
     default property alias actions: actionsRow.data
     readonly property bool hasActions: actionsRow.children.length > 0
 
-    implicitHeight: compact ? (hasActions ? 52 : 40) : 68
+    implicitHeight: compact ? (hasActions ? 58 : 46) : 96
     radius: 11
     clip: true
     color: theme ? theme.heroTo : "transparent"
     border.width: 1
-    border.color: theme ? theme.heroBorder : "#33404a"
+    border.color: theme ? theme.heroBorder : "#304152"
     gradient: Gradient {
         orientation: Gradient.Horizontal
         GradientStop {
@@ -27,7 +27,7 @@ Rectangle {
         }
         GradientStop {
             position: 1.0
-            color: hero.theme ? hero.theme.heroTo : "#1d2329"
+            color: hero.theme ? hero.theme.heroTo : "#1b2633"
         }
     }
 
@@ -38,7 +38,7 @@ Rectangle {
         radius: 95
         x: hero.width - 110
         y: -112
-        color: hero.theme ? hero.theme.accentFill : "#1565c0"
+        color: hero.theme ? hero.theme.accentFill : "#2563eb"
         opacity: 0.07
     }
     Rectangle {
@@ -48,7 +48,7 @@ Rectangle {
         anchors.left: parent.left
         anchors.leftMargin: 10
         anchors.verticalCenter: parent.verticalCenter
-        color: hero.theme ? hero.theme.accentFill : "#1565c0"
+        color: hero.theme ? hero.theme.accentFill : "#2563eb"
     }
 
     RowLayout {
@@ -61,24 +61,31 @@ Rectangle {
 
         ColumnLayout {
             Layout.fillWidth: true
+            Layout.minimumWidth: 0
             spacing: 2
             Label {
                 Layout.fillWidth: true
+                Layout.minimumWidth: 0
                 text: hero.title
-                color: hero.theme ? hero.theme.text : "#f2f4f6"
-                font.pixelSize: hero.compact ? 15 : 16
+                color: hero.theme ? hero.theme.text : "#e6eef7"
+                font.pixelSize: hero.compact ? 19 : 24
                 font.weight: Font.DemiBold
                 elide: Text.ElideRight
+                maximumLineCount: 1
+                clip: true
             }
             Label {
                 Layout.fillWidth: true
+                Layout.minimumWidth: 0
                 text: hero.description
                 visible: !hero.compact && hero.description.length > 0
                 color: hero.theme ? hero.theme.textSecondary : "#c2cbd3"
-                font.pixelSize: 11
+                font.pixelSize: 14
+                font.weight: Font.Medium
                 wrapMode: Text.Wrap
                 maximumLineCount: 2
                 elide: Text.ElideRight
+                clip: true
             }
         }
 

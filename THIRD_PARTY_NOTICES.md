@@ -31,6 +31,22 @@ Caso você redistribua builds do ffmpeg junto com o aplicativo, as obrigações
 da licença correspondente (GPL/LGPL) passam a se aplicar à sua distribuição.
 Por isso o projeto mantém o download em tempo de execução.
 
+## Ícones de navegadores
+
+Os ícones dos navegadores são usados apenas para identificar a origem dos
+cookies na interface:
+
+- Chrome, Firefox, Opera, Vivaldi e Brave: glifos do projeto
+  [Simple Icons](https://simpleicons.org/), disponibilizados sob CC0 1.0.
+- Microsoft Edge e Chromium: arquivos do Wikimedia Commons; consulte as
+  páginas dos respectivos arquivos para licença e regras de uso.
+- As marcas e logotipos pertencem aos seus titulares. O projeto não é
+  afiliado a nenhum navegador.
+
+As bandeiras do seletor de idioma são desenhos SVG locais e simplificados,
+usados apenas como apoio visual; o nome do idioma continua sendo a
+identidade principal.
+
 ## Marcas
 
 YouTube, Qt, FFmpeg e demais nomes são marcas de seus respectivos titulares.

@@ -14,61 +14,46 @@ Dialog {
     parent: appRoot ? appRoot.contentItem : null
     modal: true
     title: strings.dlg_deps_title || ""
+    header: null
+    footer: null
+    background: Rectangle { color: "transparent"; radius: 24 }
     width: 560
     x: appRoot ? (appRoot.width - width) / 2 : 0
     y: appRoot ? (appRoot.height - height) / 2 : 0
+    padding: 0
     standardButtons: Dialog.NoButton
 
-    contentItem: AppDialogSurface {
+    contentItem: ConfirmSurface {
+        width: dialog.width
+        height: implicitHeight
         theme: dialog.appRoot ? dialog.appRoot.theme : null
-        Label {
-            Layout.fillWidth: true
-            text: dialog.strings.dlg_deps_body
-            wrapMode: Text.Wrap
-        }
-        Label {
-            Layout.fillWidth: true
-            text: {
-                var parts = []
-                for (var i = 0; i < bridge.dependencies.length; i++) {
-                    var d = bridge.dependencies[i]
-                    if (d.required && !d.found)
-                        parts.push("• " + d.name)
-                }
-                return parts.join("\n")
+        appRoot: dialog.appRoot
+        strings: dialog.strings
+        dialog: dialog
+        title: dialog.title
+        message: dialog.strings.dlg_deps_body
+        detail: {
+            var parts = []
+            for (var i = 0; i < bridge.dependencies.length; i++) {
+                var d = bridge.dependencies[i]
+                if (d.required && !d.found)
+                    parts.push("\u2022 " + d.name)
             }
-            color: dialog.appRoot ? dialog.appRoot.theme.errorText : "#c62828"
-            font.pixelSize: 12
+            return parts.join("\n")
         }
-        AppTerminalPanel {
-            theme: dialog.appRoot ? dialog.appRoot.theme : null
-            strings: dialog.strings
-            visible: dialog.logText.length > 0
-            title: dialog.strings.dep_console
-            output: dialog.logText
-            panelHeight: 110
+        iconText: "!"
+        destructive: false
+        acceptText: dialog.strings.dlg_deps_install || ""
+        cancelText: dialog.strings.dlg_deps_later || ""
+        showClose: false
+        terminalTitle: dialog.strings.dep_console
+        terminalOutput: dialog.logText
+        onAccepted: {
+            bridge.dismissDepsPrompt()
+            bridge.installMissingDependencies()
+            if (dialog.appRoot)
+                dialog.appRoot.goToSettingsTab()
         }
-    }
-
-    footer: DialogButtonBox {
-        AppButton {
-            text: dialog.strings.dlg_deps_install || ""
-            DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
-            onClicked: {
-                bridge.dismissDepsPrompt()
-                bridge.installMissingDependencies()
-                dialog.close()
-                if (dialog.appRoot)
-                    dialog.appRoot.goToSettingsTab()
-            }
-        }
-        AppButton {
-            text: dialog.strings.dlg_deps_later || ""
-            DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
-            onClicked: {
-                bridge.dismissDepsPrompt()
-                dialog.close()
-            }
-        }
+        onCancelled: bridge.dismissDepsPrompt()
     }
 }

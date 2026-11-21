@@ -50,6 +50,8 @@ Dialog {
     footer: DialogButtonBox {
         AppButton {
             text: dialog.strings.dlg_error_close || ""
+            variant: "secondary"
+            dangerHover: true
             DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
             onClicked: dialog.close()
         }

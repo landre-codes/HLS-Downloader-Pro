@@ -6,6 +6,167 @@ e o versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 
 ## [Não lançado] — padrão-ouro: catálogo, SSIM, HDR, fila e CLI
 
+### Correções finais (R12q)
+
+- **Logs de dependências no idioma da UI**: o terminal de instalação e
+  atualização de yt-dlp/ffmpeg agora usa o idioma selecionado, inclusive nos
+  estados de download, checksum, sucesso, falha, cancelamento e fallback.
+  Mensagens internas do `pip`/gerenciador de pacotes continuam sendo a saída
+  nativa da ferramenta.
+- **Ícones de navegadores em alta resolução**: os logotipos passaram a ser
+  exibidos em 20 px, rasterizados a 32 px e com mipmap, mantendo nitidez em
+  telas HiDPI e no popup do seletor.
+
+### Identidade Cobalt Slate (R12p)
+
+- **Acento de execução**: o azul-cobalto `#2563EB` passa a identificar
+  iniciar/baixar/confirmar, com hover `#1D4ED8` e pressed `#1E40AF`.
+- **Verde semântico**: os botões de início deixaram de usar `success`; o verde
+  fica reservado a conclusão, integridade validada e confirmações de sucesso.
+- **Superfícies azul-acinzentadas**: janela `#F3F6FB`, cards brancos e tema
+  escuro `#111923`/`#1B2633`, com bordas, inputs, tabelas e hovers ajustados.
+- **Hierarquia de ações**: preenchido para executar/confirmar; tonal
+  azul-acinzentado para importar, colar, adicionar e analisar; contorno para
+  configurações, seleção de pasta, opções e ações auxiliares; transparente para
+  baixa prioridade.
+- **Geometria**: raio dos botões em 8 px e espaço ícone-texto em 8 px,
+  preservando alturas de 44/36 px, hover e escala de pressão.
+- **Contraste**: testes cobrem texto do tema e os estados base, hover, pressed
+  e disabled dos botões preenchidos e tonais.
+
+### Idiomas, RTL e dependências (R12q)
+
+- **Novos idiomas**: alemão, árabe, hebraico e coreano entram no seletor,
+  no catálogo da UI, nas mensagens do backend e nos testes de paridade.
+- **RTL**: árabe e hebraico ativam `LayoutMirroring`, direção RTL do Qt e
+  espelhamento de navegação, tabelas e alinhamento de texto.
+- **Saída localizada**: o terminal de dependências segue o idioma selecionado,
+  inclusive em `dep_log_downloading`, checksums e erros de instalação.
+- **Glossário técnico**: codec, bitrate, container, preset, stream, playlist,
+  checksum, encoder, GPU, HDR, SSIM, NVENC/QSV/AMF permanecem em inglês ou
+  entre parênteses, evitando traduções literais que dificultam a leitura.
+- **Ícones de navegador**: placas de 32 px, ícones de 24 px e rasterização
+  em 48 px para telas HiDPI; o popup de idiomas ganhou superfície opaca e
+  altura limitada com rolagem.
+
+### Polimento de diálogos e edição (R12)
+
+- **Diálogos expressivos**: `AppDialogSurface` ganhou cabeçalho em degradê com
+  ícone, título/subtítulo, botão de fechar, arrastar pelo cabeçalho,
+  redimensionamento pelo canto e expandir/restaurar. Os mini-formulários de
+  Playlist e Opções usam a mesma superfície; títulos longos são elididos e a
+  largura respeita a janela.
+- **Botões da Playlist**: ações de selecionar/limpar/fechar deixaram o estilo
+  de texto e passaram a usar as variantes com borda/ícone dos demais botões.
+- **Títulos de aba maiores**: o `PageHero` aumentou o título e mantém elide/clip
+  para não vazar do degradê em larguras menores.
+- **Scrollbar da Compressão**: as grades reservam uma calha à direita para a
+  barra vertical não cobrir o último controle.
+- **Edição da fila**: o campo inline ganhou um “x” para cancelar sem Esc e a
+  coluna Ações ganhou lixeira para remover o item diretamente.
+- **Menu de contexto i18n**: `AppHintArea`/`AppHintField` substituem o menu
+  nativo do Qt por Desfazer/Refazer/Recortar/Copiar/Colar/Excluir/Selecionar
+  tudo traduzidos nos doze idiomas.
+- **Hover destrutivo**: fechar, remover, excluir e limpar usam fundo/texto
+  avermelhados no hover, com `hoverEnabled` ativo nos botões.
+- **Cantos do título**: o cabeçalho em degradê usa raios independentes nos
+  cantos superiores, acompanhando o raio da janela e sem vazar do diálogo.
+- **Grip de redimensionamento**: três traços diagonais no canto, em vez de um
+  único traço que se confundia com scrollbar.
+- **Limpeza de inputs**: campos de texto ganharam botão “×” com tooltip e
+  `Esc` para limpar; os campos com botão externo mantêm o botão existente.
+- **Scrollbars sem sobreposição**: gutters reservados em configurações, filas,
+  playlist, terminal, detalhes de erro e similaridade.
+- **Contraste de inputs/tabelas**: novos tokens `inputBg`/`inputBorder`/
+  `tableBg` deixam campos e tabelas um tom abaixo dos cards. O seletor de
+  pasta também usa essa superfície.
+- **Configurações mais expressivas**: cada card ganhou ícone no título e os
+  botões Alterar/Abrir da pasta usam ícones e o mesmo estilo das demais abas.
+- **Títulos maiores**: PageHero e cabeçalhos de diálogo aumentaram título e
+  descrição para leitura mais confortável.
+- **Ícones em botões primários**: novos SVGs `*_accent.svg` garantem contraste
+  branco em “Adicionar à Fila”, “Baixar agora”, “Iniciar Fila” e afins.
+- **Labels de controles maiores**: títulos de campos em Configurações, Compressão,
+  Download Individual, Playlist e Opções subiram para 13–14 px.
+- **Fila de compressão completa**: checkbox por item, selecionar tudo,
+  remoção múltipla e menu de contexto com remover em qualquer status, inclusive
+  aguardando. A lixeira da linha também aparece em todos os estados.
+- **Progresso e tamanho**: ícones de status (aguardando, analisando, baixando,
+  concluído, erro etc.) ao lado da barra de progresso nas duas tabelas e coluna
+  “Tamanho” na compressão (visível em larguras maiores).
+- **Opções compacta**: diferente da Playlist, o diálogo de Opções ficou fixo em
+  560×380, sem maximizar, redimensionar ou arrastar, para preservar a dinâmica
+  dos controles internos.
+- **Configurações cobalt**: ícones azuis sobre placas azul-escuras, alinhados
+  ao acento principal.
+- **Paleta de ações**: cobalto para executar/confirmar, tonal para
+  importar/colar/adicionar, contorno para auxiliares e cores semânticas para
+  sucesso, alerta e perigo.
+- **Multilinha com viewport**: o campo de vários links usa um `Flickable`
+  interno com scrollbar e acompanha o cursor; ao digitar muitas linhas, o
+  conteúdo rola dentro do campo em vez de invadir a interface.
+- **Remover sidecars**: ação promovida de label para botão secundário com
+  ícone de lixeira e hover avermelhado.
+- **Navegação lateral adaptativa**: `AppSidebar` substitui a barra horizontal.
+  Em telas largas usa 220 px com ícone + texto; entre 1120 e 1279 px usa 64 px
+  só com ícones; abaixo de 1120 px vira drawer sobreposto. Configurações fica
+  separada no rodapé, com badges discretos para downloads/compressões ativos.
+  `Ctrl+1`…`Ctrl+4` trocam de seção e o `SwipeView` preserva formulários,
+  seleção, foco e rolagem.
+- **Hambúrguer global**: o botão da barra de título alterna a rail em todos os
+  tamanhos, com animação suave; em janelas estreitas abre o drawer.
+- **Transição de páginas**: o carrossel foi substituído por `StackLayout` com
+  `PageFrame`, que desliza/surge como um card sem manter resíduos da aba
+  anterior. A troca de largura da rail não altera o índice ativo.
+- **Barra de título funcional**: botão de tema claro/escuro ao lado dos
+  controles da janela e menu hambúrguer em todos os tamanhos. O tema saiu de
+  Configurações e passa a ser uma preferência de acesso rápido.
+- **Seletor de idioma**: bandeiras locais simplificadas + nome nativo do idioma.
+- **Cookies de navegador**: o combobox voltou a exibir logotipos locais de
+  Chrome, Chromium, Edge, Firefox, Opera, Vivaldi e Brave, cada um com fundo
+  próprio claro/escuro e sem download em runtime. O contêiner aceita novos
+  assets em `icons/browsers/`.
+- **Compressão mais larga**: o preset passou a 320 px e os grids de ajustes
+  usam 2 colunas em larguras comuns, deixando os comboboxes mais largos.
+- **Rolagem da aba Individual**: o conteúdo usa `ScrollView` com barra vertical
+  sempre visível, evitando corte do card de progresso em janelas baixas.
+- **Warnings do Qt**: removidos `Accessible` inválido no diálogo de opções,
+  acesso a tema nulo no diálogo de substituição, fundo nulo nos diálogos
+  Material e injeção implícita de parâmetro no handler da navegação.
+- **Seletor de navegador**: voltou ao `AppComboBox` padrão. Badges com
+  iniciais foram descartados por não representarem os logotipos oficiais.
+- **Placeholders e filtros**: o hint usa a mesma linha de base do cursor;
+  o campo multilinha mantém o hint no canto superior esquerdo. Filtros de
+  Downloads/Compressão passaram a 56 px, com botão de limpar dentro do campo
+  e ícone de busca alinhado ao placeholder.
+- **Contadores da Compressão**: todos os `AppSpinBox` passaram a 200 px para
+  exibir valores de quatro ou mais dígitos sem corte.
+- **Filtro por tamanho**: usa o valor exibido na coluna Tamanho (saída, com
+  fallback para a origem) e aceita bytes, valor formatado com/sem espaço
+  (`9.5 MB`, `9.5MB`), decimal com vírgula (`9,5`) e `tamanho 9.5`.
+- **Sort por tamanho**: ordena pela mesma regra da coluna (saída quando
+  existe, origem enquanto não houver arquivo gerado), sem jogar pendentes
+  para o fim por `size_after` zerado.
+- **Remover selecionados**: botão de 200×56 px, centralizado verticalmente
+  com o campo de filtro ao lado.
+- **Selecionar tudo**: fica desabilitado quando a fila de compressão está vazia.
+- **Selecionar tudo (Compressão)**: o primeiro clique marca todos os itens
+  diretamente, sem exibir o estado intermediário “-”. O botão de remoção tem
+  largura fixa para não deslocar o seletor e impedir o segundo clique.
+- **Playlist sem URL**: Enter/clique sem link são bloqueados pelo validador;
+  respostas JSON nulas e miniaturas nulas do yt-dlp não derrubam mais o app.
+- **Botões ciano**: a variante violeta (rosa/lavanda no estado desabilitado)
+  deu lugar ao ciano em “Carregar itens”, “Iniciar Fila” e “Retomar”.
+- **Confirmações**: os diálogos usam o layout centrado do anexo, com ícone
+  circular suave, título/mensagem centralizados, botões largos lado a lado,
+  ação destrutiva vermelha e fechar no canto. Sem cabeçalho em degradê,
+  arraste ou expansão de janela. O componente `ConfirmSurface` cobre
+  “Apagar original após sucesso”, queda de qualidade, dependências e futuros
+  popups de confirmação.
+- **Resultado x Tamanho**: as colunas “Antes → depois” e “Tamanho” têm sort
+  independente (`saving`/`size`) e filtros `resultado:`, `antes:`, `depois:` e
+  `tamanho:` separados; a tabela de Compressão voltou a filtrar corretamente.
+
 ### Interface e tabelas (R5)
 
 - **Tooltips ricos e acessíveis**: novo `AppToolTip` com título, descrição,

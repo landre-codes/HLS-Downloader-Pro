@@ -1338,7 +1338,10 @@ class CompressionModel(QAbstractListModel):
         if key == "bitrate":
             return int(item.get("bitrate_after") or 0)
         if key == "size":
-            return int(item.get("size_after") or 0)
+            # A coluna mostra a saída quando existe e a origem enquanto não
+            # houver arquivo gerado; o sort precisa seguir a mesma regra.
+            after = int(item.get("size_after") or 0)
+            return after if after > 0 else int(item.get("size_before") or 0)
         return ""
 
     def roleNames(self) -> dict:
@@ -1363,6 +1366,13 @@ class CompressionModel(QAbstractListModel):
 
     def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:
         return 0 if parent.isValid() else len(self._display)
+
+    @Slot(int, result=int)
+    def sourceIndexAt(self, row: int) -> int:
+        """Mapeia a linha visível para o índice de AGENDAMENTO (source)."""
+        if 0 <= row < len(self._display):
+            return self._display[row]
+        return -1
 
     def data(self, index: QModelIndex, role: int = Qt.ItemDataRole.DisplayRole):
         if not index.isValid() or not (0 <= index.row() < len(self._display)):
