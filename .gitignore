@@ -36,3 +36,6 @@ diagnostico-hlsdl.txt
 
 # Estado local da fila
 /queue.json
+# Estado local da fila
+/queue.json
+docs/ui-review/**/queue.json
