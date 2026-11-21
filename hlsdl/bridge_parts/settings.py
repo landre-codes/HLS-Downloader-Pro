@@ -64,9 +64,9 @@ class SettingsMixin(BridgeSignals):
     def languages(self) -> list:
         """Idiomas disponíveis para o seletor (código, nome e bandeira)."""
         flags = {
-            "pt": "br", "en": "us", "es": "es", "de": "de",
-            "it": "it", "fr": "fr", "ru": "ru", "ar": "ar",
-            "he": "il", "ja": "jp", "ko": "kr", "zh": "cn",
+            "pt": "br", "pt_pt": "pt", "en": "us", "es": "es",
+            "de": "de", "it": "it", "fr": "fr", "ru": "ru",
+            "ar": "ar", "he": "il", "ja": "jp", "ko": "kr", "zh": "cn",
         }
         return [
             {"code": code, "name": LANGUAGE_NAMES[code], "flag": flags[code]}

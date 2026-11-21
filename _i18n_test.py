@@ -81,6 +81,7 @@ def main() -> int:
             ok = v == want
             print(f"{'OK ' if ok else 'FALHA '}{name}: {v!r} (esperado {want!r})", flush=True)
         new_languages = (
+            ("pt_pt", "Entrada de Transferências"),
             ("de", "Download-Eingabe"),
             ("ar", "إدخال التنزيلات"),
             ("he", "קלט הורדות"),

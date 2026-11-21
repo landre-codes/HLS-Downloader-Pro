@@ -280,6 +280,7 @@ ApplicationWindow {
         bridge.clearPlaylist()
     }
     function goToSettingsTab() { goToTab(3) }
+    function goToAboutTab() { goToTab(4) }
     function openConfirmCancel() { confirmCancel.open() }
     function openConfirmClear() { confirmClear.open() }
     function openConfirmUpdate() { confirmUpdate.open() }
@@ -570,6 +571,7 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+2"; onActivated: root.goToTab(1) }
     Shortcut { sequence: "Ctrl+3"; onActivated: root.goToTab(2) }
     Shortcut { sequence: "Ctrl+4"; onActivated: root.goToTab(3) }
+    Shortcut { sequence: "Ctrl+5"; onActivated: root.goToTab(4) }
     Shortcut {
         sequence: "Ctrl+Return"
         enabled: !root.typing && tabBar.currentIndex === 1
@@ -926,6 +928,16 @@ ApplicationWindow {
             objectName: "settingsPageFrame"
             SettingsPage {
                 id: settingsPage
+                anchors.fill: parent
+                appRoot: root
+                strings: root.strings
+            }
+        }
+
+        PageFrame {
+            objectName: "aboutPageFrame"
+            AboutPage {
+                id: aboutPage
                 anchors.fill: parent
                 appRoot: root
                 strings: root.strings

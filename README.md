@@ -19,8 +19,9 @@ Downloader de vídeos (HLS / m3u8) com interface **Qt Quick (QML) + Material Des
 - **Qualidade de 144p a 4K** (2160p) e **escolha do arquivo** de saída: **mp4, mkv, webm, avi, mov** (ou **mp3, m4a, wav, flac, opus** no modo áudio)
 - **Compressão de vídeo**: mantenha o original (sem reencode) ou recomprima para **H.264** ou **H.265 (HEVC)**, com nível **Leve / Média / Forte**. O arquivo recomprimido ganha sufixo `_h264`/`_h265` e o original é preservado; se a compressão falhar, o original permanece intacto
 - **Nome do arquivo**: escolha entre o **ID estável** (hash da URL, `vid_XXXXXXXXXX`) ou o **título da página** com o ID entre colchetes (metadados do vídeo), para evitar colisão entre títulos iguais
-- **12 idiomas**: Português, English, Español, Deutsch, Italiano, Français, Русский, العربية, עברית, 日本語, 한국어 e 中文 (简体)
+- **13 idiomas**: Português (Brasil), Português (Portugal), English, Español, Deutsch, Italiano, Français, Русский, العربية, עברית, 日本語, 한국어 e 中文 (简体)
 - **RTL**: árabe e hebraico espelham navegação, tabelas e alinhamento de texto
+- **Aba Sobre**: versão, atualizações, licença MIT, repositório, issues e atalhos para logs/pasta de saída
 - **Termos técnicos**: codec, bitrate, container, preset, stream, playlist, checksum, encoder e afins permanecem em inglês para manter a nomenclatura da indústria
 - Baixa vídeos de URLs de playlist `.m3u8` e links de vídeo diretos
 - Fluxo de engenharia em camadas: `yt-dlp` → raspagem do HTML (`requests` + `BeautifulSoup`) → `ffmpeg` como fallback final
@@ -386,7 +387,7 @@ python layout_debug.py       # dump da geometria do layout
 | `hlsdl/playlist.py` | Carregador de itens de playlist (YouTube/site) |
 | `hlsdl/formats.py` | Modos, qualidades e contêineres suportados |
 | `hlsdl/deps.py` | Detecção/instalação/atualização de dependências |
-| `hlsdl/i18n.py` | Mensagens do backend (12 idiomas, incluindo RTL) |
+| `hlsdl/i18n.py` | Mensagens do backend (13 idiomas, incluindo RTL) |
 | `hlsdl/status.py` | Enum de status (fonte única de verdade) |
 | `hlsdl/media.py` | `ffprobe`, identidade de mídia, HDR metadata, dHash/aHash, envelope RMS, SSIM |
 | `hlsdl/integrity.py` | Sidecar de conclusão, SHA-256/BLAKE3, backup, journal e recuperação transacional |

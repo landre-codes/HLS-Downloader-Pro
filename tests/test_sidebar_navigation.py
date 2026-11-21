@@ -59,8 +59,28 @@ def test_main_uses_sidebar_without_recreating_pages():
         Path(qml_path()).parent / "components" / "PageFrame.qml"
     ).read_text(encoding="utf-8")
     assert "clip: true" in main
-    for shortcut in ("Ctrl+1", "Ctrl+2", "Ctrl+3", "Ctrl+4"):
+    for shortcut in ("Ctrl+1", "Ctrl+2", "Ctrl+3", "Ctrl+4", "Ctrl+5"):
         assert f'sequence: "{shortcut}"' in main, shortcut
+    assert "AboutPage {" in main
+    assert 'objectName: "aboutPageFrame"' in main
+
+
+def test_about_tab_is_reachable(qapp, tmp_path, fake_deps):
+    bridge, engine, root = _build_app(qapp, tmp_path, fake_deps)
+    root.resize(1366, 768)
+    _pump(qapp)
+    item = root.findChild(QObject, "navItem4")
+    assert item is not None
+    assert QMetaObject.invokeMethod(item, "click")
+    _pump(qapp, 30)
+    assert root.findChild(QObject, "mainTabBar").property("currentIndex") == 4
+    assert root.findChild(QObject, "mainStack").property("currentIndex") == 4
+    assert root.findChild(QObject, "aboutPage") is not None
+    root.close()
+    _pump(qapp, 10)
+    engine.deleteLater()
+    _pump(qapp, 10)
+    bridge.shutdown()
 
 
 def test_sidebar_switches_between_compact_expanded_and_drawer(

@@ -36,10 +36,17 @@ e o versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 
 ### Idiomas, RTL e dependências (R12q)
 
-- **Novos idiomas**: alemão, árabe, hebraico e coreano entram no seletor,
-  no catálogo da UI, nas mensagens do backend e nos testes de paridade.
+- **Novos idiomas**: alemão, árabe, hebraico, coreano e português de Portugal
+  entram no seletor, no catálogo da UI, nas mensagens do backend e nos testes
+  de paridade.
+- **Português de Portugal**: variante `pt_pt` com «ficheiro», «transferência»,
+  «definições», «utilizador», «ligação» e «gestor», bandeira própria e opção
+  separada no instalador.
 - **RTL**: árabe e hebraico ativam `LayoutMirroring`, direção RTL do Qt e
   espelhamento de navegação, tabelas e alinhamento de texto.
+- **Aba Sobre**: página dedicada com identidade, versão, licença MIT,
+  atualizações, repositório, issues, dependências, logs e pasta de saída; o
+  card de atualizações saiu de Configurações.
 - **Saída localizada**: o terminal de dependências segue o idioma selecionado,
   inclusive em `dep_log_downloading`, checksums e erros de instalação.
 - **Glossário técnico**: codec, bitrate, container, preset, stream, playlist,
@@ -66,7 +73,7 @@ e o versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
   coluna Ações ganhou lixeira para remover o item diretamente.
 - **Menu de contexto i18n**: `AppHintArea`/`AppHintField` substituem o menu
   nativo do Qt por Desfazer/Refazer/Recortar/Copiar/Colar/Excluir/Selecionar
-  tudo traduzidos nos doze idiomas.
+  tudo traduzidos nos treze idiomas.
 - **Hover destrutivo**: fechar, remover, excluir e limpar usam fundo/texto
   avermelhados no hover, com `hoverEnabled` ativo nos botões.
 - **Cantos do título**: o cabeçalho em degradê usa raios independentes nos

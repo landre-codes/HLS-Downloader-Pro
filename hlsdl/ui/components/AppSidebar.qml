@@ -144,5 +144,19 @@ Rectangle {
             tipText: rail.strings.tab_settings_tip || ""
             onActivated: rail.activated(3)
         }
+
+        SidebarNavItem {
+            objectName: "navItem4"
+            Layout.fillWidth: true
+            theme: rail.theme
+            appRoot: rail.appRoot
+            expanded: rail.expanded
+            active: rail.currentIndex === 4
+            iconName: "info"
+            label: rail.strings.tab_about || ""
+            tipTitle: rail.strings.tab_about || ""
+            tipText: rail.strings.tab_about_tip || ""
+            onActivated: rail.activated(4)
+        }
     }
 }

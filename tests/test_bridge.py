@@ -56,6 +56,7 @@ def test_bridge_rewires_dependency_output_on_language_change(qapp, tmp_path):
         "dep_log_downloading", url="https://example.com/file"
     ) == "Downloading https://example.com/file"
     for lang, expected in (
+        ("pt_pt", "A transferir"),
         ("de", "wird heruntergeladen"),
         ("ar", "جارٍ تنزيل"),
         ("he", "מוריד"),
@@ -73,11 +74,11 @@ def test_language_flags(qapp, tmp_path, fake_deps):
     b = _bridge(tmp_path, fake_deps)
     languages = b.languages
     assert [item["code"] for item in languages] == [
-        "pt", "en", "es", "de", "it", "fr", "ru", "ar", "he", "ja", "ko", "zh"
+        "pt", "pt_pt", "en", "es", "de", "it", "fr", "ru", "ar", "he", "ja", "ko", "zh"
     ]
     assert all(item["name"] for item in languages)
     assert [item["flag"] for item in languages] == [
-        "br", "us", "es", "de", "it", "fr", "ru", "ar", "il", "jp", "kr", "cn"
+        "br", "pt", "us", "es", "de", "it", "fr", "ru", "ar", "il", "jp", "kr", "cn"
     ]
     b.shutdown()
 

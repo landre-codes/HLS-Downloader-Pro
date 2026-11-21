@@ -187,9 +187,9 @@ def test_inputs_and_tables_use_darker_theme_tokens():
 
 def test_settings_cards_have_icon_headers_and_styled_folder_buttons():
     settings = (_ui() / "pages" / "SettingsPage.qml").read_text(encoding="utf-8")
-    assert settings.count("SectionHeader {") == 7
+    assert settings.count("SectionHeader {") == 6
     for icon in ("moon", "download", "shield", "network", "cookie",
-                 "package", "info"):
+                 "package"):
         assert f'settingsIcon("{icon}")' in settings, icon
     for icon in ("sun", "moon", "download", "shield", "network", "cookie",
                  "package", "info"):
@@ -201,6 +201,20 @@ def test_settings_cards_have_icon_headers_and_styled_folder_buttons():
         assert token in folder, token
 
 
+def test_about_page_has_identity_updates_and_resources():
+    about = (_ui() / "pages" / "AboutPage.qml").read_text(encoding="utf-8")
+    assert 'objectName: "aboutPage"' in about
+    assert about.count("SectionHeader {") == 3
+    for icon in ("info", "download", "package"):
+        assert f'settingsIcon("{icon}")' in about, icon
+    for token in ("bridge.appVersion", "bridge.checkForUpdates()",
+                  "bridge.downloadUpdate()", "bridge.openReleasePage()",
+                  "bridge.openLogFolder()", "bridge.openOutputFolder()",
+                  "appRoot.goToSettingsTab()",
+                  "https://github.com/landre-codes/HLS-Downloader-Pro"):
+        assert token in about, token
+
+
 def test_primary_button_icons_use_accent_variants():
     assert 'iconPath("add", enabled)' in (
         _ui() / "pages" / "BatchPage.qml"
@@ -209,7 +223,7 @@ def test_primary_button_icons_use_accent_variants():
         _ui() / "pages" / "SinglePage.qml"
     ).read_text(encoding="utf-8")
     assert 'iconPath("download", enabled)' in (
-        _ui() / "pages" / "SettingsPage.qml"
+        _ui() / "pages" / "AboutPage.qml"
     ).read_text(encoding="utf-8")
     for name in ("add", "play", "retry", "stop", "download"):
         assert (_ui() / "icons" / f"{name}_accent.svg").exists(), name
@@ -298,7 +312,8 @@ def test_titlebar_has_theme_and_language_icons():
     )
     assert "../icons/flags/" in combo
     assert "modelData.flag" in combo
-    for flag in ("br", "us", "es", "it", "fr", "ru", "jp", "cn"):
+    for flag in ("br", "pt", "us", "es", "de", "it", "fr", "ru",
+                 "ar", "il", "jp", "kr", "cn"):
         assert (_ui() / "icons" / "flags" / f"{flag}.svg").exists(), flag
 
 

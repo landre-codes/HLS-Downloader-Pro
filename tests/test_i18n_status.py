@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from hlsdl.i18n import BACKEND, LANGUAGES, is_rtl, tr, translator
+from hlsdl.i18n import BACKEND, LANGUAGES, detect_language, is_rtl, tr, translator
 from hlsdl.status import ACTIVE, FINAL, Status
 
 
@@ -23,6 +23,21 @@ def test_status_final():
     assert not Status.WAITING.is_final
     assert Status.WAITING not in FINAL
     assert Status.DOWNLOADING in ACTIVE
+
+
+def test_detect_language_accepts_portugal_variant(monkeypatch):
+    from PySide6.QtCore import QLocale
+
+    assert detect_language("pt_pt") == "pt_pt"
+    assert detect_language("pt") == "pt"
+
+    class _PtPtLocale:
+        @staticmethod
+        def name():
+            return "pt_PT"
+
+    monkeypatch.setattr(QLocale, "system", staticmethod(lambda: _PtPtLocale()))
+    assert detect_language(None) == "pt_pt"
 
 
 def test_i18n_pt_en():
@@ -44,7 +59,7 @@ def test_all_languages_are_present_and_translated():
     from hlsdl.i18n import BACKEND, LANGUAGES
 
     assert LANGUAGES == (
-        "pt", "en", "es", "de", "it", "fr", "ru", "ar", "he", "ja", "ko", "zh"
+        "pt", "pt_pt", "en", "es", "de", "it", "fr", "ru", "ar", "he", "ja", "ko", "zh"
     )
     core_keys = (
         "links_added", "queue_started", "err_unexpected", "dep_found",
@@ -60,6 +75,9 @@ def test_all_languages_are_present_and_translated():
     for lang in ("de", "ar", "he", "ko"):
         assert BACKEND[lang]["links_added"] != BACKEND["pt"]["links_added"]
         assert BACKEND[lang]["dep_log_downloading"] != BACKEND["pt"]["dep_log_downloading"]
+    assert BACKEND["pt_pt"]["dep_log_downloading"] != BACKEND["pt"]["dep_log_downloading"]
+    assert "ficheiro" in BACKEND["pt_pt"]["read_failed"]
+    assert "transferir" in BACKEND["pt_pt"]["dep_log_downloading"]
     assert is_rtl("ar") is True
     assert is_rtl("he") is True
     assert is_rtl("en") is False
