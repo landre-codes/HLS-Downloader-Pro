@@ -9,8 +9,11 @@ ToolButton {
     property string tipText: ""
     property string tipShortcut: ""
     property bool tipEnabled: true
+    property bool tipShowOnFocus: true
     // Fechar/remover/excluir: fundo avermelhado somente no hover/pressão.
     property bool danger: false
+    // Clique do mouse não deve roubar o foco da página; Tab continua acessível.
+    focusPolicy: Qt.TabFocus
     Accessible.description: tipText
     AppToolTip {
         target: control
@@ -18,6 +21,7 @@ ToolButton {
         text: control.tipText
         shortcut: control.tipShortcut
         available: control.tipEnabled && control.enabled
+        showOnFocus: control.tipShowOnFocus
     }
     Material.foreground: enabled
                         ? (control.danger && (control.hovered || control.down)

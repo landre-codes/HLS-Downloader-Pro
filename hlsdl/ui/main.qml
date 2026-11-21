@@ -119,6 +119,15 @@ ApplicationWindow {
     property bool allowClose: false
     property bool wasMinimized: false
     property bool minimizeAnimating: false
+    // A visibilidade Qt vira Minimized durante o minimize; preservamos o
+    // estado maximizado separadamente para restaurar a janela corretamente.
+    property bool isMaximized: false
+    property bool minimizedFromMaximized: false
+    property bool restoringMaximized: false
+    property Item focusBeforeMinimize: null
+    // Exposto para testes/diagnóstico: o foco não pode permanecer na barra de
+    // título após minimizar e restaurar a janela.
+    readonly property bool titleBarHasFocus: root.isTitleBarItem(root.activeFocusItem)
 
     // Navegação: rail expandida em telas largas, rail compacta em larguras
     // intermediárias e drawer sobreposto quando o espaço é escasso.
@@ -147,12 +156,34 @@ ApplicationWindow {
     function minimizeAnimated() {
         if (root.visibility === Window.Minimized || root.minimizeAnimating)
             return
+        root.minimizedFromMaximized = root.isMaximized
+        root.focusBeforeMinimize = root.activeFocusItem
         if (root.contentItem === null) {
             root.showMinimized()
             return
         }
         root.minimizeAnimating = true
         minimizeAnimation.start()
+    }
+
+    function isTitleBarItem(item) {
+        var current = item
+        while (current) {
+            if (current === titleBar)
+                return true
+            current = current.parent
+        }
+        return false
+    }
+
+    function restoreFocusAfterMinimize() {
+        var item = root.focusBeforeMinimize
+        root.focusBeforeMinimize = null
+        if (item !== null && !root.isTitleBarItem(item)) {
+            item.forceActiveFocus()
+        } else if (root.contentItem !== null) {
+            root.contentItem.forceActiveFocus()
+        }
     }
 
     function rememberNormalGeometry() {
@@ -172,7 +203,7 @@ ApplicationWindow {
     }
     onHeightChanged: rememberNormalGeometry()
     function toggleMaximize() {
-        if (root.visibility === Window.Maximized) {
+        if (root.isMaximized) {
             root.showNormal()
         } else {
             rememberNormalGeometry()
@@ -181,11 +212,11 @@ ApplicationWindow {
     }
     function saveWindowGeometry() {
         bridge.saveGeometry(
-            root.visibility === Window.Maximized && root.normalW > 0 ? root.normalX : root.x,
-            root.visibility === Window.Maximized && root.normalH > 0 ? root.normalY : root.y,
-            root.visibility === Window.Maximized && root.normalW > 0 ? root.normalW : root.width,
-            root.visibility === Window.Maximized && root.normalH > 0 ? root.normalH : root.height,
-            root.visibility === Window.Maximized
+            root.isMaximized && root.normalW > 0 ? root.normalX : root.x,
+            root.isMaximized && root.normalH > 0 ? root.normalY : root.y,
+            root.isMaximized && root.normalW > 0 ? root.normalW : root.width,
+            root.isMaximized && root.normalH > 0 ? root.normalH : root.height,
+            root.isMaximized
         )
     }
 
@@ -499,22 +530,40 @@ ApplicationWindow {
     }
 
     onVisibilityChanged: {
-        if (root.visibility === Window.Maximized && root.screen) {
+        if (root.visibility === Window.Maximized)
+            root.isMaximized = true
+        else if (root.visibility === Window.Windowed)
+            root.isMaximized = false
+
+        if (root.visibility === Window.Maximized && root.screen
+                && !root.restoringMaximized && !root.wasMinimized) {
             var geo = root.screen.availableGeometry
             if (geo)
                 root.setGeometry(geo.x, geo.y, geo.width, geo.height)
         }
         if (root.visibility === Window.Minimized) {
+            if (!root.wasMinimized && !root.minimizeAnimating)
+                root.minimizedFromMaximized = root.isMaximized
             root.wasMinimized = true
             return
         }
         if (root.wasMinimized) {
             root.wasMinimized = false
+            var restoreMax = root.minimizedFromMaximized
+            root.minimizedFromMaximized = false
+            if (restoreMax && !root.isMaximized) {
+                root.restoringMaximized = true
+                Qt.callLater(function() {
+                    root.showMaximized()
+                    Qt.callLater(function() { root.restoringMaximized = false })
+                })
+            }
             if (root.contentItem !== null) {
                 root.contentItem.opacity = 0
                 root.contentItem.scale = 0.985
                 restoreAnimation.start()
             }
+            Qt.callLater(root.restoreFocusAfterMinimize)
         }
     }
 
@@ -746,6 +795,7 @@ ApplicationWindow {
                 Layout.alignment: Qt.AlignVCenter
                 Accessible.name: strings.nav_menu || "Menu"
                 tipTitle: strings.nav_menu || "Menu"
+                tipShowOnFocus: false
                 onClicked: {
                     if (root.navMode === "drawer")
                         root.navDrawerOpen = !root.navDrawerOpen
@@ -818,6 +868,7 @@ ApplicationWindow {
                 Accessible.name: strings.cfg_dark
                 tipTitle: strings.cfg_dark
                 tipText: strings.cfg_dark_tip
+                tipShowOnFocus: false
                 onClicked: bridge.setDark(!root.dark)
             }
 
@@ -829,9 +880,10 @@ ApplicationWindow {
             }
             TitleBarButton {
                 id: maxBtn
+                objectName: "maximizeButton"
                 theme: root.theme
-                kind: root.visibility === Window.Maximized ? "restore" : "maximize"
-                tip: root.visibility === Window.Maximized
+                kind: root.isMaximized ? "restore" : "maximize"
+                tip: root.isMaximized
                      ? strings.win_restore
                      : strings.win_maximize
                 onClicked: root.toggleMaximize()

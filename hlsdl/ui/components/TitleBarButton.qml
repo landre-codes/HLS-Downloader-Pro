@@ -39,6 +39,7 @@ Button {
         target: control
         title: control.tip
         available: control.tip.length > 0
+        showOnFocus: false
         delay: 500
         // Bolha compacta: os três controles ficam a 46 px um do outro; um
         // tooltip largo cobria a área dos botões vizinhos.

@@ -6,6 +6,17 @@ e o versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 
 ## [Não lançado] — padrão-ouro: catálogo, SSIM, HDR, fila e CLI
 
+### Janela e foco (R12t)
+
+- **Minimizar preserva a maximização**: o estado maximizado passou a ser
+  rastreado em `isMaximized`, separado da visibilidade Qt; ao restaurar, a
+  janela volta maximizada (ou normal, se era normal) em vez de cair para o
+  modo janela e exibir o botão "restaurar".
+- **Foco não fica na barra de título**: ao minimizar, o item focado é
+  memorizado e restaurado ao voltar, ignorando controles da barra de título.
+  Os controles da barra não recebem foco por clique e não mostram tooltip
+  apenas por foco, evitando a bolha imediata no toggle de tema.
+
 ### Correções finais (R12q)
 
 - **Logs de dependências no idioma da UI**: o terminal de instalação e

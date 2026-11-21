@@ -5,7 +5,8 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from PySide6.QtCore import QMetaObject, QObject, QUrl
+from PySide6.QtCore import QEvent, QMetaObject, QObject, QUrl
+from PySide6.QtGui import QWindow
 from PySide6.QtQml import QQmlApplicationEngine
 
 from hlsdl.bridge import Bridge
@@ -45,6 +46,21 @@ def _build_app(qapp, tmp_path, fake_deps):
     return bridge, engine, root
 
 
+def _teardown(qapp, engine, bridge, root) -> None:
+    """Destrói a janela e o engine antes do próximo teste criar outro QML.
+
+    ``deleteLater`` depende da fila de eventos; entregar os ``DeferredDelete``
+    explicitamente evita que dois engines QML coexistam durante o teardown,
+    que é onde o Qt Quick aborta com access violation no Windows.
+    """
+    root.close()
+    _pump(qapp, 10)
+    engine.deleteLater()
+    qapp.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    _pump(qapp, 10)
+    bridge.shutdown()
+
+
 def test_main_uses_sidebar_without_recreating_pages():
     main = (Path(qml_path()).parent / "main.qml").read_text(encoding="utf-8")
     assert "AppSidebar {" in main
@@ -76,11 +92,7 @@ def test_about_tab_is_reachable(qapp, tmp_path, fake_deps):
     assert root.findChild(QObject, "mainTabBar").property("currentIndex") == 4
     assert root.findChild(QObject, "mainStack").property("currentIndex") == 4
     assert root.findChild(QObject, "aboutPage") is not None
-    root.close()
-    _pump(qapp, 10)
-    engine.deleteLater()
-    _pump(qapp, 10)
-    bridge.shutdown()
+    _teardown(qapp, engine, bridge, root)
 
 
 def test_sidebar_switches_between_compact_expanded_and_drawer(
@@ -160,10 +172,36 @@ def test_sidebar_switches_between_compact_expanded_and_drawer(
     _pump(qapp, 30)
     assert sidebar.property("width") == 220
 
-    # Fecha e destrói o engine antes do próximo teste: a animação de largura
-    # da rail não pode sobreviver ao teardown do QML em testes.
-    root.close()
-    _pump(qapp, 10)
-    engine.deleteLater()
-    _pump(qapp, 10)
-    bridge.shutdown()
+    # Minimizar não pode rebaixar a janela maximizada nem manter o foco na
+    # barra de título (o tooltip do toggle de tema abria junto com a janela).
+    theme = root.findChild(QObject, "themeToggleButton")
+    max_button = root.findChild(QObject, "maximizeButton")
+    assert theme is not None and max_button is not None
+    root.showMaximized()
+    _pump(qapp, 60)
+    assert root.property("isMaximized") is True
+    theme.forceActiveFocus()
+    _pump(qapp, 20)
+    root.showMinimized()
+    _pump(qapp, 60)
+    root.showNormal()
+    _pump(qapp, 100)
+    assert root.property("isMaximized") is True
+    assert root.property("visibility") == QWindow.Visibility.Maximized
+    assert max_button.property("kind") == "restore"
+    assert root.property("titleBarHasFocus") is False
+
+    # Uma janela normal continua normal, e o foco não fica no toggle de tema.
+    root.showNormal()
+    _pump(qapp, 60)
+    assert root.property("isMaximized") is False
+    theme.forceActiveFocus()
+    _pump(qapp, 20)
+    root.showMinimized()
+    _pump(qapp, 60)
+    root.showNormal()
+    _pump(qapp, 100)
+    assert root.property("isMaximized") is False
+    assert root.property("titleBarHasFocus") is False
+
+    _teardown(qapp, engine, bridge, root)
