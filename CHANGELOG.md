@@ -4,7 +4,9 @@ Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/)
 e o versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 
-## [Não lançado] — padrão-ouro: catálogo, SSIM, HDR, fila e CLI
+## [Não lançado]
+
+## [1.5.0] - 2026-11-21 — padrão-ouro: catálogo, SSIM, HDR, fila e CLI
 
 ### Janela e foco (R12t)
 
