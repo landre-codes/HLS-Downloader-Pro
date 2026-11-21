@@ -1,6 +1,6 @@
 # Avisos de terceiros / Third-party notices
 
-O HLS Downloader Pro é distribuído sob a licença **MIT** (ver `LICENSE`).
+O HLS Downloader Pro é distribuído sob a **GNU General Public License v3.0** (`GPL-3.0-only`, ver `LICENSE`).
 Ele utiliza as bibliotecas abaixo, cada uma com sua própria licença.
 
 ## Bibliotecas embutidas no aplicativo
@@ -16,6 +16,9 @@ Ele utiliza as bibliotecas abaixo, cada uma com sua própria licença.
 
 PySide6 e Qt são usados dinamicamente; os avisos e a possibilidade de
 substituição das bibliotecas (LGPL) são preservados no pacote distribuído.
+A escolha GPLv3 é compatível com PySide6/Qt, yt-dlp (Unlicense), requests
+(Apache-2.0), beautifulsoup4 (MIT), cryptography (Apache-2.0/BSD) e blake3
+(CC0/Apache-2.0). O código-fonte do aplicativo está disponível sob GPLv3.
 
 ## Ferramentas obtidas em tempo de execução (não distribuídas)
 

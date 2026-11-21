@@ -34,6 +34,14 @@ e o versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 - **Contraste**: testes cobrem texto do tema e os estados base, hover, pressed
   e disabled dos botões preenchidos e tonais.
 
+### Licença GPLv3 (R12s)
+
+- **Licença do projeto**: o código passou de MIT para **GPL-3.0-only**, em
+  alinhamento com o uso de PySide6/Qt (LGPLv3/GPLv3) e com os demais
+  componentes. Os avisos de terceiros continuam em `THIRD_PARTY_NOTICES.md`.
+- **Instalador**: o texto completo da GPLv3 é exibido/licenciado pelo Inno
+  Setup e incluído no pacote.
+
 ### Idiomas, RTL e dependências (R12q)
 
 - **Novos idiomas**: alemão, árabe, hebraico, coreano e português de Portugal
@@ -44,7 +52,7 @@ e o versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
   separada no instalador.
 - **RTL**: árabe e hebraico ativam `LayoutMirroring`, direção RTL do Qt e
   espelhamento de navegação, tabelas e alinhamento de texto.
-- **Aba Sobre**: página dedicada com identidade, versão, licença MIT,
+- **Aba Sobre**: página dedicada com identidade, versão, licença GPLv3,
   atualizações, repositório, issues, dependências, logs e pasta de saída; o
   card de atualizações saiu de Configurações.
 - **Saída localizada**: o terminal de dependências segue o idioma selecionado,

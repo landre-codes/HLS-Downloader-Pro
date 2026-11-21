@@ -201,6 +201,19 @@ def test_settings_cards_have_icon_headers_and_styled_folder_buttons():
         assert token in folder, token
 
 
+def test_project_license_is_gplv3():
+    root = Path(qml_path()).parents[2]
+    license_text = (root / "LICENSE").read_text(encoding="utf-8")
+    assert "GNU GENERAL PUBLIC LICENSE" in license_text
+    assert "Version 3" in license_text
+    pyproject = (root / "pyproject.toml").read_text(encoding="utf-8")
+    assert 'license = { text = "GPL-3.0-only" }' in pyproject
+    i18n = (_ui() / "i18n.js").read_text(encoding="utf-8")
+    assert i18n.count('about_license_value: "GPLv3"') >= len(LANGUAGES)
+    about = (_ui() / "pages" / "AboutPage.qml").read_text(encoding="utf-8")
+    assert "strings.about_license_value" in about
+
+
 def test_about_page_has_identity_updates_and_resources():
     about = (_ui() / "pages" / "AboutPage.qml").read_text(encoding="utf-8")
     assert 'objectName: "aboutPage"' in about

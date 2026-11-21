@@ -21,7 +21,7 @@ Downloader de vídeos (HLS / m3u8) com interface **Qt Quick (QML) + Material Des
 - **Nome do arquivo**: escolha entre o **ID estável** (hash da URL, `vid_XXXXXXXXXX`) ou o **título da página** com o ID entre colchetes (metadados do vídeo), para evitar colisão entre títulos iguais
 - **13 idiomas**: Português (Brasil), Português (Portugal), English, Español, Deutsch, Italiano, Français, Русский, العربية, עברית, 日本語, 한국어 e 中文 (简体)
 - **RTL**: árabe e hebraico espelham navegação, tabelas e alinhamento de texto
-- **Aba Sobre**: versão, atualizações, licença MIT, repositório, issues e atalhos para logs/pasta de saída
+- **Aba Sobre**: versão, atualizações, licença GPLv3, repositório, issues e atalhos para logs/pasta de saída
 - **Termos técnicos**: codec, bitrate, container, preset, stream, playlist, checksum, encoder e afins permanecem em inglês para manter a nomenclatura da indústria
 - Baixa vídeos de URLs de playlist `.m3u8` e links de vídeo diretos
 - Fluxo de engenharia em camadas: `yt-dlp` → raspagem do HTML (`requests` + `BeautifulSoup`) → `ffmpeg` como fallback final
@@ -424,7 +424,9 @@ python layout_debug.py       # dump da geometria do layout
 
 ## Licença
 
-MIT — ver [LICENSE](LICENSE). Avisos de bibliotecas de terceiros em
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). O aplicativo usa
-**PySide6/Qt (LGPL)** e baixa yt-dlp/ffmpeg em tempo de execução (não os
-redistribui no instalador).
+**GPL-3.0-only** — ver [LICENSE](LICENSE). Avisos de bibliotecas de
+terceiros em [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). O aplicativo
+usa **PySide6/Qt** (LGPLv3/GPLv3) e baixa yt-dlp/ffmpeg em tempo de
+execução (não os redistribui no instalador). A escolha GPLv3 mantém
+compatibilidade com Qt/PySide6 e com os demais componentes; o código-fonte
+do app permanece disponível sob os termos da GPLv3.
