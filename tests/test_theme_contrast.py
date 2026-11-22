@@ -5,7 +5,7 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
-from PySide6.QtCore import QUrl
+from PySide6.QtCore import QEvent, QUrl
 from PySide6.QtGui import QColor
 from PySide6.QtQml import QQmlApplicationEngine, QQmlComponent, QQmlExpression
 from PySide6.QtQuick import QQuickItem
@@ -152,4 +152,9 @@ def test_theme_text_contrast(qapp, fake_deps):
             dark, "tonal disabled", disabled_text.name(), disabled_bg.name()
         )
 
+    root.close()
+    qapp.processEvents()
+    engine.deleteLater()
+    qapp.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    qapp.processEvents()
     bridge.shutdown()

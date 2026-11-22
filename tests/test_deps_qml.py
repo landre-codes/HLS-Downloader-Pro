@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import QMetaObject, QObject, QUrl
+from PySide6.QtCore import QEvent, QMetaObject, QObject, QUrl
 from PySide6.QtQml import QQmlApplicationEngine, QQmlExpression
 
 from hlsdl.bridge import Bridge
@@ -16,6 +16,19 @@ from hlsdl.downloader import DownloadWorker
 from hlsdl.model import DownloadModel
 from hlsdl.queue import QueueManager
 from tests.conftest import process_until
+
+
+def _teardown(qapp, engine, bridge) -> None:
+    """Fecha as janelas e destrói o engine antes do próximo teste QML."""
+    for obj in engine.rootObjects():
+        obj.close()
+    for _ in range(10):
+        qapp.processEvents()
+    engine.deleteLater()
+    qapp.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    for _ in range(10):
+        qapp.processEvents()
+    bridge.shutdown()
 
 
 def test_detect_returns_all_tools(qapp):
@@ -45,6 +58,7 @@ def test_qml_loads(qapp, fake_deps):
     engine.rootContext().setContextProperty("bridge", bridge)
     engine.load(QUrl.fromLocalFile(qml_path()))
     assert engine.rootObjects(), "main.qml não carregou"
+    _teardown(qapp, engine, bridge)
 
 
 def test_settings_scrollbar_is_on_the_right(qapp, fake_deps):
@@ -70,7 +84,7 @@ def test_settings_scrollbar_is_on_the_right(qapp, fake_deps):
     assert x > 0, "scrollbar vertical ficou no canto esquerdo"
     assert width > 4
     assert horizontal is False
-    bridge.shutdown()
+    _teardown(qapp, engine, bridge)
 
 
 def test_qml_icon_paths_are_absolute(qapp, fake_deps):
@@ -88,7 +102,7 @@ def test_qml_icon_paths_are_absolute(qapp, fake_deps):
     url = value if isinstance(value, QUrl) else QUrl(str(value))
     assert url.isLocalFile(), value
     assert Path(url.toLocalFile()).is_file(), value
-    bridge.shutdown()
+    _teardown(qapp, engine, bridge)
 
 
 def test_qml_controls_usam_estilo_material():
@@ -133,7 +147,7 @@ def test_qml_single_download_validates_and_isolates(qapp, fake_deps):
     assert ev("singleUrl.text") == ""
     assert len(bridge.single_manager.items) == 1
     assert manager.items[0]["status"].value == "waiting"
-    bridge.shutdown()
+    _teardown(qapp, engine, bridge)
 
 
 def test_qml_quality_prompt_opens_and_closing_rejects(qapp, fake_deps, tmp_path):
@@ -204,4 +218,4 @@ def test_qml_quality_prompt_opens_and_closing_rejects(qapp, fake_deps, tmp_path)
     assert process_until(qapp, lambda: worker.decisions == [False, True])
 
     bridge.compression._threads.clear()
-    bridge.shutdown()
+    _teardown(qapp, engine, bridge)

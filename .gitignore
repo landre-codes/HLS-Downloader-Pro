@@ -16,6 +16,9 @@ test_out/
 .ruff_cache/
 .pytest_cache/
 .mypy_cache/
+.coverage
+.coverage.*
+coverage.xml
 build/
 dist/
 *.spec

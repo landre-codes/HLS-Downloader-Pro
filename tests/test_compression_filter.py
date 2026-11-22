@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 
-from PySide6.QtCore import QObject, QUrl
+from PySide6.QtCore import QEvent, QObject, QUrl
 from PySide6.QtQml import QQmlApplicationEngine, QQmlExpression
 
 from hlsdl.bridge import Bridge
@@ -66,4 +66,9 @@ def test_compression_filter_hides_and_restores_rows(qapp, tmp_path, fake_deps):
     _pump(qapp, 20)
     assert listing.property("contentHeight") == full_height
 
+    root.close()
+    _pump(qapp, 10)
+    engine.deleteLater()
+    qapp.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    _pump(qapp, 10)
     bridge.shutdown()

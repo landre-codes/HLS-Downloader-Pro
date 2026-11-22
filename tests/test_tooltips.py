@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 
-from PySide6.QtCore import QMetaObject, QObject, QUrl
+from PySide6.QtCore import QEvent, QMetaObject, QObject, QUrl
 from PySide6.QtQml import QQmlApplicationEngine, QQmlExpression
 
 from hlsdl.bridge import Bridge
@@ -116,4 +116,9 @@ def test_rich_tooltips_open_inside_window_and_expose_shortcut(qapp, tmp_path, fa
     assert paste_tip.property("title") == "Colar da Área de Transferência"
     assert "transferência" in paste_tip.property("text").lower()
 
+    root.close()
+    _pump(qapp, 10)
+    engine.deleteLater()
+    qapp.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    _pump(qapp, 10)
     bridge.shutdown()

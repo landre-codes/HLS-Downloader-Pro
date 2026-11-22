@@ -106,7 +106,9 @@ jobs:
       - name: Tests
         env:
           QT_QPA_PLATFORM: offscreen
-        run: python -m pytest -q --cov=hlsdl --cov-report=term --cov-fail-under=60
+        # Um processo por arquivo: o Qt Quick pode abortar no teardown quando
+        # a suíte inteira compartilha o mesmo processo.
+        run: python scripts/run_tests_isolated.py --coverage
 
   # ---------------------------------------------------------- testes Windows
   test-windows:
@@ -129,7 +131,9 @@ jobs:
       - name: Tests
         env:
           QT_QPA_PLATFORM: offscreen
-        run: python -m pytest -q
+        # Um processo por arquivo: o Qt Quick pode abortar no teardown quando
+        # a suíte inteira compartilha o mesmo processo.
+        run: python scripts/run_tests_isolated.py
 
   # ------------------------------------------------------------ build Linux
   build-linux:
