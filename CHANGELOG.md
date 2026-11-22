@@ -6,6 +6,21 @@ e o versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 
 ## [Não lançado]
 
+### Compressão em hardware (R12u)
+
+- **Fallback automático**: quando o encoder de hardware falha na abertura
+  (QSV/NVENC/AMF), o job tenta o mesmo QSV com `-low_power 0` e, se ainda
+  falhar, refaz com o encoder de software do codec. O original só é mantido
+  se todas as tentativas falharem.
+- **Diagnóstico reproduzível**: cada falha registra resolução, codec,
+  `pix_fmt`, HDR, contagem de áudio/legendas, encoder, tentativa e comando do
+  FFmpeg com os caminhos locais redigidos.
+- **Formato de hardware explícito**: encoders QSV/NVENC/AMF recebem
+  `-pix_fmt nv12` ou `p010le`, evitando que fontes 4:2:2/4:4:4 cheguem ao
+  driver num layout recusado.
+- **Linha da fila atualizada**: ao cair para software, o item mostra o encoder
+  realmente usado.
+
 ## [1.5.0] - 2026-11-21 — padrão-ouro: catálogo, SSIM, HDR, fila e CLI
 
 ### Janela e foco (R12t)

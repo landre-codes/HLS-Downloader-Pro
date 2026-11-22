@@ -297,6 +297,47 @@ def test_build_args_includes_qsv_device():
     assert cmd[cmd.index("-qsv_device") + 1] == "1"
 
 
+def test_build_args_qsv_low_power_override():
+    probe = {
+        "streams": [{"codec_type": "video", "codec_name": "h264"}],
+        "format": {"duration": "1"},
+    }
+    settings = CompressionSettings()
+    default = build_args("in.mp4", "out.mp4", settings, "hevc_qsv", probe)
+    assert "-low_power" not in default
+
+    disabled = build_args(
+        "in.mp4", "out.mp4", settings, "hevc_qsv", probe,
+        qsv_low_power=False,
+    )
+    assert disabled[disabled.index("-low_power") + 1] == "0"
+    # É opção do encoder: precisa vir depois do -i, senão o ffmpeg a interpreta
+    # como opção do demuxer e recusa o arquivo de entrada.
+    assert disabled.index("-low_power") > disabled.index("-i")
+
+    enabled = build_args(
+        "in.mp4", "out.mp4", settings, "hevc_qsv", probe,
+        qsv_low_power=True,
+    )
+    assert enabled[enabled.index("-low_power") + 1] == "1"
+
+    # NVENC/AMF não têm a opção low_power do QSV.
+    nvenc = build_args(
+        "in.mp4", "out.mp4", settings, "hevc_nvenc", probe,
+        qsv_low_power=False,
+    )
+    assert "-low_power" not in nvenc
+
+
+def test_hardware_encoders_declare_pixel_format():
+    for encoder in ("hevc_qsv", "hevc_nvenc", "hevc_amf"):
+        args = video_args(encoder, "hevc", 24, "balanced")
+        assert args[args.index("-pix_fmt") + 1] == "nv12"
+        args = video_args(encoder, "hevc", 24, "balanced", ten_bit=True)
+        assert args[args.index("-pix_fmt") + 1] == "p010le"
+    assert "-pix_fmt" not in video_args("libx265", "hevc", 24, "balanced")
+
+
 def test_build_args_adds_hardware_bitrate_floor():
     probe = {
         "streams": [{"codec_type": "video", "codec_name": "h264"}],
@@ -487,9 +528,14 @@ def test_real_x265_encode(qapp, tmp_path):
     reason="ffmpeg/QSV indisponível",
 )
 def test_real_qsv_encode_prefers_dedicated(qapp, tmp_path):
-    devices = detect_qsv_devices()
+    # Mesmo critério de test_hdr_hardware.py: só roda no runner/estande com QSV
+    # real, onde HLSDL_TEST_QSV=1 está definido. A lista de encoders do ffmpeg
+    # sozinha não garante driver/sessão MFX disponíveis.
+    if os.environ.get("HLSDL_TEST_QSV") != "1":
+        pytest.skip("defina HLSDL_TEST_QSV=1 em máquina com QSV real")
+    devices = detect_qsv_devices(force=True)
     if not devices:
-        pytest.skip("nenhum dispositivo QSV detectado")
+        pytest.skip("nenhum dispositivo QSV disponível para uma sessão MFX")
     index = resolve_qsv_device(-1, devices)
     dedicated = [d for d in devices if not d["integrated"]]
     if dedicated:

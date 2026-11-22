@@ -60,6 +60,7 @@ from .media import (
 from .media import analyze as _media_analyze
 from .media import is_hdr as _media_is_hdr
 from .media import probe_media as _media_probe_media
+from .redact import redact_text
 from .services.procutils import (
     popen_kwargs,
     spawn_kwargs,
@@ -669,14 +670,18 @@ def resolve_qsv_device(preferred: int, devices: list[dict]) -> int:
 def video_args(encoder: str, codec: str, quality: int, speed: str,
                ten_bit: bool = False, x265_tuning: bool = False,
                hdr_params: list[str] | None = None,
-               target_bitrate: int = 0) -> list[str]:
+               target_bitrate: int = 0,
+               qsv_low_power: bool | None = None) -> list[str]:
     q = max(1, min(quality_max_for_encoder(codec, encoder), int(quality)))
     speed = speed if speed in SPEEDS else "balanced"
     tag = ["-tag:v", "hvc1"] if codec == "hevc" else []
     preset_x26x = {"fast": "fast", "balanced": "medium",
                    "slow": "slow", "slower": "slower"}[speed]
     software_pix = ["-pix_fmt", "yuv420p10le"] if ten_bit else []
-    hardware_pix = ["-pix_fmt", "p010le"] if ten_bit else []
+    # Encoders de hardware esperam superfície nv12/p010le. Declarar o formato
+    # evita que fontes 4:2:2/4:4:4 cheguem ao encoder num layout recusado pelo
+    # driver (o QSV reporta "Current resolution is unsupported" nesse caso).
+    hardware_pix = ["-pix_fmt", "p010le" if ten_bit else "nv12"]
 
     def bitrate_floor() -> list[str]:
         # O av1_qsv (ICQ) não aceita a combinação global_quality + VBR no
@@ -695,8 +700,12 @@ def video_args(encoder: str, codec: str, quality: int, speed: str,
     if encoder.endswith("_qsv"):
         preset = {"fast": "fast", "balanced": "medium",
                   "slow": "slow", "slower": "slower"}[speed]
-        return (["-c:v", encoder, "-preset", preset,
-                 "-global_quality", str(q)] + bitrate_floor() + hardware_pix + tag)
+        args = ["-c:v", encoder, "-preset", preset,
+                "-global_quality", str(q)]
+        # Opção do encoder (não do demuxer): precisa vir depois de ``-i``.
+        if qsv_low_power is not None:
+            args += ["-low_power", "1" if qsv_low_power else "0"]
+        return args + bitrate_floor() + hardware_pix + tag
     if encoder.endswith("_nvenc"):
         preset = {"fast": "p3", "balanced": "p5",
                   "slow": "p6", "slower": "p7"}[speed]
@@ -889,7 +898,8 @@ def source_bitrate_bps(probe: dict, path: str = "") -> int:
 def build_args(src: str, tmp: str, settings: CompressionSettings,
                encoder: str, probe: dict, qsv_device: int = 0,
                *, progress_pipe: bool = True,
-               log_level: str = "warning") -> list[str]:
+               log_level: str = "warning",
+               qsv_low_power: bool | None = None) -> list[str]:
     videos, audios, subs, _duration = analyze(probe)
     ffmpeg = which("ffmpeg")
     cmd = [ffmpeg, "-hide_banner", "-nostdin", "-y", "-loglevel", log_level]
@@ -955,6 +965,7 @@ def build_args(src: str, tmp: str, settings: CompressionSettings,
         x265_tuning=settings.x265_tuning,
         hdr_params=hdr_params,
         target_bitrate=target_bitrate,
+        qsv_low_power=qsv_low_power,
     )
     cmd += ["-map_chapters", "0", "-map_metadata", "0",
             "-max_muxing_queue_size", "4096"]
@@ -1495,17 +1506,21 @@ class CompressionWorker(QObject):
     failed = Signal(str)
     cancelled = Signal()
     finished = Signal()
+    # (encoder usado, motivo: "low_power" ou "software")
+    fallbackUsed = Signal(str, str)
 
     def __init__(self, src: str, settings: CompressionSettings,
                  encoder: str, translate=None, parent: QObject | None = None,
                  qsv_device: int = 0, job_id: int | str = 0,
                  journals_dir: str | None = None,
                  catalog_path: str | None = None,
-                 quality_timeout: float = QUALITY_CONFIRM_TIMEOUT):
+                 quality_timeout: float = QUALITY_CONFIRM_TIMEOUT,
+                 fallback_encoder: str = ""):
         super().__init__(parent)
         self.src = src
         self.settings = settings
         self.encoder = encoder
+        self.fallback_encoder = (fallback_encoder or "").strip()
         self.qsv_device = qsv_device
         self.job_id = job_id
         self.journals_dir = journals_dir
@@ -1526,6 +1541,62 @@ class CompressionWorker(QObject):
                 self._quality_decision = False
                 self._quality_event.set()
         terminate_tree(self._proc)
+
+    _HW_ENCODERS = ("_qsv", "_nvenc", "_amf")
+    _HW_INIT_MARKERS = (
+        "error while opening encoder",
+        "could not open encoder",
+        "low power mode is unsupported",
+        "current resolution is unsupported",
+        "some encoding parameters are not supported",
+    )
+
+    def _encoder_attempts(self) -> list[tuple[str, bool | None]]:
+        """Plano de tentativas para um encoder.
+
+        Hardware primeiro no modo padrão, depois QSV sem low-power e, por fim,
+        software. O fallback só é tentado quando a falha é de inicialização do
+        encoder (ver ``_hardware_init_failure``).
+        """
+        encoder = self.encoder
+        if not encoder.endswith(self._HW_ENCODERS):
+            return [(encoder, None)]
+        attempts: list[tuple[str, bool | None]] = [(encoder, None)]
+        if encoder.endswith("_qsv"):
+            attempts.append((encoder, False))
+        fallback = self.fallback_encoder
+        if fallback and fallback != encoder:
+            attempts.append((fallback, None))
+        return attempts
+
+    @classmethod
+    def _hardware_init_failure(cls, encoder: str, detail: str) -> bool:
+        if not encoder.endswith(cls._HW_ENCODERS):
+            return False
+        text = (detail or "").lower()
+        return any(marker in text for marker in cls._HW_INIT_MARKERS)
+
+    @staticmethod
+    def _probe_summary(probe: dict) -> str:
+        videos, audios, subs, _duration = analyze(probe or {})
+        video = videos[0] if videos else {}
+        return (
+            f"{video.get('width', '?')}x{video.get('height', '?')}"
+            f" {video.get('codec_name', '?')}/{video.get('pix_fmt', '?')}"
+            f" hdr={is_hdr_video(video)} audio={len(audios)} subs={len(subs)}"
+        )
+
+    @staticmethod
+    def _command_for_log(cmd: list[str], src: str, temp: str) -> str:
+        safe: list[str] = []
+        for arg in cmd:
+            if arg == src:
+                safe.append("<src>")
+            elif arg == temp:
+                safe.append("<out>")
+            else:
+                safe.append(redact_text(str(arg)))
+        return subprocess.list2cmdline(safe)
 
     def respond_quality(self, allow: bool) -> None:
         """Responde ao pedido de confirmação (chamado da thread da GUI)."""
@@ -1569,6 +1640,114 @@ class CompressionWorker(QObject):
             log.warning("qualidade: confirmação expirou; original será mantido")
             return False
         return self._quality_decision is True
+
+    def _run_ffmpeg(self, cmd: list[str], duration: float) -> tuple[int, str]:
+        """Executa uma tentativa e devolve (rc, stderr agregado)."""
+        self.statusChanged.emit(CompressStatus.ENCODING.value)
+        self._proc = subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, encoding="utf-8", errors="replace", bufsize=1,
+            **spawn_kwargs(),
+        )
+        stderr_lines: deque[str] = deque(maxlen=400)
+
+        def drain() -> None:
+            assert self._proc is not None and self._proc.stderr is not None
+            for line in self._proc.stderr:
+                stderr_lines.append(line.rstrip())
+
+        drainer = threading.Thread(target=drain, daemon=True)
+        drainer.start()
+
+        speed = ""
+        for line in self._proc.stdout:
+            line = line.strip()
+            if self._cancel:
+                terminate_tree(self._proc)
+                break
+            if line.startswith("speed="):
+                speed = line.split("=", 1)[1]
+                continue
+            if line.startswith("out_time_us=") or line.startswith("out_time_ms="):
+                try:
+                    seconds = int(line.split("=", 1)[1]) / 1_000_000
+                except ValueError:
+                    continue
+                pct = min(99.0, seconds / duration * 100.0) if duration else 0.0
+                self.progressChanged.emit(pct, speed)
+        rc = wait_or_kill(self._proc, timeout=10)
+        drainer.join(timeout=2)
+        self._proc = None
+        detail = " | ".join(line.strip() for line in stderr_lines if line.strip())
+        return rc, detail
+
+    def _encode_with_fallback(
+        self, probe: dict, temp: str, duration: float
+    ) -> tuple[str, int, str]:
+        """Tenta os encoders planejados e devolve (encoder, rc, stderr).
+
+        Encoder vazio indica falha definitiva (ou cancelamento, verificado pelo
+        chamador). O arquivo temporário é removido entre tentativas.
+        """
+        attempts = self._encoder_attempts()
+        last_detail = ""
+        last_rc = -1
+        for index, (encoder, low_power) in enumerate(attempts):
+            if self._cancel:
+                return "", last_rc, last_detail
+            if index:
+                self._safe_remove(temp)
+                self.progressChanged.emit(0.0, "")
+            cmd = build_args(
+                self.src, temp, self.settings, encoder, probe,
+                self.qsv_device, qsv_low_power=low_power,
+            )
+            if not cmd[0]:
+                raise RuntimeError(self._t("err_ffmpeg_missing"))
+            rc, detail = self._run_ffmpeg(cmd, duration)
+            last_rc, last_detail = rc, detail
+            if self._cancel:
+                return "", rc, detail
+            if rc == 0:
+                self.encoder = encoder
+                if index:
+                    reason = (
+                        "low_power"
+                        if encoder == attempts[0][0]
+                        else "software"
+                    )
+                    log.warning(
+                        "compressão: fallback para %s (%s)", encoder, reason
+                    )
+                    self.fallbackUsed.emit(encoder, reason)
+                return encoder, rc, detail
+            log.error(
+                "compressão falhou rc=%s encoder=%s tentativa=%d/%d "
+                "probe=%s cmd=%s: %s",
+                rc,
+                encoder,
+                index + 1,
+                len(attempts),
+                self._probe_summary(probe),
+                self._command_for_log(cmd, self.src, temp),
+                detail[-2000:],
+            )
+            if (not self._hardware_init_failure(encoder, detail)
+                    or index == len(attempts) - 1):
+                return "", rc, detail
+            next_encoder, next_low_power = attempts[index + 1]
+            suffix = (
+                " (low_power=0)"
+                if next_encoder == encoder and next_low_power is False
+                else ""
+            )
+            log.warning(
+                "encoder %s falhou na abertura; tentando %s%s",
+                encoder,
+                next_encoder,
+                suffix,
+            )
+        return "", last_rc, last_detail
 
     def run(self) -> None:
         final = ""
@@ -1614,10 +1793,6 @@ class CompressionWorker(QObject):
                 source_guard=guard,
             )
             journal.stage("encoding")
-            cmd = build_args(self.src, temp, self.settings, self.encoder,
-                             probe, self.qsv_device)
-            if not cmd[0]:
-                raise RuntimeError(self._t("err_ffmpeg_missing"))
             size_before = os.path.getsize(self.src)
             ok_space, free = disk_space_ok(
                 os.path.dirname(final) or ".", int(size_before * 0.55) + 256 * 1024 * 1024
@@ -1627,51 +1802,14 @@ class CompressionWorker(QObject):
                     self._t("compress_disk_space", free=free // (1024 * 1024))
                 )
 
-            self.statusChanged.emit(CompressStatus.ENCODING.value)
-            self._proc = subprocess.Popen(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                text=True, encoding="utf-8", errors="replace", bufsize=1,
-                **spawn_kwargs(),
+            used_encoder, rc, detail = self._encode_with_fallback(
+                probe, temp, duration
             )
-            stderr_lines: deque[str] = deque(maxlen=400)
-
-            def drain() -> None:
-                assert self._proc is not None and self._proc.stderr is not None
-                for line in self._proc.stderr:
-                    stderr_lines.append(line.rstrip())
-
-            drainer = threading.Thread(target=drain, daemon=True)
-            drainer.start()
-
-            speed = ""
-            for line in self._proc.stdout:
-                line = line.strip()
-                if self._cancel:
-                    terminate_tree(self._proc)
-                    break
-                if line.startswith("speed="):
-                    speed = line.split("=", 1)[1]
-                    continue
-                if line.startswith("out_time_us=") or line.startswith("out_time_ms="):
-                    try:
-                        seconds = int(line.split("=", 1)[1]) / 1_000_000
-                    except ValueError:
-                        continue
-                    pct = min(99.0, seconds / duration * 100.0) if duration else 0.0
-                    self.progressChanged.emit(pct, speed)
-            rc = wait_or_kill(self._proc, timeout=10)
-            drainer.join(timeout=2)
-            self._proc = None
-
             if self._cancel:
                 self._cleanup(temp, final, journal)
                 self.cancelled.emit()
                 return
-            if rc != 0:
-                detail = " | ".join(
-                    line.strip() for line in stderr_lines if line.strip()
-                )
-                log.error("compressão falhou rc=%s: %s", rc, detail[-2000:])
+            if not used_encoder:
                 message = detail[-800:] if detail else f"ffmpeg rc={rc}"
                 self._cleanup(temp, final, journal)
                 self.failed.emit(message)
@@ -2367,6 +2505,11 @@ class CompressionManager(QObject):
         item["encoder"] = self._encoder_label(encoder)
         self._job_settings[item["id"]] = job_settings
         self._touch(item)
+        fallback_encoder = ""
+        if encoder.endswith(("_qsv", "_nvenc", "_amf")):
+            fallback_encoder = pick_encoder(
+                "software", job_settings.codec, self.available
+            )
         thread = QThread(self)
         worker = self._worker_factory(
             item["input"], job_settings, encoder, self._t,
@@ -2374,6 +2517,7 @@ class CompressionManager(QObject):
             job_id=item["id"],
             journals_dir=config.journals_dir(),
             catalog_path=self.catalog_path,
+            fallback_encoder=fallback_encoder,
         )
         worker.moveToThread(thread)
         # Slots do manager (thread da GUI): evita mutar modelo/QML a partir
@@ -2387,6 +2531,7 @@ class CompressionManager(QObject):
         worker.skipped.connect(self._worker_skipped)
         worker.failed.connect(self._worker_failed)
         worker.cancelled.connect(self._worker_cancelled)
+        worker.fallbackUsed.connect(self._worker_fallback)
         thread.started.connect(worker.run)
         worker.finished.connect(thread.quit)
         thread.finished.connect(lambda it=item: self._on_thread_done(it))
@@ -2525,6 +2670,14 @@ class CompressionManager(QObject):
         item = self._sender_item()
         if item is not None:
             self._on_cancelled(item)
+
+    @Slot(str, str)
+    def _worker_fallback(self, encoder: str, reason: str) -> None:
+        item = self._sender_item()
+        if item is not None:
+            item["encoder"] = self._encoder_label(encoder)
+            self._touch(item)
+        log.warning("compressão: fallback para %s (%s)", encoder, reason)
 
     def _on_status(self, item: dict, status: str) -> None:
         try:
