@@ -6,6 +6,20 @@ e o versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 
 ## [Não lançado]
 
+## [1.5.1] - 2026-11-22 — fallback de compressão e foco
+
+### Foco e tooltips (R12v)
+
+- **Tooltip não fica preso após diálogo**: ao fechar a janela de Playlist (ou
+  qualquer diálogo), o foco pode voltar ao botão que a abriu, mas o tooltip
+  daquela ativação não é reaberto. Navegação por Tab continua exibindo o
+  tooltip normalmente.
+- **Auto-ocultação por foco**: tooltips abertos por foco desaparecem após
+  alguns segundos mesmo que o foco permaneça no controle, evitando bolhas
+  persistentes após ações como iniciar a fila.
+- **Hover preservado**: tooltips abertos pelo mouse continuam visíveis
+  enquanto o ponteiro estiver sobre o controle.
+
 ### Compressão em hardware (R12u)
 
 - **Fallback automático**: quando o encoder de hardware falha na abertura

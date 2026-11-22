@@ -190,6 +190,7 @@ import "../components"
                                 onClicked: bridge.importTxt()
                             }
                             AppButton {
+                                objectName: "playlistImportButton"
                                 text: strings.btn_import_playlist
                                 variant: "tonal"
                                 icon.source: appRoot.tonalIcon("retry", enabled)

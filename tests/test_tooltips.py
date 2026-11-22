@@ -12,6 +12,7 @@ from hlsdl.config import qml_path
 from hlsdl.model import DownloadModel, make_item
 from hlsdl.queue import QueueManager
 from hlsdl.status import Status
+from tests.conftest import process_until
 
 
 def _pump(qapp, rounds: int = 50) -> None:
@@ -26,6 +27,45 @@ def _ev(ctx, scope, expr):
     if expression.hasError():
         raise AssertionError(expression.error().toString())
     return result[0] if isinstance(result, tuple) else result
+
+
+def _build_playlist_app(qapp, tmp_path, fake_deps):
+    manager = QueueManager(DownloadModel([]), outdir=str(tmp_path / "out"))
+    bridge = Bridge(
+        manager,
+        str(tmp_path / "out"),
+        settings_path=str(tmp_path / "settings.ini"),
+        state_path=str(tmp_path / "queue.json"),
+        deps=fake_deps,
+        defer_detection=True,
+    )
+    bridge.setLanguage("pt")
+    engine = QQmlApplicationEngine()
+    engine.rootContext().setContextProperty("downloadModel", manager.model)
+    engine.rootContext().setContextProperty(
+        "compressionModel", bridge.compression.model
+    )
+    engine.rootContext().setContextProperty("bridge", bridge)
+    engine.load(QUrl.fromLocalFile(qml_path()))
+    root = engine.rootObjects()[0]
+    root.resize(1160, 800)
+    root.show()
+    _pump(qapp, 60)
+    root.findChild(QObject, "mainTabBar").setProperty("currentIndex", 1)
+    _pump(qapp, 40)
+    button = root.findChild(QObject, "playlistImportButton")
+    tips = button.findChildren(QObject, "appToolTip")
+    assert button is not None and tips
+    return bridge, engine, root, button, tips[0]
+
+
+def _teardown(qapp, engine, bridge, root):
+    root.close()
+    _pump(qapp, 10)
+    engine.deleteLater()
+    qapp.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    _pump(qapp, 10)
+    bridge.shutdown()
 
 
 def test_rich_tooltips_open_inside_window_and_expose_shortcut(qapp, tmp_path, fake_deps):
@@ -116,9 +156,56 @@ def test_rich_tooltips_open_inside_window_and_expose_shortcut(qapp, tmp_path, fa
     assert paste_tip.property("title") == "Colar da Área de Transferência"
     assert "transferência" in paste_tip.property("text").lower()
 
-    root.close()
-    _pump(qapp, 10)
-    engine.deleteLater()
-    qapp.sendPostedEvents(None, QEvent.Type.DeferredDelete)
-    _pump(qapp, 10)
-    bridge.shutdown()
+    _teardown(qapp, engine, bridge, root)
+
+
+def test_focus_tooltip_does_not_reopen_after_dialog_closes(
+    qapp, tmp_path, fake_deps
+):
+    bridge, engine, root, button, tip = _build_playlist_app(
+        qapp, tmp_path, fake_deps
+    )
+    tip.setProperty("focusHideDelay", 5000)
+    field = root.findChild(QObject, "batchInputArea")
+    field.forceActiveFocus()
+    _pump(qapp, 5)
+    button.forceActiveFocus()
+    assert process_until(qapp, lambda: tip.property("opened") is True, timeout=5)
+
+    assert QMetaObject.invokeMethod(button, "click")
+    _pump(qapp, 30)
+    dialog = root.findChild(QObject, "playlistImportDialog")
+    assert dialog.property("opened") is True
+    assert tip.property("opened") is False
+
+    assert QMetaObject.invokeMethod(dialog, "close")
+    assert process_until(qapp, lambda: dialog.property("opened") is False, timeout=2)
+    _pump(qapp, 20)
+    # O foco volta ao botão; o tooltip daquela ativação não pode reaparecer.
+    assert button.property("activeFocus") is True
+    assert tip.property("opened") is False
+
+    # Navegação por teclado (sem pressed) continua mostrando o tooltip.
+    field.forceActiveFocus()
+    _pump(qapp, 5)
+    button.forceActiveFocus()
+    assert process_until(qapp, lambda: tip.property("opened") is True, timeout=5)
+    _teardown(qapp, engine, bridge, root)
+
+
+def test_focus_tooltip_auto_hides_while_focus_stays(
+    qapp, tmp_path, fake_deps
+):
+    bridge, engine, root, button, tip = _build_playlist_app(
+        qapp, tmp_path, fake_deps
+    )
+    tip.setProperty("focusHideDelay", 250)
+    field = root.findChild(QObject, "batchInputArea")
+    field.forceActiveFocus()
+    _pump(qapp, 5)
+    button.forceActiveFocus()
+    assert process_until(qapp, lambda: tip.property("opened") is True, timeout=5)
+
+    assert process_until(qapp, lambda: tip.property("opened") is False, timeout=3)
+    assert button.property("activeFocus") is True
+    _teardown(qapp, engine, bridge, root)

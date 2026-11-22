@@ -2,7 +2,7 @@
 ; HLS Downloader Pro — instalador Windows (Inno Setup 6.3+ / 7.x)
 ;
 ; Build (a partir da raiz do repositório):
-;   iscc /DAppVersion=1.5.0 installer\HLS-Downloader-Pro.iss
+;   iscc /DAppVersion=1.5.1 installer\HLS-Downloader-Pro.iss
 ;
 ; Pré-requisito: dist\HLS-Downloader-Pro\ (build PyInstaller --onedir).
 ; Instalação POR USUÁRIO (sem admin) por padrão, com opção de "para todos".
@@ -13,7 +13,7 @@
 #endif
 
 #ifndef AppVersion
-  #define AppVersion "1.5.0"
+  #define AppVersion "1.5.1"
 #endif
 
 #define AppName "HLS Downloader Pro"

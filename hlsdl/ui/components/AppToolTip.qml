@@ -23,6 +23,14 @@ Popup {
     property bool available: true
     property bool showOnFocus: true
     property int delay: 450
+    // Tooltip aberto por foco não pode ficar preso depois que o alvo perde e
+    // recupera o foco (ex.: fechar um diálogo devolve o foco ao botão).
+    property int focusHideDelay: 3500
+    property bool _openedByFocus: false
+    // Distingue navegação por Tab (o tooltip já foi mostrado) de uma ação que
+    // abriu um diálogo (pressionou o botão; o próximo foco é restauração).
+    property bool _focusScheduled: false
+    property bool _focusTipShown: false
     property int minWidth: 190
     property int maxWidth: 380
     property var theme: null
@@ -74,14 +82,23 @@ Popup {
     }
     height: contentColumn.implicitHeight + 20
 
-    function schedule() {
+    function schedule(focusOnly) {
         if (!available || !hasContent || target === null)
             return
+        _openedByFocus = focusOnly === true
+        if (focusOnly === true)
+            _focusScheduled = true
         showTimer.restart()
+    }
+
+    function cancelFocusAutoHide() {
+        _openedByFocus = false
+        focusHideTimer.stop()
     }
 
     function hideNow() {
         showTimer.stop()
+        focusHideTimer.stop()
         if (opened)
             close()
     }
@@ -92,6 +109,13 @@ Popup {
         open()
         reposition()
         Qt.callLater(reposition)
+        if (_openedByFocus) {
+            _focusTipShown = true
+            if (!targetHover.hovered)
+                focusHideTimer.restart()
+        } else {
+            focusHideTimer.stop()
+        }
     }
 
     function reposition() {
@@ -112,6 +136,7 @@ Popup {
     onWidthChanged: reposition()
     onHeightChanged: reposition()
     onOpened: reposition()
+    onClosed: focusHideTimer.stop()
 
     Timer {
         id: showTimer
@@ -119,15 +144,24 @@ Popup {
         onTriggered: tip.openTip()
     }
 
+    Timer {
+        id: focusHideTimer
+        objectName: "tooltipFocusHideTimer"
+        interval: tip.focusHideDelay
+        onTriggered: tip.hideNow()
+    }
+
     HoverHandler {
         id: targetHover
         enabled: tip.target !== null
         parent: tip.target
         onHoveredChanged: {
-            if (hovered)
+            if (hovered) {
+                tip.cancelFocusAutoHide()
                 tip.schedule()
-            else
+            } else {
                 tip.hideNow()
+            }
         }
     }
 
@@ -137,14 +171,26 @@ Popup {
         function onActiveFocusChanged() {
             if (tip.target === null)
                 return
-            if (tip.target.activeFocus && tip.showOnFocus)
-                tip.schedule()
-            else if (!tip.target.activeFocus)
+            if (tip.target.activeFocus && tip.showOnFocus) {
+                // Um tooltip agendado que nunca chegou a abrir (pressed ou
+                // diálogo) não deve reaparecer quando o foco é restaurado.
+                if (tip._focusScheduled && !tip._focusTipShown) {
+                    tip._focusScheduled = false
+                    tip.hideNow()
+                    return
+                }
+                tip.schedule(true)
+            } else if (!tip.target.activeFocus) {
                 tip.hideNow()
+            }
         }
         function onPressedChanged() {
-            if (tip.target !== null && tip.target["pressed"])
+            if (tip.target !== null && tip.target["pressed"]) {
+                // A ação consome o tooltip daquela sessão de foco; se um
+                // diálogo abrir e fechar, o foco restaurado não o reabre.
+                tip._focusTipShown = false
                 tip.hideNow()
+            }
         }
         function onVisibleChanged() {
             if (tip.target !== null && !tip.target.visible)
