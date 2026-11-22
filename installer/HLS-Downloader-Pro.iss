@@ -118,7 +118,11 @@ Name: "arabic"; MessagesFile: "compiler:Languages\Arabic.isl"
 Name: "hebrew"; MessagesFile: "compiler:Languages\Hebrew.isl"
 Name: "japanese"; MessagesFile: "compiler:Languages\Japanese.isl"
 Name: "korean"; MessagesFile: "compiler:Languages\Korean.isl"
+; ChineseSimplified.isl só acompanha o Inno Setup 7; incluir a entrada com o
+; 6.x faz o compilador abortar por arquivo ausente.
+#if FileExists(CompilerPath + "Languages\ChineseSimplified.isl")
 Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
+#endif
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
