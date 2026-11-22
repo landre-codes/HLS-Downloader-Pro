@@ -192,6 +192,17 @@ def test_focus_tooltip_does_not_reopen_after_dialog_closes(
     _pump(qapp, 5)
     button.forceActiveFocus()
     assert process_until(qapp, lambda: tip.property("opened") is True, timeout=5)
+
+    # Abrir e fechar de novo sem sair do botão também não deixa o tooltip.
+    for _ in range(2):
+        assert QMetaObject.invokeMethod(button, "click")
+        _pump(qapp, 30)
+        assert dialog.property("opened") is True
+        assert QMetaObject.invokeMethod(dialog, "close")
+        _pump(qapp, 20)
+        button.forceActiveFocus()
+        _pump(qapp, 20)
+        assert tip.property("opened") is False
     _teardown(qapp, engine, bridge, root)
 
 

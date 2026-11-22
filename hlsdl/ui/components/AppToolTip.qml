@@ -188,6 +188,9 @@ Popup {
             if (tip.target !== null && tip.target["pressed"]) {
                 // A ação consome o tooltip daquela sessão de foco; se um
                 // diálogo abrir e fechar, o foco restaurado não o reabre.
+                // Rearma a supressão a cada pressão (inclusive a segunda
+                // abertura sem sair do botão).
+                tip._focusScheduled = true
                 tip._focusTipShown = false
                 tip.hideNow()
             }
