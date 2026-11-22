@@ -53,7 +53,9 @@
 #endif
 
 ; Aviso (não fatal) quando o exe empacotado foi gerado com outra versão.
-#define AppExeVersion GetFileProductVersionString(AppDistExe)
+; GetStringFileInfo existe no Inno Setup 6 e 7; GetFileProductVersionString
+; só está disponível no 7 e quebrava o build do CI (6.7.1).
+#define AppExeVersion GetStringFileInfo(AppDistExe, "ProductVersion")
 #if AppExeVersion != AppVersion
   #pragma message "AVISO: exe em dist está na versão " + AppExeVersion + \
     ", mas o instalador foi configurado para " + AppVersion + ". Rebuild o app antes de publicar."
