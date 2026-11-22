@@ -6,6 +6,11 @@ segfault/access violation durante o processamento de eventos. Isolar por
 arquivo preserva o sinal dos testes e impede que o teardown instável de um
 arquivo derrube os demais.
 
+Além do isolamento, cada arquivo tem uma repetição extra quando o interpretador
+morre com um código nativo de crash (access violation/abort) do PySide6 6.12.
+Falhas de asserção e erros Python não são repetidos: o código de saída é
+diferente e a suíte continua falhando normalmente.
+
 Uso:
     python scripts/run_tests_isolated.py
     python scripts/run_tests_isolated.py --coverage
@@ -20,10 +25,34 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
+# Códigos nativos de crash observados no PySide6 6.12 durante o processamento
+# de eventos do Qt no Windows. Podem chegar com sinal ou sem sinal.
+_CRASH_CODES = {
+    -1073741819,  # 0xC0000005 access violation
+    3221225477,   # 0xC0000005 sem sinal
+    -1073740791,  # 0xC0000409 abort/stack buffer overrun
+    3221226505,   # 0xC0000409 sem sinal
+}
+_ATTEMPTS = 2
+
 
 def _run(command: list[str]) -> int:
     print("==> " + " ".join(command), flush=True)
     return subprocess.run(command, cwd=ROOT, check=False).returncode
+
+
+def _run_with_retry(command: list[str], name: str) -> int:
+    for attempt in range(1, _ATTEMPTS + 1):
+        rc = _run(command)
+        if rc == 0 or rc not in _CRASH_CODES or attempt == _ATTEMPTS:
+            return rc
+        print(
+            f"AVISO: {name} abortou com código nativo {rc}; "
+            f"repetindo ({attempt}/{_ATTEMPTS - 1})...",
+            file=sys.stderr,
+            flush=True,
+        )
+    return rc
 
 
 def main() -> int:
@@ -47,7 +76,7 @@ def main() -> int:
         command = [sys.executable, "-m", "pytest", "-q", str(path.relative_to(ROOT))]
         if args.coverage:
             command += ["--cov=hlsdl", "--cov-append", "--cov-report="]
-        rc = _run(command)
+        rc = _run_with_retry(command, path.name)
         if rc != 0:
             print(f"falhou: {path.name} (rc={rc})", file=sys.stderr)
             return rc
